@@ -1,0 +1,48 @@
+@import "tailwindcss";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+
+@theme {
+  --color-surface: #0f0e1a;
+  --color-surface-card: #1a1830;
+  --color-surface-border: #2e2b4a;
+  --color-surface-elevated: #231f3a;
+  --color-brand-50: #f0f0ff;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-900: #1e1b4b;
+  --color-income: #34d399;
+  --color-expense: #f87171;
+  --color-pending: #fbbf24;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #0f0e1a;
+  color: #e2e0f0;
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  height: 100%;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
