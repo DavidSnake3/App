@@ -1,9 +1,12 @@
 import type { MonthData, AppSettings } from '../types/finance'
 
-// Use Capacitor LocalNotifications if available, fallback to Web Notifications API
+function hasWebNotifications(): boolean {
+  return typeof window !== 'undefined' && 'Notification' in window && typeof Notification !== 'undefined'
+}
+
 async function getLocalNotifications() {
   try {
-    const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
+    const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
     if (cap?.isNativePlatform?.()) {
       const { LocalNotifications } = await import('@capacitor/local-notifications')
       return LocalNotifications
@@ -18,21 +21,19 @@ export async function requestNotificationPermission(): Promise<boolean> {
     const { display } = await ln.requestPermissions()
     return display === 'granted'
   }
-  if (!('Notification' in window)) return false
+  if (!hasWebNotifications()) return false
   if (Notification.permission === 'granted') return true
   const result = await Notification.requestPermission()
   return result === 'granted'
 }
 
 export function getNotificationPermission(): NotificationPermission | 'unsupported' {
-  if (!('Notification' in window)) return 'unsupported'
+  if (!hasWebNotifications()) return 'unsupported'
   return Notification.permission
 }
 
 interface ScheduledNotif {
   id: string
-  monthId: string
-  expenseId: string
   expenseName: string
   amount: number
   fireAt: number
@@ -56,9 +57,7 @@ export async function scheduleNotifications(
   const now = Date.now()
 
   if (ln) {
-    // Native Capacitor notifications
     await ln.cancel({ notifications: Array.from({ length: 500 }, (_, i) => ({ id: 1000 + i })) }).catch(() => {})
-
     const notifications = []
     for (const month of Object.values(months)) {
       for (const section of month.sections) {
@@ -77,7 +76,6 @@ export async function scheduleNotifications(
               body: `Monto: ${amount}${daysBefore > 0 ? ` · vence en ${daysBefore} día${daysBefore > 1 ? 's' : ''}` : ' · hoy'}`,
               schedule: { at: new Date(fireAt) },
               sound: undefined,
-              smallIcon: 'ic_stat_icon_config_sample',
             })
           }
         }
@@ -89,8 +87,8 @@ export async function scheduleNotifications(
     return
   }
 
-  // Web fallback
-  if (Notification.permission !== 'granted') return
+  if (!hasWebNotifications() || Notification.permission !== 'granted') return
+
   clearAllWebTimers()
   const scheduled: ScheduledNotif[] = []
 
@@ -103,7 +101,7 @@ export async function scheduleNotifications(
           const fireAt = dueDate.getTime() - daysBefore * 86_400_000
           if (fireAt <= now) continue
           const id = `${month.id}-${item.id}-${daysBefore}`
-          scheduled.push({ id, monthId: month.id, expenseId: item.id, expenseName: item.name, amount: item.amount, fireAt })
+          scheduled.push({ id, expenseName: item.name, amount: item.amount, fireAt })
         }
       }
     }
@@ -118,6 +116,7 @@ export async function scheduleNotifications(
 }
 
 function showWebNotification(notif: ScheduledNotif) {
+  if (!hasWebNotifications()) return
   const amount = new Intl.NumberFormat('es-CR', { style: 'currency', currency: 'CRC', maximumFractionDigits: 0 }).format(notif.amount)
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage({
@@ -127,7 +126,7 @@ function showWebNotification(notif: ScheduledNotif) {
       tag: notif.id,
     })
   } else if (Notification.permission === 'granted') {
-    new Notification(`Pago pendiente: ${notif.expenseName}`, { body: `Monto: ${amount}`, icon: '/icons/icon-192.svg' })
+    new Notification(`Pago pendiente: ${notif.expenseName}`, { body: `Monto: ${amount}` })
   }
 }
 
@@ -146,7 +145,7 @@ export async function cancelAllNotifications(): Promise<void> {
 }
 
 export function restoreScheduledNotifications(): void {
-  if (Notification.permission !== 'granted') return
+  if (!hasWebNotifications() || Notification.permission !== 'granted') return
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return
