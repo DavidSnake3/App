@@ -27,9 +27,7 @@ export function useNotifications() {
 
   async function enableNotifications(): Promise<boolean> {
     const granted = await requestNotificationPermission()
-    if (granted) {
-      updateSettings({ notificationsEnabled: true })
-    }
+    if (granted) updateSettings({ notificationsEnabled: true })
     return granted
   }
 
