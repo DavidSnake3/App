@@ -3,46 +3,234 @@
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
 @import "@fontsource/inter/700.css";
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
 
 @theme {
-  --color-surface: #0f0e1a;
-  --color-surface-card: #1a1830;
-  --color-surface-border: #2e2b4a;
-  --color-surface-elevated: #231f3a;
-  --color-brand-50: #f0f0ff;
-  --color-brand-400: #818cf8;
-  --color-brand-500: #6366f1;
-  --color-brand-600: #4f46e5;
-  --color-brand-900: #1e1b4b;
-  --color-income: #34d399;
-  --color-expense: #f87171;
-  --color-pending: #fbbf24;
-  --font-sans: "Inter", system-ui, sans-serif;
-  --font-mono: ui-monospace, "JetBrains Mono", monospace;
+  /* Tokens dinámicos: applyTheme() define las variables --c-* y --app-* */
+  --color-surface: var(--c-bg-base);
+  --color-card: var(--c-card);
+  --color-elevated: var(--c-elevated);
+  --color-edge: var(--c-border);
+  --color-ink: var(--c-text);
+  --color-muted: var(--c-muted);
+  --color-accent: var(--app-accent);
+  --color-accent-soft: var(--app-accent-soft);
+  --color-income: var(--c-income);
+  --color-danger: var(--c-danger);
+  --color-warning: var(--c-warning);
+
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.6rem;
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
+/* ── Variables por defecto (antes de que applyTheme corra) ─────────────── */
+:root {
+  --app-accent: #7c5cff;
+  --app-accent-soft: #a78bfa;
+  --app-gradient: linear-gradient(135deg, #7c5cff 0%, #4f46e5 55%, #2563eb 100%);
+  --c-bg-base: #0b0d14;
+  --c-card: #141826;
+  --c-elevated: #1b2130;
+  --c-border: #232a3d;
+  --c-text: #e8eaf2;
+  --c-muted: #98a0b3;
+  --c-income: #2dd4a0;
+  --c-danger: #ff5c7a;
+  --c-warning: #ffb84d;
+  --c-safe: #2dd4a0;
+  --c-overdue: #ff3358;
+  --chart-income: #199e70;
+  --chart-savings: #9085e9;
+  --chart-expense: #d55181;
+  --app-bg: radial-gradient(1200px 800px at 85% -10%, color-mix(in oklab, var(--app-accent) 22%, transparent), transparent 60%), var(--c-bg-base);
+  --bg-dim: 0;
 }
+
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   padding: 0;
-  background: #0f0e1a;
-  color: #e2e0f0;
+  height: 100%;
+  background: var(--c-bg-base);
+  color: var(--c-text);
   font-family: "Inter", system-ui, sans-serif;
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
-  height: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--app-bg);
+  background-attachment: fixed;
+}
+
+/* Oscurece imágenes de fondo para mantener legibilidad */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / var(--bg-dim));
+  pointer-events: none;
+  z-index: 0;
 }
 
 #root {
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 1;
+  max-width: 520px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* En pantallas grandes la app se ve como teléfono centrado (móvil 100%) */
+@media (min-width: 640px) {
+  #root {
+    box-shadow: 0 0 0 1px var(--c-border), 0 24px 80px rgb(0 0 0 / 0.45);
+    border-radius: 0;
+  }
 }
 
 input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+input, select, textarea, button { font-family: inherit; }
+
+::selection { background: color-mix(in oklab, var(--app-accent) 40%, transparent); }
+
+/* Scrollbars discretas */
+* { scrollbar-width: thin; scrollbar-color: var(--c-border) transparent; }
+
+/* ── Componentes base ──────────────────────────────────────────────────── */
+@layer components {
+  .card {
+    background: var(--c-card);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-2xl);
+  }
+  .pressable {
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease, background-color 0.2s ease, border-color 0.2s ease;
+    user-select: none;
+  }
+  .pressable:active { transform: scale(0.965); }
+  .input-base {
+    width: 100%;
+    background: var(--c-elevated);
+    border: 1px solid var(--c-border);
+    border-radius: 0.9rem;
+    color: var(--c-text);
+    padding: 0.7rem 0.9rem;
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .input-base:focus {
+    border-color: var(--app-accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--app-accent) 25%, transparent);
+  }
+  .btn-primary {
+    background: var(--app-gradient);
+    color: #fff;
+    font-weight: 600;
+    border: none;
+    border-radius: 1rem;
+    padding: 0.85rem 1.25rem;
+    font-size: 16px;
+    box-shadow: 0 8px 24px color-mix(in oklab, var(--app-accent) 35%, transparent);
+  }
+  .btn-ghost {
+    background: var(--c-elevated);
+    color: var(--c-text);
+    border: 1px solid var(--c-border);
+    border-radius: 1rem;
+    padding: 0.8rem 1.2rem;
+    font-weight: 500;
+    font-size: 16px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 999px;
+    padding: 0.42rem 0.85rem;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--c-border);
+    background: var(--c-elevated);
+    color: var(--c-muted);
+  }
+  .chip-active {
+    background: color-mix(in oklab, var(--app-accent) 18%, var(--c-elevated));
+    border-color: color-mix(in oklab, var(--app-accent) 55%, var(--c-border));
+    color: var(--c-text);
+  }
+  .num {
+    font-family: "Space Grotesk", "Inter", sans-serif;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
 }
+
+/* ── Animaciones (punto 21) ────────────────────────────────────────────── */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes popIn {
+  0%   { opacity: 0; transform: scale(0.86); }
+  70%  { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes pulseSoft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-7px); }
+  40%, 80% { transform: translateX(7px); }
+}
+@keyframes ringPulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in oklab, var(--c-danger) 55%, transparent); }
+  100% { box-shadow: 0 0 0 18px transparent; }
+}
+
+.anim-page  { animation: fadeSlideIn 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.anim-pop   { animation: popIn 0.3s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.anim-fade  { animation: fadeIn 0.25s ease both; }
+.anim-shake { animation: shake 0.45s ease; }
+
+/* Preferencia del usuario: desactivar transiciones (punto 25) */
+.no-anim *, .no-anim *::before, .no-anim *::after {
+  animation-duration: 0.001s !important;
+  transition-duration: 0.001s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001s !important;
+    transition-duration: 0.001s !important;
+  }
+}
+
+/* Utilidad para ocultar scrollbar en carruseles horizontales */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

@@ -1,73 +1,35 @@
-# React + TypeScript + Vite
+# SNBusiness
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Finanzas personales premium, 100% móvil. React 19 + TypeScript + Tailwind 4 +
+Capacitor (Android) + Firebase + Gemini.
 
-Currently, two official plugins are available:
+![Estado](https://img.shields.io/badge/estado-activo-2dd4a0) ![Plataforma](https://img.shields.io/badge/plataforma-Android%20%7C%20PWA-7c5cff)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Qué hace
 
-## React Compiler
+- **Meses automáticos**: cada mes se genera solo con tus pagos recurrentes; puedes borrar cualquier mes.
+- **Gastos con sub-ítems** (ej. "Diario" → tomate, arroz…), servicios obligatorios y pagos únicos o recurrentes.
+- **Deudas por cuotas**: define nº de cuotas, fecha final o cuota fija; progreso mes a mes.
+- **5 vistas configurables**: tarjetas, lista, tabla estilo Excel, calendario y Gantt.
+- **Semáforo de vencimientos**: cada pago se va poniendo rojo al acercarse su fecha.
+- **Calendario anual + proyecciones** con líneas de ingresos/ahorro/gastos.
+- **IA (Gemini)**: consejo del día, recomendación de pagos y 3 planes de pago; siempre con respaldo sin conexión.
+- **Recordatorios y alarmas** (notificaciones nativas en Android, modo alarma intrusiva).
+- **Celebraciones**: confeti + sonido al pagar y fanfarria al completar el mes (todo configurable).
+- **Temas**: claro/oscuro, 6 paletas, color de acento y fondo personalizado (hasta tu propia foto).
+- **Excel**: exporta resumen, detalle, deudas y una plantilla lista para usar.
+- **Cuenta opcional** con correo o Google y sincronización en Firestore.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Inicio rápido
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Configuración completa (Firebase, IA, APK, secrets): **[SETUP.md](SETUP.md)**.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Stack
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Vite 8 · React 19 · TypeScript · Tailwind CSS 4 · Zustand · Capacitor 8 ·
+Firebase (Auth + Firestore) · ExcelJS · canvas-confetti · Gemini API.

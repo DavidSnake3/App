@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Finanzas Personales</string>
-    <string name="title_activity_main">Finanzas Personales</string>
+    <string name="app_name">SNBusiness</string>
+    <string name="title_activity_main">SNBusiness</string>
     <string name="package_name">com.finanzas.personal</string>
     <string name="custom_url_scheme">com.finanzas.personal</string>
 </resources>

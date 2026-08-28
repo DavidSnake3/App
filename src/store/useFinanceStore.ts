@@ -1,127 +1,209 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { MonthData, AppSettings, SectionType, ExpenseItem, TabId } from '../types/finance'
-import { addMonths, format } from 'date-fns'
+import type {
+  AnimationPrefs, AppSettings, Debt, DebtPayment, Expense, MonthData,
+  NotificationPrefs, SubItem, TabId, ThemeSettings, UserProfile, ViewMode,
+} from '../types/finance'
+import { addMonthsToId, currentMonthId, todayISO } from '../lib/dates'
+import { makeMonth, uid } from '../lib/finance'
 
-let _idCounter = 0
-function uid(): string {
-  return `${Date.now()}-${++_idCounter}-${Math.random().toString(36).slice(2, 7)}`
+// ─── Valores por defecto ─────────────────────────────────────────────────────
+
+export const DEFAULT_PROFILE: UserProfile = {
+  name: '',
+  email: '',
+  phone: '',
+  currency: 'CRC',
+  payday: 1,
+  payFrequency: 'monthly',
+  planMode: 'monthly',
+  onboarded: false,
 }
 
-const DEFAULT_SETTINGS: AppSettings = {
-  defaultSalary: 600000,
-  notificationsEnabled: false,
-  notificationDays: [0, 1, 3],
-  startYear: 2026,
-  startMonth: 5,
+export const DEFAULT_THEME: ThemeSettings = {
+  mode: 'dark',
+  paletteId: 'aurora',
+  background: { type: 'default', value: 'noche' },
 }
 
-const MAY_2026: MonthData = {
-  id: '2026-05',
-  year: 2026,
-  month: 5,
-  income: { salary: 600000, additional: 210000, additionalLabel: 'Ingresos adicionales' },
-  sections: [
-    {
-      type: 'quincena',
-      label: 'Gastos quincenas',
-      items: [
-        { id: uid(), name: 'Dentista',   amount: 15000,  paid: false, isRecurring: false },
-        { id: uid(), name: 'Comida',     amount: 100000, paid: false, isRecurring: true  },
-        { id: uid(), name: 'Lavadora',   amount: 77000,  paid: false, isRecurring: false, dueDay: 15 },
-        { id: uid(), name: 'Celular',    amount: 20000,  paid: false, isRecurring: true,  dueDay: 15 },
-        { id: uid(), name: 'Abono agua', amount: 20000,  paid: false, isRecurring: true  },
-        { id: uid(), name: 'Pases',      amount: 30000,  paid: false, isRecurring: true  },
-      ],
-    },
-    {
-      type: 'fin_de_mes',
-      label: 'Gastos fin de mes',
-      items: [
-        { id: uid(), name: 'Internet', amount: 22000, paid: false, isRecurring: true, dueDay: 28 },
-        { id: uid(), name: 'Luz',      amount: 20000, paid: false, isRecurring: true, dueDay: 28 },
-        { id: uid(), name: 'Agua',     amount: 8000,  paid: false, isRecurring: true, dueDay: 28 },
-        { id: uid(), name: 'Mesa',     amount: 22000, paid: false, isRecurring: true, dueDay: 30 },
-        { id: uid(), name: 'Pases',    amount: 30000, paid: false, isRecurring: true  },
-      ],
-    },
-  ],
+export const DEFAULT_ANIMATIONS: AnimationPrefs = {
+  confetti: true,
+  cash: true,
+  sounds: true,
+  haptics: true,
+  transitions: true,
+  celebration: true,
 }
 
-function makeEmptyMonth(monthId: string, fromMonth?: MonthData, settings?: AppSettings): MonthData {
-  const [year, month] = monthId.split('-').map(Number)
-  const salary = settings?.defaultSalary ?? 600000
-
-  if (fromMonth) {
-    return {
-      id: monthId,
-      year,
-      month,
-      income: { salary, additional: 0, additionalLabel: 'Ingresos adicionales' },
-      sections: [
-        {
-          type: 'quincena',
-          label: 'Gastos quincenas',
-          items: fromMonth.sections[0].items
-            .filter((i) => i.isRecurring)
-            .map((i) => ({ ...i, id: uid(), paid: false })),
-        },
-        {
-          type: 'fin_de_mes',
-          label: 'Gastos fin de mes',
-          items: fromMonth.sections[1].items
-            .filter((i) => i.isRecurring)
-            .map((i) => ({ ...i, id: uid(), paid: false })),
-        },
-      ],
-    }
-  }
-
-  return {
-    id: monthId,
-    year,
-    month,
-    income: { salary, additional: 0, additionalLabel: 'Ingresos adicionales' },
-    sections: [
-      { type: 'quincena',   label: 'Gastos quincenas',   items: [] },
-      { type: 'fin_de_mes', label: 'Gastos fin de mes',  items: [] },
-    ],
-  }
+export const DEFAULT_NOTIFICATIONS: NotificationPrefs = {
+  enabled: false,
+  daysBefore: [3, 1, 0],
+  time: '09:00',
+  alarmMode: false,
 }
 
-function getPrevMonthId(monthId: string): string {
-  const [year, month] = monthId.split('-').map(Number)
-  const prev = addMonths(new Date(year, month - 1), -1)
-  return format(prev, 'yyyy-MM')
+export const DEFAULT_SETTINGS: AppSettings = {
+  defaultSalary: 0,
+  viewMode: 'cards',
+  theme: DEFAULT_THEME,
+  animations: DEFAULT_ANIMATIONS,
+  notifications: DEFAULT_NOTIFICATIONS,
+  aiEnabled: true,
+  geminiKey: '',
+  autoRollover: true,
+  planChoice: 'propio',
 }
+
+// ─── Estado ──────────────────────────────────────────────────────────────────
 
 interface FinanceState {
   months: Record<string, MonthData>
+  debts: Debt[]
+  profile: UserProfile
   settings: AppSettings
   activeMonthId: string
   activeTab: TabId
+  updatedAt: number
 }
 
 interface FinanceActions {
-  setActiveMonth(monthId: string): void
   setActiveTab(tab: TabId): void
+  setActiveMonth(monthId: string): void
   ensureMonthExists(monthId: string): void
-  updateSalary(monthId: string, salary: number): void
-  updateAdditional(monthId: string, amount: number, label?: string): void
-  addExpense(monthId: string, section: SectionType, item: Omit<ExpenseItem, 'id'>): void
-  updateExpense(monthId: string, section: SectionType, id: string, patch: Partial<ExpenseItem>): void
-  deleteExpense(monthId: string, section: SectionType, id: string): void
-  togglePaid(monthId: string, section: SectionType, id: string): void
-  updateSettings(patch: Partial<AppSettings>): void
+  deleteMonth(monthId: string): void
+
+  updateIncome(monthId: string, patch: Partial<MonthData['income']>): void
+
+  addExpense(monthId: string, e: Omit<Expense, 'id' | 'createdAt'>): void
+  updateExpense(monthId: string, id: string, patch: Partial<Expense>): void
+  deleteExpense(monthId: string, id: string): void
+  togglePaid(monthId: string, id: string): void
+  addSubItem(monthId: string, expenseId: string, item: Omit<SubItem, 'id'>): void
+  updateSubItem(monthId: string, expenseId: string, subId: string, patch: Partial<SubItem>): void
+  deleteSubItem(monthId: string, expenseId: string, subId: string): void
+
+  addDebt(d: Omit<Debt, 'id' | 'createdAt' | 'payments'>): void
+  updateDebt(id: string, patch: Partial<Debt>): void
+  deleteDebt(id: string): void
+  toggleDebtPaid(debtId: string, monthId: string): void
+
+  setProfile(patch: Partial<UserProfile>): void
+  setSettings(patch: Partial<AppSettings>): void
+  setTheme(patch: Partial<ThemeSettings>): void
+  setAnimations(patch: Partial<AnimationPrefs>): void
+  setNotifications(patch: Partial<NotificationPrefs>): void
+  setViewMode(mode: ViewMode): void
+
+  markCelebrated(monthId: string): void
+  /** Reemplaza todo el estado (sincronización con la nube) */
+  hydrateFrom(data: PersistedShape): void
+  resetAll(): void
 }
+
+export interface PersistedShape {
+  months: Record<string, MonthData>
+  debts: Debt[]
+  profile: UserProfile
+  settings: AppSettings
+  activeMonthId: string
+  updatedAt: number
+}
+
+function touch() {
+  return { updatedAt: Date.now() }
+}
+
+function patchMonth(
+  s: FinanceState,
+  monthId: string,
+  fn: (m: MonthData) => MonthData,
+): Partial<FinanceState> {
+  const month = s.months[monthId]
+  if (!month) return {}
+  return { months: { ...s.months, [monthId]: fn(month) }, ...touch() }
+}
+
+function patchExpense(
+  s: FinanceState,
+  monthId: string,
+  id: string,
+  fn: (e: Expense) => Expense,
+): Partial<FinanceState> {
+  return patchMonth(s, monthId, (m) => ({
+    ...m,
+    expenses: m.expenses.map((e) => (e.id === id ? fn(e) : e)),
+  }))
+}
+
+// ─── Migración desde la versión 1 ────────────────────────────────────────────
+
+interface V1Item { id: string; name: string; amount: number; paid: boolean; dueDay?: number; isRecurring: boolean }
+interface V1Month {
+  id: string; year: number; month: number
+  income: { salary: number; additional: number; additionalLabel: string }
+  sections: { type: string; label: string; items: V1Item[] }[]
+}
+interface V1State {
+  months?: Record<string, V1Month>
+  settings?: { defaultSalary?: number; notificationsEnabled?: boolean; notificationDays?: number[] }
+  activeMonthId?: string
+}
+
+function migrateV1(old: V1State): Partial<FinanceState> {
+  const months: Record<string, MonthData> = {}
+  for (const [id, m] of Object.entries(old.months ?? {})) {
+    const expenses: Expense[] = []
+    for (const section of m.sections ?? []) {
+      for (const it of section.items ?? []) {
+        expenses.push({
+          id: it.id,
+          name: it.name,
+          amount: it.amount,
+          paid: it.paid,
+          dueDay: it.dueDay,
+          period: section.type === 'quincena' ? 'q1' : 'q2',
+          kind: 'gasto',
+          recurrence: it.isRecurring ? 'monthly' : 'once',
+          children: [],
+          anchorMonthId: id,
+          createdAt: todayISO(),
+        })
+      }
+    }
+    months[id] = {
+      id, year: m.year, month: m.month,
+      income: m.income ?? { salary: 0, additional: 0, additionalLabel: 'Ingresos adicionales' },
+      expenses,
+      celebrated: false,
+    }
+  }
+  return {
+    months,
+    settings: {
+      ...DEFAULT_SETTINGS,
+      defaultSalary: old.settings?.defaultSalary ?? 0,
+      notifications: {
+        ...DEFAULT_NOTIFICATIONS,
+        enabled: old.settings?.notificationsEnabled ?? false,
+        daysBefore: old.settings?.notificationDays ?? [3, 1, 0],
+      },
+    },
+    activeMonthId: old.activeMonthId ?? currentMonthId(),
+  }
+}
+
+// ─── Store ───────────────────────────────────────────────────────────────────
 
 export const useFinanceStore = create<FinanceState & FinanceActions>()(
   persist(
     (set, get) => ({
-      months: { '2026-05': MAY_2026 },
+      months: {},
+      debts: [],
+      profile: DEFAULT_PROFILE,
       settings: DEFAULT_SETTINGS,
-      activeMonthId: '2026-05',
-      activeTab: 'month',
+      activeMonthId: currentMonthId(),
+      activeTab: 'home',
+      updatedAt: 0,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -130,106 +212,176 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set({ activeMonthId: monthId })
       },
 
+      // Configuración automática de mes a mes (punto 1)
       ensureMonthExists: (monthId) => {
         const { months, settings } = get()
         if (months[monthId]) return
-        const prevId = getPrevMonthId(monthId)
-        const prev = months[prevId]
+        const prev = months[addMonthsToId(monthId, -1)]
+        const source = prev ?? Object.values(months).sort((a, b) => b.id.localeCompare(a.id))[0]
         set((s) => ({
-          months: { ...s.months, [monthId]: makeEmptyMonth(monthId, prev, settings) },
+          months: { ...s.months, [monthId]: makeMonth(monthId, settings.autoRollover ? source : undefined, settings) },
+          ...touch(),
         }))
       },
 
-      updateSalary: (monthId, salary) =>
+      // Borrar el mes (punto 1)
+      deleteMonth: (monthId) =>
+        set((s) => {
+          const months = { ...s.months }
+          delete months[monthId]
+          const remaining = Object.keys(months).sort()
+          const nowId = currentMonthId()
+          const fallback = months[nowId] ? nowId : (remaining[remaining.length - 1] ?? nowId)
+          const activeMonthId = s.activeMonthId === monthId ? fallback : s.activeMonthId
+          return { months, activeMonthId, ...touch() }
+        }),
+
+      updateIncome: (monthId, patch) =>
+        set((s) => patchMonth(s, monthId, (m) => ({ ...m, income: { ...m.income, ...patch } }))),
+
+      addExpense: (monthId, e) =>
+        set((s) => patchMonth(s, monthId, (m) => ({
+          ...m,
+          expenses: [...m.expenses, { ...e, id: uid(), anchorMonthId: e.anchorMonthId ?? monthId, createdAt: todayISO() }],
+        }))),
+
+      updateExpense: (monthId, id, patch) =>
+        set((s) => patchExpense(s, monthId, id, (e) => ({ ...e, ...patch }))),
+
+      deleteExpense: (monthId, id) =>
+        set((s) => patchMonth(s, monthId, (m) => ({
+          ...m,
+          expenses: m.expenses.filter((e) => e.id !== id),
+        }))),
+
+      togglePaid: (monthId, id) =>
+        set((s) => patchExpense(s, monthId, id, (e) => ({
+          ...e,
+          paid: !e.paid,
+          paidAt: !e.paid ? todayISO() : undefined,
+        }))),
+
+      addSubItem: (monthId, expenseId, item) =>
+        set((s) => patchExpense(s, monthId, expenseId, (e) => ({
+          ...e,
+          children: [...e.children, { ...item, id: uid() }],
+        }))),
+
+      updateSubItem: (monthId, expenseId, subId, patch) =>
+        set((s) => patchExpense(s, monthId, expenseId, (e) => ({
+          ...e,
+          children: e.children.map((c) => (c.id === subId ? { ...c, ...patch } : c)),
+        }))),
+
+      deleteSubItem: (monthId, expenseId, subId) =>
+        set((s) => patchExpense(s, monthId, expenseId, (e) => ({
+          ...e,
+          children: e.children.filter((c) => c.id !== subId),
+        }))),
+
+      addDebt: (d) =>
         set((s) => ({
-          months: {
-            ...s.months,
-            [monthId]: {
-              ...s.months[monthId],
-              income: { ...s.months[monthId].income, salary },
-            },
-          },
+          debts: [...s.debts, { ...d, id: uid(), payments: {}, createdAt: todayISO() }],
+          ...touch(),
         })),
 
-      updateAdditional: (monthId, amount, label) =>
+      updateDebt: (id, patch) =>
         set((s) => ({
-          months: {
-            ...s.months,
-            [monthId]: {
-              ...s.months[monthId],
-              income: {
-                ...s.months[monthId].income,
-                additional: amount,
-                additionalLabel: label ?? s.months[monthId].income.additionalLabel,
-              },
-            },
-          },
+          debts: s.debts.map((d) => (d.id === id ? { ...d, ...patch } : d)),
+          ...touch(),
         })),
 
-      addExpense: (monthId, section, item) =>
-        set((s) => {
-          const month = s.months[monthId]
-          const idx = section === 'quincena' ? 0 : 1
-          const sections = [...month.sections] as MonthData['sections']
-          sections[idx] = {
-            ...sections[idx],
-            items: [...sections[idx].items, { ...item, id: uid() }],
-          }
-          return { months: { ...s.months, [monthId]: { ...month, sections } } }
+      deleteDebt: (id) =>
+        set((s) => ({ debts: s.debts.filter((d) => d.id !== id), ...touch() })),
+
+      toggleDebtPaid: (debtId, monthId) =>
+        set((s) => ({
+          debts: s.debts.map((d) => {
+            if (d.id !== debtId) return d
+            const prev: DebtPayment = d.payments[monthId] ?? { paid: false, amount: d.monthlyPayment }
+            const next: DebtPayment = {
+              ...prev,
+              paid: !prev.paid,
+              paidAt: !prev.paid ? todayISO() : undefined,
+            }
+            return { ...d, payments: { ...d.payments, [monthId]: next } }
+          }),
+          ...touch(),
+        })),
+
+      setProfile: (patch) => set((s) => ({ profile: { ...s.profile, ...patch }, ...touch() })),
+      setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch }, ...touch() })),
+      setTheme: (patch) =>
+        set((s) => ({ settings: { ...s.settings, theme: { ...s.settings.theme, ...patch } }, ...touch() })),
+      setAnimations: (patch) =>
+        set((s) => ({ settings: { ...s.settings, animations: { ...s.settings.animations, ...patch } }, ...touch() })),
+      setNotifications: (patch) =>
+        set((s) => ({ settings: { ...s.settings, notifications: { ...s.settings.notifications, ...patch } }, ...touch() })),
+      setViewMode: (mode) =>
+        set((s) => ({ settings: { ...s.settings, viewMode: mode }, ...touch() })),
+
+      markCelebrated: (monthId) =>
+        set((s) => patchMonth(s, monthId, (m) => ({ ...m, celebrated: true }))),
+
+      hydrateFrom: (data) =>
+        set({
+          months: data.months ?? {},
+          debts: data.debts ?? [],
+          profile: { ...DEFAULT_PROFILE, ...data.profile },
+          settings: {
+            ...DEFAULT_SETTINGS,
+            ...data.settings,
+            theme: { ...DEFAULT_THEME, ...data.settings?.theme },
+            animations: { ...DEFAULT_ANIMATIONS, ...data.settings?.animations },
+            notifications: { ...DEFAULT_NOTIFICATIONS, ...data.settings?.notifications },
+          },
+          activeMonthId: data.activeMonthId ?? currentMonthId(),
+          updatedAt: data.updatedAt ?? Date.now(),
         }),
 
-      updateExpense: (monthId, section, id, patch) =>
-        set((s) => {
-          const month = s.months[monthId]
-          const idx = section === 'quincena' ? 0 : 1
-          const sections = [...month.sections] as MonthData['sections']
-          sections[idx] = {
-            ...sections[idx],
-            items: sections[idx].items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
-          }
-          return { months: { ...s.months, [monthId]: { ...month, sections } } }
+      resetAll: () =>
+        set({
+          months: {},
+          debts: [],
+          profile: DEFAULT_PROFILE,
+          settings: DEFAULT_SETTINGS,
+          activeMonthId: currentMonthId(),
+          activeTab: 'home',
+          ...touch(),
         }),
-
-      deleteExpense: (monthId, section, id) =>
-        set((s) => {
-          const month = s.months[monthId]
-          const idx = section === 'quincena' ? 0 : 1
-          const sections = [...month.sections] as MonthData['sections']
-          sections[idx] = {
-            ...sections[idx],
-            items: sections[idx].items.filter((i) => i.id !== id),
-          }
-          return { months: { ...s.months, [monthId]: { ...month, sections } } }
-        }),
-
-      togglePaid: (monthId, section, id) => {
-        const { months } = get()
-        const month = months[monthId]
-        const idx = section === 'quincena' ? 0 : 1
-        const item = month.sections[idx].items.find((i) => i.id === id)
-        if (!item) return
-        get().updateExpense(monthId, section, id, { paid: !item.paid })
-      },
-
-      updateSettings: (patch) =>
-        set((s) => ({ settings: { ...s.settings, ...patch } })),
     }),
     {
       name: 'finance-app-state',
-      version: 1,
-    }
-  )
+      version: 2,
+      migrate: (persisted, version) => {
+        if (version < 2) {
+          const migrated = migrateV1((persisted ?? {}) as V1State)
+          return {
+            months: {},
+            debts: [],
+            profile: DEFAULT_PROFILE,
+            settings: DEFAULT_SETTINGS,
+            activeMonthId: currentMonthId(),
+            activeTab: 'home',
+            updatedAt: Date.now(),
+            ...migrated,
+          } as FinanceState & FinanceActions
+        }
+        return persisted as FinanceState & FinanceActions
+      },
+    },
+  ),
 )
 
-export function sumSection(items: ExpenseItem[]): number {
-  return items.reduce((s, i) => s + i.amount, 0)
-}
-
-export function getMonthSummary(month: MonthData) {
-  const totalIncome = month.income.salary + month.income.additional
-  const allItems = month.sections.flatMap((s) => s.items)
-  const totalExpenses = allItems.reduce((s, i) => s + i.amount, 0)
-  const paidExpenses = allItems.filter((i) => i.paid).reduce((s, i) => s + i.amount, 0)
-  const pendingExpenses = totalExpenses - paidExpenses
-  return { totalIncome, totalExpenses, savings: totalIncome - totalExpenses, paidExpenses, pendingExpenses }
+/** Estado serializable para sincronizar con Firestore */
+export function exportState(): PersistedShape {
+  const s = useFinanceStore.getState()
+  return {
+    months: s.months,
+    debts: s.debts,
+    profile: s.profile,
+    settings: s.settings,
+    activeMonthId: s.activeMonthId,
+    updatedAt: s.updatedAt,
+  }
 }

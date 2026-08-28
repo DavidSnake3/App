@@ -2,11 +2,11 @@ import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
   appId: 'com.finanzas.personal',
-  appName: 'Finanzas Personales',
+  appName: 'SNBusiness',
   webDir: 'dist',
   plugins: {
     LocalNotifications: {
-      iconColor: '#6366f1',
+      iconColor: '#7c5cff',
     },
   },
 }

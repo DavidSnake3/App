@@ -1,21 +1,18 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { X } from 'lucide-react'
 
 interface Props {
   open: boolean
   onClose: () => void
   title: string
+  subtitle?: string
   children: React.ReactNode
 }
 
-export function BottomSheet({ open, onClose, title, children }: Props) {
-  const sheetRef = useRef<HTMLDivElement>(null)
-
+export function BottomSheet({ open, onClose, title, subtitle, children }: Props) {
   useEffect(() => {
     if (!open) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
   }, [open, onClose])
@@ -23,33 +20,34 @@ export function BottomSheet({ open, onClose, title, children }: Props) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end max-w-[520px] mx-auto">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/65 backdrop-blur-[3px]"
+        style={{ animation: 'fadeIn 0.2s ease both' }}
         onClick={onClose}
       />
       <div
-        ref={sheetRef}
-        className="relative bg-surface-card rounded-t-3xl p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] max-h-[90vh] overflow-y-auto"
-        style={{ animation: 'slideUp 0.25s ease-out' }}
+        className="relative bg-card border-t border-edge rounded-t-3xl max-h-[92dvh] flex flex-col"
+        style={{ animation: 'slideUp 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both' }}
       >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-edge" />
+        <div className="flex items-start justify-between px-5 pt-3 pb-2">
+          <div>
+            <h2 className="text-lg font-semibold text-ink font-display">{title}</h2>
+            {subtitle && <p className="text-[13px] text-muted mt-0.5">{subtitle}</p>}
+          </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-surface-border/60 text-gray-400 active:scale-90 transition-transform"
+            aria-label="Cerrar"
+            className="pressable w-9 h-9 flex items-center justify-center rounded-full bg-elevated border border-edge text-muted"
           >
             <X size={16} />
           </button>
         </div>
-        {children}
+        <div className="overflow-y-auto px-5 pb-[calc(1.4rem+env(safe-area-inset-bottom))] pt-1">
+          {children}
+        </div>
       </div>
-      <style>{`
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to   { transform: translateY(0); }
-        }
-      `}</style>
     </div>
   )
 }
