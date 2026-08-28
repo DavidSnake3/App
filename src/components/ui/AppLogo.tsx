@@ -1,28 +1,19 @@
-/** Logo de SNBusiness (punto 19): moneda con chispa de crecimiento */
-export function AppLogo({ size = 64 }: { size?: number }) {
+import { SN_GRADIENT, SN_HEAD, SN_N, SN_S } from '../../lib/logo'
+
+/** Marca SN. `size` es la ALTURA; el ancho se ajusta solo (marca apaisada). */
+export function AppLogo({ size = 64, id = 'snb' }: { size?: number; id?: string }) {
+  const w = Math.round(size * (400 / 230))
   return (
-    <svg width={size} height={size} viewBox="0 0 96 96" role="img" aria-label="SNBusiness">
+    <svg width={w} height={size} viewBox="0 0 400 230" role="img" aria-label="SNBusiness">
       <defs>
-        <linearGradient id="snb-bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="var(--app-accent)" />
-          <stop offset="100%" stopColor="color-mix(in oklab, var(--app-accent) 45%, #0b0d14)" />
-        </linearGradient>
-        <linearGradient id="snb-spark" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.85" />
-          <stop offset="100%" stopColor="#ffffff" />
+        <linearGradient id={`${id}-g`} x1="50" y1="120" x2="392" y2="110" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor={SN_GRADIENT[0]} />
+          <stop offset="100%" stopColor={SN_GRADIENT[1]} />
         </linearGradient>
       </defs>
-      <rect x="4" y="4" width="88" height="88" rx="24" fill="url(#snb-bg)" />
-      <rect x="4" y="4" width="88" height="88" rx="24" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" />
-      {/* línea de crecimiento */}
-      <path
-        d="M22 62 L38 48 L50 56 L74 32"
-        fill="none" stroke="url(#snb-spark)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"
-      />
-      <path d="M62 30 L76 30 L76 44" fill="none" stroke="url(#snb-spark)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
-      {/* moneda */}
-      <circle cx="30" cy="70" r="9" fill="#ffd166" stroke="rgba(0,0,0,0.25)" strokeWidth="1.5" />
-      <circle cx="30" cy="70" r="4.5" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.5" />
+      <path d={SN_S} fill="none" stroke={`url(#${id}-g)`} strokeWidth="36" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={SN_N} fill="none" stroke={`url(#${id}-g)`} strokeWidth="36" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={SN_HEAD} fill={`url(#${id}-g)`} />
     </svg>
   )
 }

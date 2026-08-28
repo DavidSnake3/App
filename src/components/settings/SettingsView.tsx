@@ -9,7 +9,7 @@ import { BG_PRESETS, PALETTES, compressImage } from '../../lib/themes'
 import { CURRENCIES, formatMoney } from '../../lib/format'
 import { requestPermission } from '../../lib/notifications'
 import { aiAvailable } from '../../lib/ai'
-import { firebaseReady, logout } from '../../lib/firebase'
+import { firebaseReady, isAdmin, logout } from '../../lib/firebase'
 import type { AuthState } from '../../hooks/useAuth'
 import { buildWorkbook, downloadWorkbook } from '../../lib/excel'
 import { CurrencyInput } from '../ui/CurrencyInput'
@@ -79,9 +79,18 @@ export function SettingsView({ auth }: { auth: AuthState }) {
           {firebaseReady ? (
             auth.user ? (
               <div className="flex items-center gap-3">
-                <span className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ background: 'var(--app-gradient)' }}>
-                  {auth.user.name.charAt(0).toUpperCase()}
-                </span>
+                {auth.user.photo ? (
+                  <img
+                    src={auth.user.photo}
+                    alt="Foto de perfil"
+                    referrerPolicy="no-referrer"
+                    className="w-10 h-10 rounded-full object-cover shrink-0 border border-edge"
+                  />
+                ) : (
+                  <span className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ background: 'var(--app-gradient)' }}>
+                    {auth.user.name.charAt(0).toUpperCase()}
+                  </span>
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="text-[14px] font-semibold text-ink truncate">{auth.user.name}</p>
                   <p className="text-[12px] text-muted truncate flex items-center gap-1">
@@ -295,7 +304,8 @@ export function SettingsView({ auth }: { auth: AuthState }) {
           )}
         </Section>
 
-        {/* ── IA (punto 26) ── */}
+        {/* ── IA (punto 26) — solo visible para el administrador ── */}
+        {isAdmin(auth.user) && (
         <Section icon={<Sparkles size={15} />} title="Inteligencia artificial">
           <Row icon={<Sparkles size={16} />} title="Funciones con IA" desc="Consejos, planes de pago y análisis con Gemini">
             <Toggle checked={settings.aiEnabled} onChange={(v) => setSettings({ aiEnabled: v })} label="IA" />
@@ -320,6 +330,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
             </div>
           )}
         </Section>
+        )}
 
         {/* ── Datos ── */}
         <Section icon={<Download size={15} />} title="Datos">

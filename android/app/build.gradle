@@ -16,10 +16,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        debug {
+            // Keystore estable del proyecto: firma consistente entre builds de CI
+            // (permite actualizar el APK sin desinstalar y fija el SHA-1 registrado
+            // en Firebase para el acceso con Google)
+            storeFile file('../keystore/snbusiness.keystore')
+            storePassword 'snbusiness2026'
+            keyAlias 'snbusiness'
+            keyPassword 'snbusiness2026'
+            storeType 'pkcs12'
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug
         }
     }
 }

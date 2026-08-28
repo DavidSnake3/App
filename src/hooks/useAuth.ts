@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppUser } from '../lib/firebase'
-import { firebaseReady, loadCloud, saveCloud, watchAuth, watchCloud } from '../lib/firebase'
+import { firebaseReady, loadCloud, rememberEmail, saveCloud, watchAuth, watchCloud } from '../lib/firebase'
 import { exportState, useFinanceStore } from '../store/useFinanceStore'
 
 const SKIP_KEY = 'snb-skip-auth'
@@ -56,10 +56,14 @@ export function useAuth(): AuthState {
         await saveCloud(user.uid, local).catch(() => {})
       }
 
-      // Completar datos del perfil con la cuenta
+      // Completar datos del perfil con la cuenta (y recordar el último acceso)
+      rememberEmail(user.email)
       const p = useFinanceStore.getState().profile
       if (!p.email && user.email) useFinanceStore.getState().setProfile({ email: user.email })
       if (!p.name && user.name) useFinanceStore.getState().setProfile({ name: user.name })
+      if (user.photo && p.photoUrl !== user.photo) {
+        useFinanceStore.getState().setProfile({ photoUrl: user.photo })
+      }
 
       unsub = await watchCloud(user.uid, (remoteData) => {
         const localNow = useFinanceStore.getState().updatedAt

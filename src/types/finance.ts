@@ -125,11 +125,31 @@ export interface UserProfile {
   name: string
   email: string
   phone: string
+  photoUrl: string               // foto de la cuenta (Google)
   currency: string               // 'CRC' | 'USD' | 'EUR' | 'MXN' | …
   payday: number                 // día de pago principal
   payFrequency: 'monthly' | 'biweekly'
   planMode: 'monthly' | 'annual' // elección del onboarding (punto 24)
   onboarded: boolean
+}
+
+// ─── Widgets del inicio (personalizables) ────────────────────────────────────
+
+export type WidgetId =
+  | 'estado'      // progreso y balance del mes
+  | 'resumen'     // tu día en pagos
+  | 'consejo'     // consejo IA del día
+  | 'acciones'    // accesos rápidos
+  | 'pendientes'  // próximos pagos
+  | 'proyeccion'  // gráfica de proyección anual
+  | 'flujo'       // flujo del mes (línea P/G)
+  | 'deudas'      // resumen de deudas
+  | 'calendario'  // mini calendario del mes
+
+export interface WidgetConf {
+  id: WidgetId
+  /** sm = media pantalla, lg = ancho completo */
+  size: 'sm' | 'lg'
 }
 
 export interface ThemeSettings {
@@ -169,6 +189,7 @@ export interface AppSettings {
   geminiKey: string      // clave en runtime (si vacía usa la de compilación)
   autoRollover: boolean  // generar mes automáticamente (punto 1)
   planChoice: string     // plan de pago elegido ('propio' por defecto, punto 14)
+  homeWidgets: WidgetConf[] // widgets del inicio: orden, tamaño y visibilidad
 }
 
 // ─── Proyecciones (punto 13) ─────────────────────────────────────────────────

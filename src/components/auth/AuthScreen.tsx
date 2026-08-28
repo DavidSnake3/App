@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Eye, EyeOff, Lock, Mail, User as UserIcon } from 'lucide-react'
-import { authErrorMessage, loginEmail, loginGoogle, registerEmail, resetPassword } from '../../lib/firebase'
+import { authErrorMessage, getLastEmail, loginEmail, loginGoogle, registerEmail, rememberEmail, resetPassword } from '../../lib/firebase'
 import { AppLogo } from '../ui/AppLogo'
 
 type Mode = 'login' | 'register' | 'reset'
@@ -9,7 +9,8 @@ type Mode = 'login' | 'register' | 'reset'
 export function AuthScreen({ onSkip }: { onSkip: () => void }) {
   const [mode, setMode] = useState<Mode>('login')
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  // recuerda el último correo usado para no volver a escribirlo
+  const [email, setEmail] = useState(() => getLastEmail())
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -23,8 +24,8 @@ export function AuthScreen({ onSkip }: { onSkip: () => void }) {
     if (mode === 'register' && name.trim().length < 2) { setError('Escribe tu nombre.'); return }
     setBusy(true)
     try {
-      if (mode === 'login') await loginEmail(email.trim(), password)
-      else if (mode === 'register') await registerEmail(name.trim(), email.trim(), password)
+      if (mode === 'login') { await loginEmail(email.trim(), password); rememberEmail(email.trim()) }
+      else if (mode === 'register') { await registerEmail(name.trim(), email.trim(), password); rememberEmail(email.trim()) }
       else {
         await resetPassword(email.trim())
         setInfo('Te enviamos un correo para restablecer tu contraseña.')

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
   AnimationPrefs, AppSettings, Debt, DebtPayment, Expense, MonthData,
-  NotificationPrefs, SubItem, TabId, ThemeSettings, UserProfile, ViewMode,
+  NotificationPrefs, SubItem, TabId, ThemeSettings, UserProfile, ViewMode, WidgetConf,
 } from '../types/finance'
 import { addMonthsToId, currentMonthId, todayISO } from '../lib/dates'
 import { makeMonth, uid } from '../lib/finance'
@@ -13,12 +13,22 @@ export const DEFAULT_PROFILE: UserProfile = {
   name: '',
   email: '',
   phone: '',
+  photoUrl: '',
   currency: 'CRC',
   payday: 1,
   payFrequency: 'monthly',
   planMode: 'monthly',
   onboarded: false,
 }
+
+/** Widgets del inicio por defecto (el usuario los personaliza a su gusto) */
+export const DEFAULT_WIDGETS: WidgetConf[] = [
+  { id: 'estado', size: 'lg' },
+  { id: 'resumen', size: 'lg' },
+  { id: 'consejo', size: 'lg' },
+  { id: 'acciones', size: 'lg' },
+  { id: 'pendientes', size: 'lg' },
+]
 
 export const DEFAULT_THEME: ThemeSettings = {
   mode: 'dark',
@@ -52,6 +62,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   geminiKey: '',
   autoRollover: true,
   planChoice: 'propio',
+  homeWidgets: DEFAULT_WIDGETS,
 }
 
 // ─── Estado ──────────────────────────────────────────────────────────────────

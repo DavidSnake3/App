@@ -1,39 +1,30 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#8a63ff"/>
-      <stop offset="52%" stop-color="#5b3ee8"/>
-      <stop offset="100%" stop-color="#2417a3"/>
+    <linearGradient id="sn" x1="182" y1="512" x2="912" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2f86dc"/>
+      <stop offset="100%" stop-color="#3fc3ae"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.85" cy="0.1" r="1">
-      <stop offset="0%" stop-color="#b79bff" stop-opacity="0.55"/>
-      <stop offset="60%" stop-color="#b79bff" stop-opacity="0"/>
+    <radialGradient id="glow1" cx="0.22" cy="0.2" r="0.9">
+      <stop offset="0%" stop-color="#2f86dc" stop-opacity="0.32"/>
+      <stop offset="60%" stop-color="#2f86dc" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="spark" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.92"/>
-      <stop offset="100%" stop-color="#ffffff"/>
-    </linearGradient>
-    <linearGradient id="coin" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#ffe08a"/>
-      <stop offset="100%" stop-color="#f5b83d"/>
-    </linearGradient>
+    <radialGradient id="glow2" cx="0.85" cy="0.85" r="0.9">
+      <stop offset="0%" stop-color="#3fc3ae" stop-opacity="0.30"/>
+      <stop offset="60%" stop-color="#3fc3ae" stop-opacity="0"/>
+    </radialGradient>
   </defs>
 
-  <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
-  <rect width="1024" height="1024" rx="232" fill="url(#glow)"/>
-  <rect x="10" y="10" width="1004" height="1004" rx="224" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="10"/>
+  <rect width="1024" height="1024" rx="232" fill="#0d1424"/>
+  <rect width="1024" height="1024" rx="232" fill="url(#glow1)"/>
+  <rect width="1024" height="1024" rx="232" fill="url(#glow2)"/>
+  <rect x="9" y="9" width="1006" height="1006" rx="226" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="8"/>
 
-  <!-- línea de crecimiento -->
-  <path d="M214 682 L400 512 L528 596 L800 330"
-        fill="none" stroke="rgba(0,0,0,0.28)" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"
-        transform="translate(0 14)"/>
-  <path d="M214 682 L400 512 L528 596 L800 330"
-        fill="none" stroke="url(#spark)" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- flecha -->
-  <path d="M672 310 L812 310 L812 450"
-        fill="none" stroke="url(#spark)" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <!-- moneda -->
-  <circle cx="300" cy="762" r="104" fill="url(#coin)" stroke="rgba(0,0,0,0.28)" stroke-width="14"/>
-  <circle cx="300" cy="762" r="56" fill="none" stroke="rgba(120,74,0,0.55)" stroke-width="14"/>
+  <!-- Marca SN (misma geometría que la app, escala 1.82, centrada) -->
+  <g transform="translate(148 303) scale(1.82)">
+    <path d="M164 56 H102 Q64 56 64 90 Q64 124 102 124 H124 Q160 124 160 156 Q160 188 124 188 H56"
+          fill="none" stroke="url(#sn)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M186 196 L246 62 L296 174 L348 84"
+          fill="none" stroke="url(#sn)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M384 22 L381 103 L317 66 Z" fill="url(#sn)"/>
+  </g>
 </svg>

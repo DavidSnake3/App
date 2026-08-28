@@ -90,10 +90,17 @@ VITE_FIREBASE_APP_ID=…                 ← appId
 
 3. Reinicia `npm run dev`. Verás la pantalla de inicio de sesión al abrir la app. ✔
 
-> **Google en el APK:** el login con Google funciona perfecto en el navegador y en la
-> PWA instalada. Dentro del APK (WebView) Google a veces lo bloquea; el correo/contraseña
-> funciona siempre. Si quieres Google nativo en el APK, el siguiente paso sería el plugin
-> `@capacitor-firebase/authentication` (requiere `google-services.json` y el SHA-1).
+> **Google en el APK — ya resuelto ✔ (28-ago-2026):** el APK usa acceso NATIVO con
+> Google (`@capacitor-firebase/authentication` + Credential Manager). Para esto quedó:
+> `android/app/google-services.json`, la app Android registrada en Firebase
+> (paquete `com.finanzas.personal`) con la huella SHA-1
+> `CA:0D:15:6F:E7:C5:A5:BD:8D:B1:13:EB:34:68:FD:D3:E4:25:BF:28`, y un **keystore
+> estable** (`android/keystore/snbusiness.keystore`, alias `snbusiness`, clave
+> `snbusiness2026`) que firma debug y release: así los APK nuevos se instalan encima
+> de los viejos sin desinstalar. En la web el login de Google es SOLO por ventana
+> emergente (la redirección está rota con la protección de cookies de Brave/Chrome).
+> Nota: este keystore está commiteado por conveniencia — si algún día publicas en
+> Play Store, genera uno privado nuevo.
 
 ## 4. APK de Android (GitHub Actions)
 

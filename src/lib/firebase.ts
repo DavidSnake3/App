@@ -66,10 +66,25 @@ function toAppUser(u: User | null): AppUser | null {
 
 export async function watchAuth(cb: (user: AppUser | null) => void): Promise<Unsubscribe> {
   if (!(await ensureInit())) { cb(null); return () => {} }
-  const { onAuthStateChanged, getRedirectResult } = await import('firebase/auth')
-  // Completa el flujo de Google por redirección si venimos de uno
-  getRedirectResult(auth!).catch(() => {})
+  const { onAuthStateChanged } = await import('firebase/auth')
   return onAuthStateChanged(auth!, (u) => cb(toAppUser(u)))
+}
+
+/** Correo del administrador de la app (único que ve la sección de IA) */
+export const ADMIN_EMAIL = 'davidjosuevillegassalas@gmail.com'
+
+export function isAdmin(user: AppUser | null): boolean {
+  return (user?.email ?? '').trim().toLowerCase() === ADMIN_EMAIL
+}
+
+const LAST_EMAIL_KEY = 'snb-last-email'
+
+export function getLastEmail(): string {
+  try { return localStorage.getItem(LAST_EMAIL_KEY) ?? '' } catch { return '' }
+}
+
+export function rememberEmail(email: string) {
+  try { if (email) localStorage.setItem(LAST_EMAIL_KEY, email) } catch { /* lleno */ }
 }
 
 export async function loginEmail(email: string, password: string): Promise<AppUser> {
@@ -89,20 +104,26 @@ export async function registerEmail(name: string, email: string, password: strin
 
 export async function loginGoogle(): Promise<AppUser | null> {
   await ensureInit()
-  const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import('firebase/auth')
-  const provider = new GoogleAuthProvider()
-  try {
-    const res = await signInWithPopup(auth!, provider)
+  const { GoogleAuthProvider, signInWithCredential, signInWithPopup } = await import('firebase/auth')
+
+  // Android (APK): acceso nativo con Credential Manager vía plugin
+  const { Capacitor } = await import('@capacitor/core')
+  if (Capacitor.isNativePlatform()) {
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication')
+    const result = await FirebaseAuthentication.signInWithGoogle()
+    const idToken = result.credential?.idToken
+    if (!idToken) throw new Error('Google no devolvió credenciales')
+    const cred = GoogleAuthProvider.credential(idToken, result.credential?.nonce)
+    const res = await signInWithCredential(auth!, cred)
     return toAppUser(res.user)
-  } catch (e) {
-    const code = (e as { code?: string })?.code ?? ''
-    // WebView / popup bloqueado → intentar por redirección
-    if (code.includes('popup') || code.includes('operation-not-supported')) {
-      await signInWithRedirect(auth!, provider)
-      return null // el resultado llega al volver, vía watchAuth
-    }
-    throw e
   }
+
+  // Web/PWA: SIEMPRE popup. (La redirección está rota con la partición de
+  // cookies de Brave/Chrome modernos: deja al usuario varado en el handler.)
+  const provider = new GoogleAuthProvider()
+  provider.setCustomParameters({ prompt: 'select_account' })
+  const res = await signInWithPopup(auth!, provider)
+  return toAppUser(res.user)
 }
 
 export async function resetPassword(email: string): Promise<void> {
@@ -112,6 +133,13 @@ export async function resetPassword(email: string): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
+  try {
+    const { Capacitor } = await import('@capacitor/core')
+    if (Capacitor.isNativePlatform()) {
+      const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication')
+      await FirebaseAuthentication.signOut()
+    }
+  } catch { /* plugin no disponible */ }
   if (!auth) return
   const { signOut } = await import('firebase/auth')
   await signOut(auth)
@@ -129,6 +157,9 @@ export function authErrorMessage(e: unknown): string {
     'auth/too-many-requests': 'Demasiados intentos. Espera unos minutos.',
     'auth/network-request-failed': 'Sin conexión. Revisa tu internet.',
     'auth/popup-closed-by-user': 'Se cerró la ventana de Google antes de terminar.',
+    'auth/cancelled-popup-request': 'Se cerró la ventana de Google antes de terminar.',
+    'auth/popup-blocked': 'Tu navegador bloqueó la ventana de Google. Permite ventanas emergentes para este sitio (ícono junto a la barra de direcciones) e intenta de nuevo.',
+    'auth/unauthorized-domain': 'Este dominio no está autorizado en Firebase. Agrégalo en Authentication → Settings → Dominios autorizados.',
   }
   return map[code] ?? 'No se pudo completar. Intenta de nuevo.'
 }

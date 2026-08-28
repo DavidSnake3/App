@@ -19,7 +19,7 @@ await sharp(svg).resize(512, 512).png().toFile(out('public/icons/icon-512.png'))
 // Maskable: el ícono al 78% centrado sobre fondo del gradiente
 const inner = await sharp(svg).resize(400, 400).png().toBuffer()
 await sharp({
-  create: { width: 512, height: 512, channels: 4, background: { r: 91, g: 62, b: 232, alpha: 1 } },
+  create: { width: 512, height: 512, channels: 4, background: { r: 13, g: 20, b: 36, alpha: 1 } },
 })
   .composite([{ input: inner, left: 56, top: 56 }])
   .png()
@@ -35,7 +35,7 @@ await sharp({
   .png()
   .toFile(out('resources/icon-foreground.png'))
 await sharp({
-  create: { width: 1024, height: 1024, channels: 4, background: { r: 36, g: 23, b: 163, alpha: 1 } },
+  create: { width: 1024, height: 1024, channels: 4, background: { r: 13, g: 20, b: 36, alpha: 1 } },
 })
   .png()
   .toFile(out('resources/icon-background.png'))

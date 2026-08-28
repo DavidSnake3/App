@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "738310182483",
+    "project_id": "snbusiness",
+    "storage_bucket": "snbusiness.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:738310182483:android:b05817d71d6ca7fd9d98a6",
+        "android_client_info": {
+          "package_name": "com.finanzas.personal"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "738310182483-5a7u7adn90u70h0r241mbe3ohfgcs7m6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvn_oNdllbnJJs6uyPIW7sHjSspFq0BuY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "738310182483-5a7u7adn90u70h0r241mbe3ohfgcs7m6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

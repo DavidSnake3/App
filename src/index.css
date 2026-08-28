@@ -234,3 +234,57 @@ input, select, textarea, button { font-family: inherit; }
 /* Utilidad para ocultar scrollbar en carruseles horizontales */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Splash de arranque (logo que se dibuja) ───────────────────────────── */
+@keyframes drawPath { to { stroke-dashoffset: 0; } }
+@keyframes splashHeadIn {
+  0%   { opacity: 0; transform: scale(0.2) rotate(-18deg); }
+  65%  { opacity: 1; transform: scale(1.22) rotate(3deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes splashWord {
+  from { opacity: 0; transform: translateY(16px); letter-spacing: 0.28em; }
+  to   { opacity: 1; transform: translateY(0); letter-spacing: 0.02em; }
+}
+@keyframes splashShine {
+  from { left: -25%; }
+  to   { left: 110%; }
+}
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.12); }
+}
+@keyframes splashFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-7px); }
+}
+@keyframes splashOut {
+  to { opacity: 0; transform: scale(1.07); }
+}
+.splash-draw-s {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: drawPath 0.85s cubic-bezier(0.45, 0, 0.2, 1) 0.15s forwards;
+}
+.splash-draw-n {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: drawPath 0.8s cubic-bezier(0.45, 0, 0.2, 1) 0.62s forwards;
+}
+.splash-draw-head {
+  opacity: 0;
+  transform-origin: 88% 27%;
+  animation: splashHeadIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 1.28s forwards;
+}
+
+/* ── Transición de pestañas con dirección (deslizar) ───────────────────── */
+@keyframes slideFromRight {
+  from { opacity: 0.35; transform: translateX(46px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideFromLeft {
+  from { opacity: 0.35; transform: translateX(-46px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.anim-tab-left  { animation: slideFromRight 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.anim-tab-right { animation: slideFromLeft 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
