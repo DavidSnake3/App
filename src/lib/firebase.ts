@@ -6,13 +6,17 @@ import type { Auth, User } from 'firebase/auth'
 import type { Firestore, Unsubscribe } from 'firebase/firestore'
 import type { PersistedShape } from '../store/useFinanceStore'
 
+// Configuración del proyecto "snbusiness". La config web de Firebase es
+// pública por diseño (va dentro de la app); la seguridad la dan las reglas
+// de Firestore. Las variables VITE_FIREBASE_* permiten apuntar a otro
+// proyecto sin tocar el código.
 const cfg = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string | undefined,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID as string | undefined,
+  apiKey: (import.meta.env.VITE_FIREBASE_API_KEY as string | undefined) || 'AIzaSyCvn_oNdllbnJJs6uyPIW7sHjSspFq0BuY',
+  authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined) || 'snbusiness.firebaseapp.com',
+  projectId: (import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined) || 'snbusiness',
+  storageBucket: (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined) || 'snbusiness.firebasestorage.app',
+  messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined) || '738310182483',
+  appId: (import.meta.env.VITE_FIREBASE_APP_ID as string | undefined) || '1:738310182483:web:1b462d45406022309d98a6',
 }
 
 /** true cuando el proyecto Firebase está configurado en .env */

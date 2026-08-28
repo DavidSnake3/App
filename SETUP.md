@@ -33,10 +33,20 @@ VITE_GEMINI_MODEL=gemini-flash-latest
 - Si Google retira un modelo, la app prueba automáticamente:
   `gemini-flash-latest → gemini-3.7-flash → gemini-flash-lite-latest → gemini-3.1-flash-lite`.
 
-## 3. Conectar Firebase (correo + Google) — 10 minutos
+## 3. Firebase — ya quedó configurado ✔ (28-ago-2026)
 
-La app funciona sin Firebase (modo local). Para tener **inicio de sesión y respaldo
-en la nube**, haz esto una sola vez:
+El proyecto **`snbusiness`** ya existe en tu consola con todo activado:
+
+- ✔ Authentication: **Correo/contraseña** y **Google** habilitados
+- ✔ Firestore creada (`nam5`, modo producción) con reglas por usuario publicadas
+- ✔ App web registrada; la configuración está en `.env` **y** como valor por
+  defecto en `src/lib/firebase.ts` (la config web de Firebase es pública por
+  diseño; la seguridad la dan las reglas). Gracias a esto, **el APK trae
+  Firebase sin configurar secrets**.
+
+Consola: https://console.firebase.google.com/project/snbusiness
+
+Los pasos de abajo quedan como referencia por si algún día recreas el proyecto:
 
 ### 3.1 Crear el proyecto
 1. Entra a https://console.firebase.google.com con tu cuenta de Google.
