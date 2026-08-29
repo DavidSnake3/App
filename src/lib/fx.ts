@@ -1,7 +1,7 @@
 // Efectos visuales: confeti, lluvia de billetes y vibración (puntos 20, 22, 25)
 import confetti from 'canvas-confetti'
 import type { AnimationPrefs } from '../types/finance'
-import { playCash, playPaid, playSuccess } from './sound'
+import { playPayFx, playSuccess } from './sound'
 
 // Billete: rectángulo redondeado dibujado como path (sin emojis)
 const BILL = confetti.shapeFromPath({
@@ -35,7 +35,7 @@ export function vibrate(pattern: number | number[], prefs: AnimationPrefs) {
 
 /** Confeti que sale del botón al marcar un pago (punto 20) */
 export function payBurst(el: HTMLElement | null, prefs: AnimationPrefs) {
-  if (prefs.sounds) (prefs.cash ? playCash : playPaid)()
+  if (prefs.sounds) playPayFx(prefs.paySound ?? 'caja')
   vibrate(35, prefs)
   if (reduced()) return
 

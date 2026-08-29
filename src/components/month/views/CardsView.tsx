@@ -3,6 +3,7 @@ import type { PayableItem } from '../../../types/finance'
 import { formatMoney } from '../../../lib/format'
 import { getUrgency, urgencyColor } from '../../../lib/dates'
 import { RECURRENCE_LABEL } from '../../../lib/finance'
+import { ItemIcon } from '../../../lib/icons'
 import { DueBadge, KindTag, PaidCheck } from '../ItemBits'
 
 interface Props {
@@ -40,6 +41,12 @@ export function CardsView({ items, monthId, onOpen }: Props) {
               <PaidCheck item={it} monthId={monthId} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
+                  <span
+                    className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
+                    style={{ background: 'color-mix(in oklab, var(--app-accent) 14%, transparent)', color: 'var(--app-accent-soft)' }}
+                  >
+                    <ItemIcon icon={it.icon} name={it.name} kind={it.kind} size={12} />
+                  </span>
                   <KindTag kind={it.kind} />
                   {it.recurrence !== 'once' && it.kind !== 'deuda' && (
                     <span className="inline-flex items-center gap-1 text-[10.5px] text-muted">

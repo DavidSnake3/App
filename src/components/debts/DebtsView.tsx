@@ -11,6 +11,7 @@ import { formatMoney } from '../../lib/format'
 import { monthLabel } from '../../lib/dates'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddDebtSheet } from './AddDebtSheet'
+import { DebtDetailSheet } from './DebtDetailSheet'
 import { PlansSheet } from './PlansSheet'
 import { PaidCheck } from '../month/ItemBits'
 import { buildPayables } from '../../lib/finance'
@@ -26,6 +27,7 @@ export function DebtsView() {
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Debt | null>(null)
   const [plansOpen, setPlansOpen] = useState(false)
+  const [detailId, setDetailId] = useState<string | null>(null)
   const [toDelete, setToDelete] = useState<Debt | null>(null)
   const [advice, setAdvice] = useState('')
   const [adviceLoading, setAdviceLoading] = useState(false)
@@ -125,12 +127,25 @@ export function DebtsView() {
                     <CalendarClock size={16} className="text-muted" />
                   </span>
                 )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-[15.5px] font-semibold text-ink truncate">{d.name}</p>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetailId(d.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') setDetailId(d.id) }}
+                  className="pressable flex-1 min-w-0"
+                >
+                  <p className="text-[15.5px] font-semibold text-ink truncate flex items-center gap-1.5">
+                    {d.name}
+                    {d.viaPlanilla && (
+                      <span className="chip !py-0 !px-1.5 !text-[9.5px]" style={{ color: 'var(--app-accent-soft)' }}>Planilla</span>
+                    )}
+                  </p>
                   <p className="text-[12px] text-muted mt-0.5">
                     {item
                       ? <>Cuota de este mes: <span className="num font-semibold text-ink">{formatMoney(d.monthlyPayment)}</span> · vence el {d.dueDay}</>
-                      : <>Inicia en {monthLabel(d.startMonthId)}</>}
+                      : d.viaPlanilla
+                        ? <>Se deduce de tu salario · toca para ver el estado de cuenta</>
+                        : <>Inicia en {monthLabel(d.startMonthId)}</>}
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
@@ -209,6 +224,11 @@ export function DebtsView() {
       </button>
 
       <AddDebtSheet open={addOpen} onClose={() => { setAddOpen(false); setEditing(null) }} editing={editing} />
+      <DebtDetailSheet
+        debt={debts.find((d) => d.id === detailId) ?? null}
+        onClose={() => setDetailId(null)}
+        onEdit={(d) => { setDetailId(null); setEditing(d); setAddOpen(true) }}
+      />
       <PlansSheet open={plansOpen} onClose={() => setPlansOpen(false)} />
       <ConfirmDialog
         open={!!toDelete}

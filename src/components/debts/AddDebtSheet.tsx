@@ -3,9 +3,11 @@ import type { Debt } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { addMonthsToId, currentMonthId, monthLabel, parseMonthId } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
+import { ICON_IDS, ITEM_ICONS } from '../../lib/icons'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { Segmented } from '../ui/Segmented'
+import { Toggle } from '../ui/Toggle'
 
 interface Props {
   open: boolean
@@ -40,6 +42,10 @@ function DebtForm({ editing, onDone }: { editing?: Debt | null; onDone: () => vo
       : addMonthsToId(currentMonthId(), 11),
   )
   const [dueDay, setDueDay] = useState(editing?.dueDay ?? 15)
+  const [icon, setIcon] = useState(editing?.icon ?? '')
+  const [account, setAccount] = useState(editing?.account ?? '')
+  const [payMethod, setPayMethod] = useState(editing?.payMethod ?? '')
+  const [viaPlanilla, setViaPlanilla] = useState(editing?.viaPlanilla ?? false)
   const [error, setError] = useState('')
 
   // Derivar cuotas/cuota mensual según el modo elegido
@@ -73,6 +79,10 @@ function DebtForm({ editing, onDone }: { editing?: Debt | null; onDone: () => vo
       installments: d.n,
       startMonthId: startMonth,
       dueDay: Math.max(1, Math.min(31, dueDay)),
+      icon: icon || undefined,
+      account: account.trim() || undefined,
+      payMethod: payMethod.trim() || undefined,
+      viaPlanilla,
     }
     if (editing) updateDebt(editing.id, payload)
     else addDebt(payload)
@@ -162,6 +172,56 @@ function DebtForm({ editing, onDone }: { editing?: Debt | null; onDone: () => vo
           </p>
         </div>
       )}
+
+      {/* Ícono (mejora 10) */}
+      <div>
+        <span className="text-[13px] font-medium text-muted block mb-1.5">Ícono</span>
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
+          {ICON_IDS.map((id) => {
+            const { Icon, label } = ITEM_ICONS[id]
+            const active = icon === id
+            return (
+              <button
+                key={id}
+                onClick={() => setIcon(active ? '' : id)}
+                aria-label={label}
+                title={label}
+                className="pressable w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"
+                style={{
+                  borderColor: active ? 'var(--app-accent)' : 'var(--c-border)',
+                  background: active ? 'color-mix(in oklab, var(--app-accent) 18%, transparent)' : 'var(--c-elevated)',
+                  color: active ? 'var(--app-accent-soft)' : 'var(--c-muted)',
+                }}
+              >
+                <Icon size={17} />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Datos del estado de cuenta (mejora 7) */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label htmlFor="debt-acc" className="text-[13px] font-medium text-muted block mb-1.5">Cuenta / referencia <span className="opacity-60">(opcional)</span></label>
+          <input id="debt-acc" className="input-base" placeholder="Ej. 90301-0" value={account} onChange={(e) => setAccount(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="debt-met" className="text-[13px] font-medium text-muted block mb-1.5">Método de pago <span className="opacity-60">(opcional)</span></label>
+          <input id="debt-met" className="input-base" placeholder="Ej. SINPE, ventanilla" value={payMethod} onChange={(e) => setPayMethod(e.target.value)} />
+        </div>
+      </div>
+
+      {/* Se deduce de planilla (mejoras 2 y 8) */}
+      <div className="card p-3.5 bg-elevated/60 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[14px] font-medium text-ink">Se deduce de mi planilla</p>
+          <p className="text-[12px] text-muted mt-0.5">
+            La cuota sale de tu salario (no aparece en los pagos del mes). Agrégala también como deducción en Ajustes → Ingresos.
+          </p>
+        </div>
+        <Toggle checked={viaPlanilla} onChange={setViaPlanilla} label="Por planilla" />
+      </div>
 
       {error && <p className="text-[13px] anim-shake" style={{ color: 'var(--c-danger)' }}>{error}</p>}
 

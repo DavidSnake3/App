@@ -223,6 +223,46 @@ export async function cancelAll(): Promise<void> {
   }
 }
 
+/** Envía una notificación de PRUEBA en ~4 segundos (mejora 11) */
+export async function sendTestNotification(): Promise<'ok' | 'sin-permiso' | 'no-soportado'> {
+  if (isNative()) {
+    try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications')
+      const st = await LocalNotifications.requestPermissions()
+      if (st.display !== 'granted') return 'sin-permiso'
+      try {
+        await LocalNotifications.createChannel({
+          id: 'pagos', name: 'Recordatorios de pago',
+          description: 'Avisos antes de la fecha de vencimiento',
+          importance: 4, visibility: 1, vibration: true,
+        })
+      } catch { /* ya existe */ }
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: 999999901,
+          title: 'Prueba: así se verá tu recordatorio',
+          body: 'Ejemplo — Internet vence en 3 días. Monto: ' + formatMoney(23000),
+          channelId: 'pagos',
+          schedule: { at: new Date(Date.now() + 4000), allowWhileIdle: true },
+          smallIcon: 'ic_stat_name',
+        }],
+      })
+      return 'ok'
+    } catch { return 'no-soportado' }
+  }
+  if (!hasWebNotifications()) return 'no-soportado'
+  const ok = await requestPermission()
+  if (!ok) return 'sin-permiso'
+  setTimeout(() => {
+    try {
+      new Notification('Prueba: así se verá tu recordatorio', {
+        body: 'Ejemplo — Internet vence en 3 días. Monto: ' + formatMoney(23000),
+      })
+    } catch { /* bloqueado */ }
+  }, 3000)
+  return 'ok'
+}
+
 // ─── Alarmas en la app ───────────────────────────────────────────────────────
 
 const FIRED_KEY = 'snb-fired-alarms'

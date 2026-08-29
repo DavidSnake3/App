@@ -1,8 +1,8 @@
 import {
   CalendarClock, CalendarDays, ChartLine, ChartSpline, CreditCard,
-  LayoutGrid, Lightbulb, ListChecks, Wallet,
+  FileText, LayoutGrid, Lightbulb, ListChecks, PiggyBank, Wallet,
 } from 'lucide-react'
-import type { TabId, WidgetId } from '../../types/finance'
+import type { TabId, WidgetId, WidgetSize } from '../../types/finance'
 
 export interface WidgetCtx {
   setActiveTab(t: TabId): void
@@ -11,8 +11,10 @@ export interface WidgetCtx {
   exporting: boolean
 }
 
-export const WIDGET_META: Record<WidgetId, { name: string; desc: string; icon: React.ReactNode; defaultSize: 'sm' | 'lg' }> = {
+export const WIDGET_META: Record<WidgetId, { name: string; desc: string; icon: React.ReactNode; defaultSize: WidgetSize }> = {
   estado: { name: 'Estado del mes', desc: 'Progreso de pagos y balance', icon: <Wallet size={16} />, defaultSize: 'lg' },
+  comprobante: { name: 'Comprobante salarial', desc: 'Tu planilla: bruto, deducciones y neto', icon: <FileText size={16} />, defaultSize: 'lg' },
+  ahorro: { name: 'Ahorro', desc: 'Plan de ahorro y progreso a tu meta', icon: <PiggyBank size={16} />, defaultSize: 'lg' },
   resumen: { name: 'Tu día en pagos', desc: 'Qué vence hoy y qué viene', icon: <CalendarClock size={16} />, defaultSize: 'lg' },
   consejo: { name: 'Consejo del día', desc: 'Tip financiero con IA', icon: <Lightbulb size={16} />, defaultSize: 'lg' },
   acciones: { name: 'Accesos rápidos', desc: 'Gasto, deudas, planes y Excel', icon: <LayoutGrid size={16} />, defaultSize: 'lg' },

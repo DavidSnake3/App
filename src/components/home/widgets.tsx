@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowRight, CalendarClock, CreditCard, FileSpreadsheet, HandCoins,
   Lightbulb, Plus, Sparkles,
 } from 'lucide-react'
-import type { WidgetId } from '../../types/finance'
+import type { WidgetId, WidgetSize } from '../../types/finance'
 import type { WidgetCtx } from './widgetMeta'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { buildAnnualProjection, buildMonthFlow, buildPayables, debtIsActiveInMonth, debtIsSettled, debtRemaining, getMonthSummary } from '../../lib/finance'
@@ -12,18 +12,22 @@ import { getDailyTip } from '../../lib/ai'
 import { WEEKDAY_SHORT, daysInMonth, firstWeekday, getUrgency, isCurrentMonth, monthLabel, todayDay, urgencyColor, urgencyLabel } from '../../lib/dates'
 import { formatMoney, formatMoneyShort } from '../../lib/format'
 import { ProgressRing } from '../ui/ProgressRing'
+import { LoaderDots } from '../ui/Loader'
 import { PaidCheck } from '../month/ItemBits'
 import { LineChart } from '../year/LineChart'
+import { AhorroWidget, ComprobanteWidget } from './payrollWidgets'
 
-export function RenderWidget({ id, size, ctx }: { id: WidgetId; size: 'sm' | 'lg'; ctx: WidgetCtx }) {
+export function RenderWidget({ id, size, ctx }: { id: WidgetId; size: WidgetSize; ctx: WidgetCtx }) {
   switch (id) {
     case 'estado': return <EstadoWidget size={size} ctx={ctx} />
+    case 'comprobante': return <ComprobanteWidget size={size} ctx={ctx} />
+    case 'ahorro': return <AhorroWidget size={size} ctx={ctx} />
     case 'resumen': return <ResumenWidget />
     case 'consejo': return <ConsejoWidget />
     case 'acciones': return <AccionesWidget ctx={ctx} />
     case 'pendientes': return <PendientesWidget size={size} ctx={ctx} />
     case 'proyeccion': return <ProyeccionWidget size={size} />
-    case 'flujo': return <FlujoWidget />
+    case 'flujo': return <FlujoWidget size={size} />
     case 'deudas': return <DeudasWidget ctx={ctx} />
     case 'calendario': return <CalendarioWidget ctx={ctx} />
   }
@@ -40,7 +44,7 @@ function useMonthData() {
   return { monthId, month, debts, summary, items }
 }
 
-function EstadoWidget({ size, ctx }: { size: 'sm' | 'lg'; ctx: WidgetCtx }) {
+function EstadoWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }) {
   const { monthId, summary } = useMonthData()
   if (!summary) return null
   if (size === 'sm') {
@@ -151,7 +155,9 @@ function ConsejoWidget() {
         <p className="text-[11.5px] font-semibold text-muted flex items-center gap-1.5">
           Consejo del día {tip?.fromAI && <Sparkles size={11} style={{ color: 'var(--app-accent-soft)' }} />}
         </p>
-        <p className="text-[13.5px] text-ink leading-relaxed mt-0.5">{tip?.tip ?? 'Cargando consejo…'}</p>
+        <p className="text-[13.5px] text-ink leading-relaxed mt-0.5">
+          {tip?.tip ?? <span className="text-muted">Pensando tu consejo <LoaderDots /></span>}
+        </p>
       </div>
     </div>
   )
@@ -185,10 +191,10 @@ function Accion({ icon, label, onClick, primary }: { icon: React.ReactNode; labe
   )
 }
 
-function PendientesWidget({ size, ctx }: { size: 'sm' | 'lg'; ctx: WidgetCtx }) {
+function PendientesWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }) {
   const { monthId, items } = useMonthData()
   const pending = [...items.filter((i) => !i.paid)].sort((a, b) => (a.dueDay ?? 32) - (b.dueDay ?? 32))
-  const max = size === 'sm' ? 3 : 5
+  const max = size === 'sm' ? 3 : size === 'xl' ? 8 : 5
 
   return (
     <div className="card overflow-hidden h-full">
@@ -199,7 +205,7 @@ function PendientesWidget({ size, ctx }: { size: 'sm' | 'lg'; ctx: WidgetCtx }) 
         </button>
       </div>
       {pending.length === 0 ? (
-        <p className="text-[13px] text-muted px-3.5 pb-3.5">Todo pagado por ahora 🎯</p>
+        <p className="text-[13px] text-muted px-3.5 pb-3.5">Todo pagado por ahora. Excelente.</p>
       ) : (
         <div className="divide-y divide-[var(--c-border)]">
           {pending.slice(0, max).map((it) => {
@@ -221,7 +227,7 @@ function PendientesWidget({ size, ctx }: { size: 'sm' | 'lg'; ctx: WidgetCtx }) 
   )
 }
 
-function ProyeccionWidget({ size }: { size: 'sm' | 'lg' }) {
+function ProyeccionWidget({ size }: { size: WidgetSize }) {
   const months = useFinanceStore((s) => s.months)
   const debts = useFinanceStore((s) => s.debts)
   const settings = useFinanceStore((s) => s.settings)
@@ -234,7 +240,7 @@ function ProyeccionWidget({ size }: { size: 'sm' | 'lg' }) {
     <div className="card p-3.5 h-full">
       <h3 className="text-[12px] font-bold uppercase tracking-wider text-muted mb-2">Proyección anual</h3>
       <LineChart
-        height={size === 'sm' ? 110 : 150}
+        height={size === 'sm' ? 110 : size === 'xl' ? 215 : 150}
         labels={projection.months.map((m) => m.label.split(' ')[0])}
         series={[
           { name: 'Ingresos', color: 'var(--chart-income)', values: projection.months.map((m) => m.income) },
@@ -246,7 +252,7 @@ function ProyeccionWidget({ size }: { size: 'sm' | 'lg' }) {
   )
 }
 
-function FlujoWidget() {
+function FlujoWidget({ size }: { size: WidgetSize }) {
   const { monthId, month, debts } = useMonthData()
   const payday = useFinanceStore((s) => s.profile.payday)
   const flow = useMemo(() => (month ? buildMonthFlow(month, debts, payday) : []), [month, debts, payday])
@@ -255,7 +261,7 @@ function FlujoWidget() {
     <div className="card p-3.5 h-full">
       <h3 className="text-[12px] font-bold uppercase tracking-wider text-muted mb-2">Flujo de {monthLabel(monthId, true)}</h3>
       <LineChart
-        height={120}
+        height={size === 'xl' ? 200 : 120}
         labels={flow.map((p) => String(p.day))}
         series={[{ name: 'Balance', color: 'var(--chart-savings)', values: flow.map((p) => p.balance) }]}
       />
@@ -331,3 +337,4 @@ function CalendarioWidget({ ctx }: { ctx: WidgetCtx }) {
     </button>
   )
 }
+

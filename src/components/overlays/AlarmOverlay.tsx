@@ -15,9 +15,10 @@ interface Props {
 export function AlarmOverlay({ alarm, onDismiss }: Props) {
   const sounds = useFinanceStore((s) => s.settings.animations.sounds)
   const haptics = useFinanceStore((s) => s.settings.animations.haptics)
+  const alarmSound = useFinanceStore((s) => s.settings.animations.alarmSound)
 
   useEffect(() => {
-    const stop = sounds ? startAlarmSound() : undefined
+    const stop = sounds ? startAlarmSound(alarmSound ?? 'clasica') : undefined
     let vibTimer: ReturnType<typeof setInterval> | null = null
     if (haptics) {
       try { navigator.vibrate?.([400, 200, 400]) } catch { /* no soportado */ }
@@ -31,7 +32,7 @@ export function AlarmOverlay({ alarm, onDismiss }: Props) {
       if (vibTimer) clearInterval(vibTimer)
       try { navigator.vibrate?.(0) } catch { /* nada */ }
     }
-  }, [sounds, haptics])
+  }, [sounds, haptics, alarmSound])
 
   return (
     <div className="fixed inset-0 z-[80] flex flex-col items-center justify-center px-8 max-w-[520px] mx-auto anim-fade"

@@ -66,22 +66,69 @@ export function playTap() {
   tone(ac, 1200, 0, 0.04, 'sine', 0.04)
 }
 
+/** Monedas cayendo (variante de sonido de pago) */
+export function playCoins() {
+  const ac = audio(); if (!ac) return
+  const freqs = [2093, 1760, 2349, 1976, 2637]
+  freqs.forEach((f, i) => tone(ac, f, i * 0.07, 0.1, 'triangle', 0.09))
+  tone(ac, 1046.5, 0.4, 0.3, 'sine', 0.07)
+}
+
+export type PaySoundId = 'ding' | 'caja' | 'monedas'
+export const PAY_SOUNDS: { id: PaySoundId; label: string; play: () => void }[] = [
+  { id: 'caja', label: 'Cha-ching (caja)', play: playCash },
+  { id: 'ding', label: 'Ding suave', play: playPaid },
+  { id: 'monedas', label: 'Monedas', play: playCoins },
+]
+
+export function playPayFx(id: PaySoundId) {
+  ;(PAY_SOUNDS.find((s) => s.id === id) ?? PAY_SOUNDS[0]).play()
+}
+
+// ─── Alarmas (3 estilos a elegir, mejora 11) ─────────────────────────────────
+
 let alarmTimer: ReturnType<typeof setInterval> | null = null
 
+function beepClasica() {
+  const ac = audio(); if (!ac) return
+  tone(ac, 880, 0, 0.18, 'square', 0.16)
+  tone(ac, 660, 0.22, 0.18, 'square', 0.16)
+  tone(ac, 880, 0.44, 0.18, 'square', 0.16)
+}
+
+function beepDigital() {
+  const ac = audio(); if (!ac) return
+  for (let i = 0; i < 4; i++) tone(ac, 1567, i * 0.12, 0.07, 'square', 0.15)
+}
+
+function beepSuave() {
+  const ac = audio(); if (!ac) return
+  tone(ac, 659.25, 0, 0.3, 'sine', 0.13)
+  tone(ac, 830.6, 0.32, 0.3, 'sine', 0.13)
+  tone(ac, 987.8, 0.64, 0.42, 'sine', 0.13)
+}
+
+export type AlarmSoundId = 'clasica' | 'digital' | 'suave'
+export const ALARM_SOUNDS: { id: AlarmSoundId; label: string; beep: () => void; interval: number }[] = [
+  { id: 'clasica', label: 'Clásica', beep: beepClasica, interval: 1100 },
+  { id: 'digital', label: 'Digital', beep: beepDigital, interval: 900 },
+  { id: 'suave', label: 'Campanas suaves', beep: beepSuave, interval: 1500 },
+]
+
 /** Alarma intrusiva en bucle (punto 12). Devuelve función para detenerla. */
-export function startAlarmSound(): () => void {
+export function startAlarmSound(id: AlarmSoundId = 'clasica'): () => void {
   stopAlarmSound()
-  const beep = () => {
-    const ac = audio(); if (!ac) return
-    tone(ac, 880, 0, 0.18, 'square', 0.16)
-    tone(ac, 660, 0.22, 0.18, 'square', 0.16)
-    tone(ac, 880, 0.44, 0.18, 'square', 0.16)
-  }
-  beep()
-  alarmTimer = setInterval(beep, 1100)
+  const def = ALARM_SOUNDS.find((s) => s.id === id) ?? ALARM_SOUNDS[0]
+  def.beep()
+  alarmTimer = setInterval(def.beep, def.interval)
   return stopAlarmSound
 }
 
 export function stopAlarmSound() {
   if (alarmTimer) { clearInterval(alarmTimer); alarmTimer = null }
+}
+
+/** Reproduce una muestra corta de una alarma (para elegir en Ajustes) */
+export function previewAlarm(id: AlarmSoundId) {
+  ;(ALARM_SOUNDS.find((s) => s.id === id) ?? ALARM_SOUNDS[0]).beep()
 }

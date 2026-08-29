@@ -288,3 +288,36 @@ input, select, textarea, button { font-family: inherit; }
 }
 .anim-tab-left  { animation: slideFromRight 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
 .anim-tab-right { animation: slideFromLeft 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+/* ── Loader de marca (mejora 1) ─────────────────────────────────────── */
+@keyframes loaderSpin {
+  to { transform: rotate(360deg); }
+}
+@keyframes loaderHead {
+  0%, 25% { opacity: 0; transform: scale(0.6); transform-origin: 350px 60px; }
+  45%, 80% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; }
+}
+@keyframes loaderDrawLoop {
+  0% { stroke-dashoffset: 1; opacity: 0.4; }
+  40%, 75% { stroke-dashoffset: 0; opacity: 1; }
+  100% { stroke-dashoffset: -1; opacity: 0.3; }
+}
+.loader-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: loaderDrawLoop 2.2s ease-in-out infinite;
+}
+@keyframes loaderDot {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-3px); }
+}
+
+/* ── Modo edición de widgets (mejora 5) ─────────────────────────────── */
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-0.5deg); }
+  50% { transform: rotate(0.5deg); }
+}
+.widget-wiggle {
+  animation: wiggle 0.35s ease-in-out infinite;
+}

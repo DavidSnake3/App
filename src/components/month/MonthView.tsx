@@ -3,9 +3,9 @@ import {
   CalendarDays, ChartGantt, ChevronLeft, ChevronRight, LayoutGrid,
   List, Plus, Sparkles, Table2, Trash2, TrendingDown, TrendingUp, Wallet,
 } from 'lucide-react'
-import type { Expense, PayableItem, ViewMode } from '../../types/finance'
+import type { Expense, ExpenseKind, PayableItem, ViewMode } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import { buildPayables, getMonthSummary } from '../../lib/finance'
+import { buildPayables, getMonthSummary, recurringCandidates } from '../../lib/finance'
 import { addMonthsToId, isCurrentMonth, monthLabel } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
 import { celebrate } from '../../lib/fx'
@@ -41,15 +41,27 @@ export function MonthView() {
   const markCelebrated = useFinanceStore((s) => s.markCelebrated)
   const animPrefs = useFinanceStore((s) => s.settings.animations)
   const setActiveTab = useFinanceStore((s) => s.setActiveTab)
+  const importRecurring = useFinanceStore((s) => s.importRecurring)
+  const markCarryAsked = useFinanceStore((s) => s.markCarryAsked)
+  const prevMonth = useFinanceStore((s) => s.months[addMonthsToId(s.activeMonthId, -1)])
 
   const [addOpen, setAddOpen] = useState(false)
-  const [addKind, setAddKind] = useState<'gasto' | 'servicio'>('gasto')
+  const [addKind] = useState<ExpenseKind>('gasto')
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [detail, setDetail] = useState<PayableItem | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showCongrats, setShowCongrats] = useState(false)
 
   useEffect(() => { ensureMonthExists(monthId) }, [monthId, ensureMonthExists])
+
+  // Mes nuevo: preguntar si copiar los recurrentes del anterior (mejora 12)
+  const carryCandidates = useMemo(
+    () => (prevMonth ? recurringCandidates(prevMonth, monthId).length : 0),
+    [prevMonth, monthId],
+  )
+  const showCarryPrompt = Boolean(
+    month && month.expenses.length === 0 && !month.carryAsked && prevMonth && carryCandidates > 0,
+  )
 
   const items = useMemo(() => (month ? buildPayables(month, debts) : []), [month, debts])
   const summary = useMemo(
@@ -74,6 +86,7 @@ export function MonthView() {
 
   const servicios = items.filter((i) => i.kind === 'servicio')
   const gastos = items.filter((i) => i.kind === 'gasto')
+  const personales = items.filter((i) => i.kind === 'personal')
   const deudas = items.filter((i) => i.kind === 'deuda')
 
   const openDetail = (it: PayableItem) => setDetail(it)
@@ -213,6 +226,12 @@ export function MonthView() {
                 <ViewComp items={gastos} monthId={monthId} onOpen={openDetail} />
               </section>
             )}
+            {personales.length > 0 && (
+              <section>
+                <SectionTitle label="Personales" count={personales.length} />
+                <ViewComp items={personales} monthId={monthId} onOpen={openDetail} />
+              </section>
+            )}
           </div>
         ) : viewMode === 'table' ? (
           <TableView items={items} monthId={monthId} onOpen={openDetail} />
@@ -223,23 +242,15 @@ export function MonthView() {
         )}
       </div>
 
-      {/* FAB agregar */}
-      <div className="absolute bottom-20 right-4 flex flex-col items-end gap-2.5 z-30">
-        <button
-          onClick={() => { setAddKind('servicio'); setEditingExpense(null); setAddOpen(true) }}
-          className="pressable rounded-full px-4 h-11 text-[13px] font-semibold bg-card border border-edge text-ink shadow-lg"
-        >
-          + Servicio
-        </button>
-        <button
-          onClick={() => { setAddKind('gasto'); setEditingExpense(null); setAddOpen(true) }}
-          aria-label="Agregar gasto"
-          className="pressable w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-xl"
-          style={{ background: 'var(--app-gradient)', boxShadow: '0 10px 30px color-mix(in oklab, var(--app-accent) 45%, transparent)' }}
-        >
-          <Plus size={26} />
-        </button>
-      </div>
+      {/* FAB agregar (el tipo gasto/servicio/personal se elige dentro) */}
+      <button
+        onClick={() => { setEditingExpense(null); setAddOpen(true) }}
+        aria-label="Agregar pago"
+        className="pressable absolute bottom-[72px] right-4 w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-xl z-30"
+        style={{ background: 'var(--app-gradient)', boxShadow: '0 10px 30px color-mix(in oklab, var(--app-accent) 45%, transparent)' }}
+      >
+        <Plus size={26} />
+      </button>
 
       {/* Felicitación pequeña (punto 22) */}
       {showCongrats && (
@@ -275,6 +286,16 @@ export function MonthView() {
         danger
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => { setConfirmDelete(false); deleteMonth(monthId) }}
+      />
+
+      {/* Mes nuevo: ¿copiar lo del mes anterior? (mejora 12) */}
+      <ConfirmDialog
+        open={showCarryPrompt}
+        title={`${monthLabel(monthId)} está vacío`}
+        message={`¿Quieres copiar los ${carryCandidates} gastos y servicios recurrentes de ${prevMonth ? monthLabel(prevMonth.id) : 'el mes anterior'}? Las deudas siguen solas para mantener su trazabilidad.`}
+        confirmLabel="Sí, copiarlos"
+        onCancel={() => markCarryAsked(monthId)}
+        onConfirm={() => { if (prevMonth) importRecurring(monthId, prevMonth.id) }}
       />
     </div>
   )

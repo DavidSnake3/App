@@ -16,7 +16,7 @@ import { Onboarding } from './components/onboarding/Onboarding'
 import { AuthScreen } from './components/auth/AuthScreen'
 import { AlarmOverlay } from './components/overlays/AlarmOverlay'
 import { SplashIntro } from './components/overlays/SplashIntro'
-import { AppLogo } from './components/ui/AppLogo'
+import { Loader } from './components/ui/Loader'
 
 function App() {
   useTheme()
@@ -53,60 +53,57 @@ function App() {
     if (!months[activeMonthId]) setActiveMonth(nowId)
   }, [onboarded, ensureMonthExists, setActiveMonth])
 
-  const splash = showSplash && <SplashIntro onDone={() => setShowSplash(false)} />
-
-  // Splash estático mientras Firebase resuelve la sesión
+  // El splash vive SIEMPRE en la misma posición del árbol para que React no lo
+  // remonte al cambiar de pantalla (antes se reproducía dos veces, mejora 13)
+  let content: React.ReactNode
   if (auth.loading) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center gap-4">
-        <span style={{ animation: 'pulseSoft 1.4s ease-in-out infinite' }}><AppLogo size={64} /></span>
-        {splash}
+    content = (
+      <div className="h-full flex flex-col items-center justify-center">
+        <Loader size={64} />
       </div>
     )
-  }
-
-  // Autenticación (correo + Google) cuando Firebase está configurado
-  if (firebaseReady && !auth.user && !auth.skipped) {
-    return (
+  } else if (firebaseReady && !auth.user && !auth.skipped) {
+    content = (
       <div className="h-full flex flex-col overflow-hidden">
         <AuthScreen onSkip={auth.skip} />
-        {splash}
       </div>
     )
-  }
-
-  // Onboarding obligatorio la primera vez (punto 24)
-  if (!onboarded) {
-    return (
+  } else if (!onboarded) {
+    content = (
       <div className="h-full flex flex-col overflow-hidden">
         <Onboarding />
-        {splash}
+      </div>
+    )
+  } else {
+    content = (
+      <div className="h-full flex flex-col overflow-hidden">
+        <main
+          key={activeTab}
+          className={`flex-1 flex flex-col min-h-0 relative ${tabAnim}`}
+          style={{ paddingTop: 'env(safe-area-inset-top)' }}
+          onTouchStart={swipe.onTouchStart}
+          onTouchMove={swipe.onTouchMove}
+          onTouchEnd={swipe.onTouchEnd}
+        >
+          {activeTab === 'home' && <HomeView auth={auth} />}
+          {activeTab === 'month' && <MonthView />}
+          {activeTab === 'debts' && <DebtsView />}
+          {activeTab === 'year' && <YearView />}
+          {activeTab === 'settings' && <SettingsView auth={auth} />}
+        </main>
+
+        <BottomNav />
+
+        {alarm && <AlarmOverlay alarm={alarm} onDismiss={dismissAlarm} />}
       </div>
     )
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <main
-        key={activeTab}
-        className={`flex-1 flex flex-col min-h-0 relative ${tabAnim}`}
-        style={{ paddingTop: 'env(safe-area-inset-top)' }}
-        onTouchStart={swipe.onTouchStart}
-        onTouchMove={swipe.onTouchMove}
-        onTouchEnd={swipe.onTouchEnd}
-      >
-        {activeTab === 'home' && <HomeView auth={auth} />}
-        {activeTab === 'month' && <MonthView />}
-        {activeTab === 'debts' && <DebtsView />}
-        {activeTab === 'year' && <YearView />}
-        {activeTab === 'settings' && <SettingsView auth={auth} />}
-      </main>
-
-      <BottomNav />
-
-      {alarm && <AlarmOverlay alarm={alarm} onDismiss={dismissAlarm} />}
-      {splash}
-    </div>
+    <>
+      {showSplash && <SplashIntro onDone={() => setShowSplash(false)} />}
+      {content}
+    </>
   )
 }
 

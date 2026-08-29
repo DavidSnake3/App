@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { AlarmClock, Receipt, ShieldCheck } from 'lucide-react'
+import { AlarmClock, Heart, Receipt, ShieldCheck } from 'lucide-react'
 import type { Expense, ExpenseKind, Recurrence } from '../../types/finance'
 import { RECOMMENDED_RECURRENCES, RECURRENCE_LABEL } from '../../lib/finance'
+import { ICON_IDS, ITEM_ICONS } from '../../lib/icons'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
@@ -50,6 +51,7 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
   const [name, setName] = useState(editing?.name ?? '')
   const [amount, setAmount] = useState(editing?.amount ?? 0)
   const [kind, setKind] = useState<ExpenseKind>(editing?.kind ?? defaultKind)
+  const [icon, setIcon] = useState(editing?.icon ?? '')
   const [isRecurring, setIsRecurring] = useState(
     editing ? editing.recurrence !== 'once' : defaultKind === 'servicio',
   )
@@ -71,6 +73,7 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
       name: name.trim(),
       amount,
       kind,
+      icon: icon || undefined,
       recurrence: (isRecurring ? recurrence : 'once') as Recurrence,
       dueDay: day,
       period: (day && day <= 15 ? 'q1' : 'q2') as Expense['period'],
@@ -111,9 +114,39 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
           onChange={(v) => setKind(v)}
           options={[
             { value: 'gasto', label: <><Receipt size={14} /> Gasto</> },
-            { value: 'servicio', label: <><ShieldCheck size={14} /> Servicio obligatorio</> },
+            { value: 'servicio', label: <><ShieldCheck size={14} /> Servicio</> },
+            { value: 'personal', label: <><Heart size={14} /> Personal</> },
           ]}
         />
+      </div>
+
+      {/* Ícono a elegir (mejora 10) */}
+      <div>
+        <span className="text-[13px] font-medium text-muted block mb-1.5">
+          Ícono <span className="opacity-60">(opcional, se adivina por el nombre)</span>
+        </span>
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
+          {ICON_IDS.map((id) => {
+            const { Icon, label } = ITEM_ICONS[id]
+            const active = icon === id
+            return (
+              <button
+                key={id}
+                onClick={() => setIcon(active ? '' : id)}
+                aria-label={label}
+                title={label}
+                className="pressable w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"
+                style={{
+                  borderColor: active ? 'var(--app-accent)' : 'var(--c-border)',
+                  background: active ? 'color-mix(in oklab, var(--app-accent) 18%, transparent)' : 'var(--c-elevated)',
+                  color: active ? 'var(--app-accent-soft)' : 'var(--c-muted)',
+                }}
+              >
+                <Icon size={17} />
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Recurrente vs único (punto 8) */}
@@ -144,7 +177,7 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
 
       <div>
         <label htmlFor="exp-day" className="text-[13px] font-medium text-muted block mb-1.5">
-          Día de vencimiento <span className="opacity-60">(opcional)</span>
+          Fecha límite de pago — día del mes <span className="opacity-60">(recomendado si es mensual)</span>
         </label>
         <input
           id="exp-day"

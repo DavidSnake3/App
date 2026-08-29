@@ -18,7 +18,7 @@ export type Recurrence =
   | 'semiannual'  // semestral
   | 'annual'      // anual
 
-export type ExpenseKind = 'gasto' | 'servicio'
+export type ExpenseKind = 'gasto' | 'servicio' | 'personal'
 
 /** Quincena a la que pertenece el pago */
 export type Period = 'q1' | 'q2'
@@ -50,6 +50,7 @@ export interface Expense {
   recurrence: Recurrence
   children: SubItem[]    // sub-hijos (punto 3)
   note?: string
+  icon?: string          // ícono elegido por el usuario (punto: iconos)
   reminder?: ReminderPref
   anchorMonthId?: string // mes donde se creó (para recurrencias > 1 mes)
   createdAt: string
@@ -68,13 +69,19 @@ export interface MonthData {
   income: MonthlyIncome
   expenses: Expense[]
   celebrated: boolean // ya se mostró la felicitación de mes completado (punto 22)
+  /** ya se preguntó si copiar los recurrentes del mes anterior */
+  carryAsked?: boolean
 }
 
-/** Pago de una cuota de deuda en un mes concreto */
+/** Pago de una cuota de deuda en un mes concreto (recibo estilo abono) */
 export interface DebtPayment {
   paid: boolean
   paidAt?: string
   amount: number
+  /** desglose opcional del abono, como en el recibo: capital + intereses */
+  capital?: number
+  interest?: number
+  receiptNo?: string
 }
 
 /** Deuda con cuotas o fecha de finalización (punto 4) */
@@ -88,6 +95,13 @@ export interface Debt {
   dueDay: number           // día del mes en que vence la cuota
   payments: Record<string, DebtPayment> // por monthId
   note?: string
+  icon?: string
+  /** cuenta o referencia (ej. "CUENTA: 90301-0") para el estado de cuenta */
+  account?: string
+  /** método de pago habitual (ej. "Ventanilla GOLLO", "SINPE", "Débito") */
+  payMethod?: string
+  /** la cuota se deduce automáticamente de la planilla (no aparece en el mes) */
+  viaPlanilla?: boolean
   reminder?: ReminderPref
   createdAt: string
 }
@@ -106,6 +120,7 @@ export interface PayableItem {
   kind: ExpenseKind | 'deuda'
   recurrence: Recurrence
   children: SubItem[]
+  icon?: string
   /** progreso de la deuda: cuota n de m */
   debtProgress?: { current: number; total: number; remaining: number }
 }
@@ -145,11 +160,15 @@ export type WidgetId =
   | 'flujo'       // flujo del mes (línea P/G)
   | 'deudas'      // resumen de deudas
   | 'calendario'  // mini calendario del mes
+  | 'comprobante' // comprobante salarial (planilla)
+  | 'ahorro'      // panel de ahorro
+
+export type WidgetSize = 'sm' | 'lg' | 'xl'
 
 export interface WidgetConf {
   id: WidgetId
-  /** sm = media pantalla, lg = ancho completo */
-  size: 'sm' | 'lg'
+  /** sm = media pantalla, lg = ancho completo, xl = ancho completo expandido */
+  size: WidgetSize
 }
 
 export interface ThemeSettings {
@@ -162,6 +181,9 @@ export interface ThemeSettings {
   }
 }
 
+export type PaySoundId = 'ding' | 'caja' | 'monedas'
+export type AlarmSoundId = 'clasica' | 'digital' | 'suave'
+
 /** Qué animaciones prefiere el usuario (punto 25) */
 export interface AnimationPrefs {
   confetti: boolean
@@ -170,6 +192,51 @@ export interface AnimationPrefs {
   haptics: boolean
   transitions: boolean
   celebration: boolean
+  paySound: PaySoundId
+  alarmSound: AlarmSoundId
+}
+
+// ─── Planilla / comprobante salarial ─────────────────────────────────────────
+
+export interface PayrollDeduction {
+  id: string
+  name: string
+  amount: number
+  /** deuda vinculada: se paga por planilla y no aparece en el mes */
+  debtId?: string
+}
+
+export interface PayrollConfig {
+  /** salario base bruto mensual */
+  gross: number
+  /** % de CCSS del empleado (Costa Rica: 10.83 por defecto) */
+  ccssPct: number
+  deductions: PayrollDeduction[]
+  /** cómo prefiere ver el comprobante */
+  viewPeriod: 'weekly' | 'biweekly' | 'monthly'
+}
+
+/** Plan de pago del salario: cuándo y cuánto te llega */
+export interface PaySchedule {
+  frequency: 'weekly' | 'biweekly' | 'monthly'
+  /** días del mes de pago (mensual: [30]; quincenal: [15, 30]) */
+  paydays: number[]
+  /** día de la semana para pago semanal (0=Lun … 6=Dom) */
+  weekday: number
+  /** si cae en fin de semana: pagar antes, después o dejar exacto */
+  adjustWeekend: 'before' | 'after' | 'none'
+}
+
+// ─── Ahorro (dashboard) ──────────────────────────────────────────────────────
+
+export interface SavingsConfig {
+  enabled: boolean
+  mode: 'percent' | 'fixed'
+  /** % del neto o monto fijo por mes */
+  value: number
+  /** meta total opcional */
+  goal: number
+  goalName: string
 }
 
 export interface NotificationPrefs {
@@ -187,9 +254,13 @@ export interface AppSettings {
   notifications: NotificationPrefs
   aiEnabled: boolean
   geminiKey: string      // clave en runtime (si vacía usa la de compilación)
-  autoRollover: boolean  // generar mes automáticamente (punto 1)
+  /** al entrar a un mes nuevo se PREGUNTA si copiar (nunca se copia solo) */
+  autoRollover: boolean
   planChoice: string     // plan de pago elegido ('propio' por defecto, punto 14)
   homeWidgets: WidgetConf[] // widgets del inicio: orden, tamaño y visibilidad
+  payroll: PayrollConfig
+  paySchedule: PaySchedule
+  savings: SavingsConfig
 }
 
 // ─── Proyecciones (punto 13) ─────────────────────────────────────────────────

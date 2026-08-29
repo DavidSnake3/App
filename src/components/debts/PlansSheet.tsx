@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BadgeCheck, Sparkles } from 'lucide-react'
+import { Loader } from '../ui/Loader'
 import type { PaymentPlan } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { buildHeuristicPlans, financeSnapshot } from '../../lib/plans'
@@ -83,6 +84,7 @@ function PlansContent() {
             </span>
           </button>
         )}
+        {aiLoading && <Loader size={56} label="La IA está armando tus planes…" />}
         {aiError && <p className="text-[12.5px] px-1" style={{ color: 'var(--c-danger)' }}>{aiError}</p>}
 
         {plans.map((p) => {

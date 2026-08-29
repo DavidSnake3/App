@@ -82,9 +82,11 @@ export function buildPayables(month: MonthData, debts: Debt[]): PayableItem[] {
     kind: e.kind,
     recurrence: e.recurrence,
     children: e.children,
+    icon: e.icon,
   }))
 
   for (const d of debts) {
+    if (d.viaPlanilla) continue // se deduce de la planilla, no del mes
     if (!debtIsActiveInMonth(d, month.id)) continue
     const pay = d.payments[month.id]
     const n = debtInstallmentNumber(d, month.id)
@@ -101,6 +103,7 @@ export function buildPayables(month: MonthData, debts: Debt[]): PayableItem[] {
       kind: 'deuda',
       recurrence: 'monthly',
       children: [],
+      icon: d.icon,
       debtProgress: { current: n, total: d.installments, remaining: debtRemaining(d) },
     })
   }
@@ -120,6 +123,7 @@ export interface MonthSummary {
   allPaid: boolean
   servicios: number
   gastos: number
+  personales: number
   deudas: number
 }
 
@@ -143,14 +147,15 @@ export function getMonthSummary(month: MonthData, debts: Debt[]): MonthSummary {
     allPaid: countTotal > 0 && countPaid === countTotal,
     servicios: sumKind('servicio'),
     gastos: sumKind('gasto'),
+    personales: sumKind('personal'),
     deudas: sumKind('deuda'),
   }
 }
 
-// ─── Generación automática de mes (punto 1) ──────────────────────────────────
+// ─── Generación de mes (mejora 12: nunca se copia solo, se pregunta) ─────────
 
 /** ¿El gasto recurrente toca en este mes según su frecuencia? */
-function recurrenceHits(e: Expense, targetMonthId: string): boolean {
+export function recurrenceHits(e: Expense, targetMonthId: string): boolean {
   if (e.recurrence === 'once') return false
   const every = RECURRENCE_EVERY[e.recurrence]
   if (every <= 1) return true
@@ -159,31 +164,32 @@ function recurrenceHits(e: Expense, targetMonthId: string): boolean {
   return diff >= 0 && diff % every === 0
 }
 
-export function makeMonth(
-  monthId: string,
-  fromMonth: MonthData | undefined,
-  settings: AppSettings,
-): MonthData {
+/** Gastos recurrentes de un mes que aplicarían en el mes destino */
+export function recurringCandidates(from: MonthData, targetMonthId: string): Expense[] {
+  return from.expenses.filter((e) => recurrenceHits(e, targetMonthId))
+}
+
+/** Copia de un gasto para otro mes (nuevo id, sin pagar) */
+export function cloneExpenseForMonth(e: Expense): Expense {
+  return {
+    ...e,
+    id: uid(),
+    paid: false,
+    paidAt: undefined,
+    children: e.children.map((c) => ({ ...c, id: uid() })),
+    createdAt: todayISO(),
+  }
+}
+
+/** Crea un mes VACÍO (las deudas siguen solas; los gastos se copian solo si el usuario acepta) */
+export function makeMonth(monthId: string, settings: AppSettings): MonthData {
   const { year, month } = parseMonthId(monthId)
-  const salary = fromMonth?.income.salary || settings.defaultSalary
-
-  const expenses: Expense[] = (fromMonth?.expenses ?? [])
-    .filter((e) => recurrenceHits(e, monthId))
-    .map((e) => ({
-      ...e,
-      id: uid(),
-      paid: false,
-      paidAt: undefined,
-      children: e.children.map((c) => ({ ...c, id: uid() })),
-      createdAt: todayISO(),
-    }))
-
   return {
     id: monthId,
     year,
     month,
-    income: { salary, additional: 0, additionalLabel: 'Ingresos adicionales' },
-    expenses,
+    income: { salary: settings.defaultSalary, additional: 0, additionalLabel: 'Ingresos adicionales' },
+    expenses: [],
     celebrated: false,
   }
 }

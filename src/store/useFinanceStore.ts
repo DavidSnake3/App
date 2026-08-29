@@ -2,10 +2,12 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
   AnimationPrefs, AppSettings, Debt, DebtPayment, Expense, MonthData,
-  NotificationPrefs, SubItem, TabId, ThemeSettings, UserProfile, ViewMode, WidgetConf,
+  NotificationPrefs, PayrollConfig, PaySchedule, SavingsConfig, SubItem,
+  TabId, ThemeSettings, UserProfile, ViewMode, WidgetConf,
 } from '../types/finance'
-import { addMonthsToId, currentMonthId, todayISO } from '../lib/dates'
-import { makeMonth, uid } from '../lib/finance'
+import { currentMonthId, todayISO } from '../lib/dates'
+import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
+import { DEFAULT_CCSS_PCT } from '../lib/payroll'
 
 // ─── Valores por defecto ─────────────────────────────────────────────────────
 
@@ -43,6 +45,30 @@ export const DEFAULT_ANIMATIONS: AnimationPrefs = {
   haptics: true,
   transitions: true,
   celebration: true,
+  paySound: 'caja',
+  alarmSound: 'clasica',
+}
+
+export const DEFAULT_PAYROLL: PayrollConfig = {
+  gross: 0,
+  ccssPct: DEFAULT_CCSS_PCT,
+  deductions: [],
+  viewPeriod: 'monthly',
+}
+
+export const DEFAULT_PAY_SCHEDULE: PaySchedule = {
+  frequency: 'monthly',
+  paydays: [30],
+  weekday: 4, // viernes
+  adjustWeekend: 'before',
+}
+
+export const DEFAULT_SAVINGS: SavingsConfig = {
+  enabled: false,
+  mode: 'percent',
+  value: 10,
+  goal: 0,
+  goalName: '',
 }
 
 export const DEFAULT_NOTIFICATIONS: NotificationPrefs = {
@@ -63,6 +89,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoRollover: true,
   planChoice: 'propio',
   homeWidgets: DEFAULT_WIDGETS,
+  payroll: DEFAULT_PAYROLL,
+  paySchedule: DEFAULT_PAY_SCHEDULE,
+  savings: DEFAULT_SAVINGS,
 }
 
 // ─── Estado ──────────────────────────────────────────────────────────────────
@@ -97,12 +126,21 @@ interface FinanceActions {
   updateDebt(id: string, patch: Partial<Debt>): void
   deleteDebt(id: string): void
   toggleDebtPaid(debtId: string, monthId: string): void
+  /** registra un abono con desglose capital/interés (estilo recibo) */
+  payDebtInstallment(debtId: string, monthId: string, detail: Partial<DebtPayment>): void
+
+  /** copia los recurrentes del mes anterior al mes destino (mejora 12) */
+  importRecurring(targetMonthId: string, fromMonthId: string): void
+  markCarryAsked(monthId: string): void
 
   setProfile(patch: Partial<UserProfile>): void
   setSettings(patch: Partial<AppSettings>): void
   setTheme(patch: Partial<ThemeSettings>): void
   setAnimations(patch: Partial<AnimationPrefs>): void
   setNotifications(patch: Partial<NotificationPrefs>): void
+  setPayroll(patch: Partial<PayrollConfig>): void
+  setPaySchedule(patch: Partial<PaySchedule>): void
+  setSavings(patch: Partial<SavingsConfig>): void
   setViewMode(mode: ViewMode): void
 
   markCelebrated(monthId: string): void
@@ -223,14 +261,12 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set({ activeMonthId: monthId })
       },
 
-      // Configuración automática de mes a mes (punto 1)
+      // Mes nuevo SIEMPRE vacío: copiar recurrentes solo si el usuario acepta (mejora 12)
       ensureMonthExists: (monthId) => {
         const { months, settings } = get()
         if (months[monthId]) return
-        const prev = months[addMonthsToId(monthId, -1)]
-        const source = prev ?? Object.values(months).sort((a, b) => b.id.localeCompare(a.id))[0]
         set((s) => ({
-          months: { ...s.months, [monthId]: makeMonth(monthId, settings.autoRollover ? source : undefined, settings) },
+          months: { ...s.months, [monthId]: makeMonth(monthId, settings) },
           ...touch(),
         }))
       },
@@ -320,6 +356,49 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           ...touch(),
         })),
 
+      payDebtInstallment: (debtId, monthId, detail) =>
+        set((s) => ({
+          debts: s.debts.map((d) => {
+            if (d.id !== debtId) return d
+            const prev: DebtPayment = d.payments[monthId] ?? { paid: false, amount: d.monthlyPayment }
+            const next: DebtPayment = {
+              ...prev,
+              ...detail,
+              paid: true,
+              paidAt: detail.paidAt ?? todayISO(),
+              amount: detail.amount ?? prev.amount,
+            }
+            return { ...d, payments: { ...d.payments, [monthId]: next } }
+          }),
+          ...touch(),
+        })),
+
+      importRecurring: (targetMonthId, fromMonthId) =>
+        set((s) => {
+          const from = s.months[fromMonthId]
+          const target = s.months[targetMonthId]
+          if (!from || !target) return {}
+          const existing = new Set(target.expenses.map((e) => e.name.toLowerCase()))
+          const copies = recurringCandidates(from, targetMonthId)
+            .filter((e) => !existing.has(e.name.toLowerCase()))
+            .map(cloneExpenseForMonth)
+          return {
+            months: {
+              ...s.months,
+              [targetMonthId]: {
+                ...target,
+                carryAsked: true,
+                income: { ...target.income, salary: target.income.salary || from.income.salary },
+                expenses: [...target.expenses, ...copies],
+              },
+            },
+            ...touch(),
+          }
+        }),
+
+      markCarryAsked: (monthId) =>
+        set((s) => patchMonth(s, monthId, (m) => ({ ...m, carryAsked: true }))),
+
       setProfile: (patch) => set((s) => ({ profile: { ...s.profile, ...patch }, ...touch() })),
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch }, ...touch() })),
       setTheme: (patch) =>
@@ -328,6 +407,12 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set((s) => ({ settings: { ...s.settings, animations: { ...s.settings.animations, ...patch } }, ...touch() })),
       setNotifications: (patch) =>
         set((s) => ({ settings: { ...s.settings, notifications: { ...s.settings.notifications, ...patch } }, ...touch() })),
+      setPayroll: (patch) =>
+        set((s) => ({ settings: { ...s.settings, payroll: { ...s.settings.payroll, ...patch } }, ...touch() })),
+      setPaySchedule: (patch) =>
+        set((s) => ({ settings: { ...s.settings, paySchedule: { ...s.settings.paySchedule, ...patch } }, ...touch() })),
+      setSavings: (patch) =>
+        set((s) => ({ settings: { ...s.settings, savings: { ...s.settings.savings, ...patch } }, ...touch() })),
       setViewMode: (mode) =>
         set((s) => ({ settings: { ...s.settings, viewMode: mode }, ...touch() })),
 
@@ -345,6 +430,10 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             theme: { ...DEFAULT_THEME, ...data.settings?.theme },
             animations: { ...DEFAULT_ANIMATIONS, ...data.settings?.animations },
             notifications: { ...DEFAULT_NOTIFICATIONS, ...data.settings?.notifications },
+            payroll: { ...DEFAULT_PAYROLL, ...data.settings?.payroll },
+            paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...data.settings?.paySchedule },
+            savings: { ...DEFAULT_SAVINGS, ...data.settings?.savings },
+            homeWidgets: data.settings?.homeWidgets ?? DEFAULT_WIDGETS,
           },
           activeMonthId: data.activeMonthId ?? currentMonthId(),
           updatedAt: data.updatedAt ?? Date.now(),
@@ -363,7 +452,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
     }),
     {
       name: 'finance-app-state',
-      version: 2,
+      version: 3,
       migrate: (persisted, version) => {
         if (version < 2) {
           const migrated = migrateV1((persisted ?? {}) as V1State)
@@ -376,6 +465,22 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             activeTab: 'home',
             updatedAt: Date.now(),
             ...migrated,
+          } as FinanceState & FinanceActions
+        }
+        if (version < 3) {
+          // v2 → v3: nuevos campos (planilla, plan de pago, ahorro, sonidos, widgets)
+          const s = persisted as FinanceState
+          return {
+            ...s,
+            settings: {
+              ...DEFAULT_SETTINGS,
+              ...s.settings,
+              animations: { ...DEFAULT_ANIMATIONS, ...s.settings?.animations },
+              payroll: { ...DEFAULT_PAYROLL, ...(s.settings as Partial<AppSettings>)?.payroll },
+              paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...(s.settings as Partial<AppSettings>)?.paySchedule },
+              savings: { ...DEFAULT_SAVINGS, ...(s.settings as Partial<AppSettings>)?.savings },
+              homeWidgets: s.settings?.homeWidgets ?? DEFAULT_WIDGETS,
+            },
           } as FinanceState & FinanceActions
         }
         return persisted as FinanceState & FinanceActions

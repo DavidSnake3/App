@@ -64,6 +64,7 @@ export function KindTag({ kind }: { kind: PayableItem['kind'] }) {
     servicio: { label: 'Servicio', color: 'var(--app-accent-soft)' },
     deuda: { label: 'Deuda', color: 'var(--c-warning)' },
     gasto: { label: 'Gasto', color: 'var(--c-muted)' },
+    personal: { label: 'Personal', color: 'var(--c-income)' },
   } as const
   const { label, color } = map[kind]
   return (
