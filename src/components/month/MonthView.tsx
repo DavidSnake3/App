@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays, ChartGantt, ChevronLeft, ChevronRight, LayoutGrid,
-  List, Plus, Sparkles, Table2, Trash2, TrendingDown, TrendingUp, Wallet,
+  List, Plus, Settings2, Sparkles, Table2, Trash2, TrendingDown, TrendingUp,
 } from 'lucide-react'
 import type { Expense, ExpenseKind, PayableItem, ViewMode } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -51,6 +51,7 @@ export function MonthView() {
   const [detail, setDetail] = useState<PayableItem | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showCongrats, setShowCongrats] = useState(false)
+  const [editAdditional, setEditAdditional] = useState(false)
 
   useEffect(() => { ensureMonthExists(monthId) }, [monthId, ensureMonthExists])
 
@@ -125,25 +126,7 @@ export function MonthView() {
           </button>
         </div>
 
-        {/* Ingresos */}
-        <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Wallet size={16} className="text-accent-soft" />
-            <h3 className="text-[13.5px] font-semibold text-muted">Ingresos del mes</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11.5px] text-muted block mb-1">Salario</label>
-              <CurrencyInput value={month.income.salary} onChange={(v) => updateIncome(monthId, { salary: v })} />
-            </div>
-            <div>
-              <label className="text-[11.5px] text-muted block mb-1">Adicionales</label>
-              <CurrencyInput value={month.income.additional} onChange={(v) => updateIncome(monthId, { additional: v })} />
-            </div>
-          </div>
-        </div>
-
-        {/* Resumen + progreso (punto 15) */}
+        {/* Resumen + progreso (punto 15) — el salario viene solo de Ajustes → Ingresos */}
         <div className="card p-4 relative overflow-hidden">
           <div
             className="absolute inset-x-0 top-0 h-1"
@@ -173,6 +156,39 @@ export function MonthView() {
               className="h-full rounded-full transition-all duration-700"
               style={{ width: `${Math.round(summary.progress * 100)}%`, background: 'var(--app-gradient)' }}
             />
+          </div>
+
+          {/* El ingreso es configuración general (Ajustes → Ingresos y planilla) */}
+          <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-edge/60">
+            <button
+              onClick={() => setActiveTab('settings')}
+              className="pressable text-[11.5px] text-muted inline-flex items-center gap-1.5 min-w-0"
+            >
+              <Settings2 size={12} className="shrink-0" style={{ color: 'var(--app-accent-soft)' }} />
+              <span className="truncate">
+                Salario <span className="num font-semibold text-ink">{formatMoney(month.income.salary)}</span> · desde Ajustes
+              </span>
+            </button>
+            {editAdditional ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <CurrencyInput
+                  value={month.income.additional}
+                  onChange={(v) => updateIncome(monthId, { additional: v })}
+                  className="w-32 [&_input]:!py-1.5 [&_input]:!text-[13px]"
+                  autoFocus
+                />
+                <button onClick={() => setEditAdditional(false)} className="pressable text-[11.5px] font-semibold" style={{ color: 'var(--app-accent-soft)' }}>
+                  Listo
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditAdditional(true)}
+                className="pressable text-[11.5px] text-muted shrink-0"
+              >
+                Adicionales: <span className="num font-semibold text-ink">{formatMoney(month.income.additional)}</span>
+              </button>
+            )}
           </div>
         </div>
 

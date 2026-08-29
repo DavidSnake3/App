@@ -128,7 +128,7 @@ function clearWebTimers() {
 function showWebNotification(task: ReminderTask) {
   if (!hasWebNotifications() || Notification.permission !== 'granted') return
   try {
-    new Notification(task.title, { body: task.body, tag: task.id })
+    new Notification(task.title, { body: task.body, tag: task.id, icon: '/icons/icon-192.png' })
   } catch { /* algunos WebView lo bloquean */ }
 }
 
@@ -174,6 +174,7 @@ async function scheduleNative(tasks: ReminderTask[]): Promise<void> {
       channelId: t.alarm ? 'alarmas' : 'pagos',
       schedule: { at: new Date(t.fireAt), allowWhileIdle: true },
       smallIcon: 'ic_stat_name',
+      largeIcon: 'ic_notif_large',
       autoCancel: !t.alarm,
       ongoing: false,
     })),
@@ -240,11 +241,12 @@ export async function sendTestNotification(): Promise<'ok' | 'sin-permiso' | 'no
       await LocalNotifications.schedule({
         notifications: [{
           id: 999999901,
-          title: 'Prueba: así se verá tu recordatorio',
-          body: 'Ejemplo — Internet vence en 3 días. Monto: ' + formatMoney(23000),
+          title: 'Recordatorio de pago (prueba)',
+          body: 'Internet vence en 3 días · Monto: ' + formatMoney(23000),
           channelId: 'pagos',
           schedule: { at: new Date(Date.now() + 4000), allowWhileIdle: true },
           smallIcon: 'ic_stat_name',
+          largeIcon: 'ic_notif_large',
         }],
       })
       return 'ok'
@@ -255,8 +257,9 @@ export async function sendTestNotification(): Promise<'ok' | 'sin-permiso' | 'no
   if (!ok) return 'sin-permiso'
   setTimeout(() => {
     try {
-      new Notification('Prueba: así se verá tu recordatorio', {
-        body: 'Ejemplo — Internet vence en 3 días. Monto: ' + formatMoney(23000),
+      new Notification('Recordatorio de pago (prueba)', {
+        body: 'Internet vence en 3 días · Monto: ' + formatMoney(23000),
+        icon: '/icons/icon-192.png',
       })
     } catch { /* bloqueado */ }
   }, 3000)

@@ -55,4 +55,10 @@ await sharp({
   .png()
   .toFile(out('resources/splash-dark.png'))
 
+// Ícono grande de notificaciones (el plugin lo busca como drawable, no mipmap)
+await sharp(join(root, 'resources', 'icon-only.png'))
+  .resize(256, 256)
+  .png()
+  .toFile(out('android/app/src/main/res/drawable/ic_notif_large.png'))
+
 console.log('Íconos generados ✔')

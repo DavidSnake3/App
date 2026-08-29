@@ -6,20 +6,45 @@ export const DEFAULT_CCSS_PCT = 10.83 // CCSS empleado (Costa Rica)
 
 export interface PayrollBreakdown {
   gross: number
+  /** monto que quita la CCSS (automático a partir del %) */
   ccss: number
+  /** deducciones reales (créditos, embargos…) — SIN contar adelantos */
   deductions: { name: string; amount: number; debtId?: string }[]
+  /** adelantos de salario: parte de tu pago (ej. tu 1ª quincena) */
+  advances: { name: string; amount: number }[]
+  advanceTotal: number
+  /** deducciones reales totales (CCSS + otras, sin adelantos) */
   totalDeductions: number
+  /** tu ingreso mensual REAL: bruto − CCSS − deducciones reales */
   net: number
+  /** lo que llega en la liquidación (neto − adelantos ya recibidos) */
+  settlementNet: number
 }
 
-/** Calcula el desglose del comprobante: bruto − CCSS − deducciones = neto */
+/**
+ * Desglose del comprobante. Los adelantos NO reducen tu ingreso mensual:
+ * solo cambian CUÁNDO te llega (1ª quincena vs. liquidación).
+ */
 export function payrollBreakdown(p: PayrollConfig): PayrollBreakdown {
   const gross = Math.max(0, p.gross)
-  const ccss = Math.round(gross * (p.ccssPct / 100) * 100) / 100
-  const deductions = p.deductions.map((d) => ({ name: d.name, amount: d.amount, debtId: d.debtId }))
+  // CCSS a colón entero: así las filas visibles siempre suman el total visible
+  const ccss = Math.round(gross * (p.ccssPct / 100))
+  // Una deducción vinculada a deuda NUNCA es adelanto (la cuota es plata que sale)
+  const deductions = p.deductions
+    .filter((d) => !d.isAdvance || d.debtId)
+    .map((d) => ({ name: d.name, amount: d.amount, debtId: d.debtId }))
+  const advances = p.deductions
+    .filter((d) => d.isAdvance && !d.debtId)
+    .map((d) => ({ name: d.name, amount: d.amount }))
   const other = deductions.reduce((s, d) => s + d.amount, 0)
+  const advanceTotal = advances.reduce((s, d) => s + d.amount, 0)
   const totalDeductions = ccss + other
-  return { gross, ccss, deductions, totalDeductions, net: Math.max(0, gross - totalDeductions) }
+  const net = Math.max(0, gross - totalDeductions)
+  return {
+    gross, ccss, deductions, advances, advanceTotal, totalDeductions,
+    net,
+    settlementNet: Math.max(0, net - advanceTotal),
+  }
 }
 
 /** Divide un monto mensual según el período de vista del comprobante */
@@ -54,10 +79,27 @@ export interface PaydayInfo {
   date: Date
   amount: number
   adjusted: boolean
+  label?: string
 }
 
-/** Próximas n fechas de pago según el plan, con monto neto por pago */
-export function nextPaydays(schedule: PaySchedule, netMonthly: number, n = 4, from = new Date()): PaydayInfo[] {
+/**
+ * Montos por día de pago del mes. Si te pagan quincenal y tienes un adelanto
+ * configurado, la 1ª quincena = adelanto y la 2ª = liquidación (neto − adelanto).
+ */
+export function paydayAmounts(schedule: PaySchedule, bd: PayrollBreakdown): { amount: number; label?: string }[] {
+  const paydays = (schedule.paydays.length ? schedule.paydays : [30]).slice().sort((a, b) => a - b)
+  if (schedule.frequency === 'biweekly' && paydays.length >= 2 && bd.advanceTotal > 0 && bd.advanceTotal < bd.net) {
+    return [
+      { amount: bd.advanceTotal, label: 'adelanto' },
+      { amount: bd.settlementNet, label: 'liquidación' },
+    ]
+  }
+  const per = bd.net / paydays.length
+  return paydays.map(() => ({ amount: per }))
+}
+
+/** Próximas n fechas de pago según el plan, con monto por pago */
+export function nextPaydays(schedule: PaySchedule, bd: PayrollBreakdown, n = 4, from = new Date()): PaydayInfo[] {
   const out: PaydayInfo[] = []
   const start = new Date(from.getFullYear(), from.getMonth(), from.getDate())
 
@@ -68,24 +110,29 @@ export function nextPaydays(schedule: PaySchedule, netMonthly: number, n = 4, fr
     while (d.getDay() !== targetJs) d.setDate(d.getDate() + 1)
     for (let i = 0; i < n; i++) {
       const pay = adjustForWeekend(new Date(d), schedule.adjustWeekend)
-      out.push({ date: pay, amount: netMonthly * 12 / 52, adjusted: pay.getTime() !== d.getTime() })
+      out.push({ date: pay, amount: bd.net * 12 / 52, adjusted: pay.getTime() !== d.getTime() })
       d.setDate(d.getDate() + 7)
     }
     return out
   }
 
   const paydays = (schedule.paydays.length ? schedule.paydays : [30]).slice().sort((a, b) => a - b)
-  const perPay = netMonthly / paydays.length
+  const amounts = paydayAmounts(schedule, bd)
   let y = start.getFullYear()
   let m = start.getMonth() // 0-11
   let guard = 0
   while (out.length < n && guard++ < 24) {
-    for (const day of paydays) {
+    for (let i = 0; i < paydays.length; i++) {
       const max = daysInMonth(`${y}-${String(m + 1).padStart(2, '0')}`)
-      const exact = new Date(y, m, Math.min(day, max))
+      const exact = new Date(y, m, Math.min(paydays[i], max))
       const pay = adjustForWeekend(exact, schedule.adjustWeekend)
       if (pay >= start && out.length < n) {
-        out.push({ date: pay, amount: perPay, adjusted: pay.getTime() !== exact.getTime() })
+        out.push({
+          date: pay,
+          amount: amounts[i]?.amount ?? bd.net / paydays.length,
+          adjusted: pay.getTime() !== exact.getTime(),
+          label: amounts[i]?.label,
+        })
       }
     }
     m++

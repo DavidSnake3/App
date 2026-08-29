@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícono de barra de estado: marca SN en blanco (Android lo tiñe automáticamente) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="400"
+    android:viewportHeight="400">
+    <group android:translateY="85">
+        <path
+            android:pathData="M164 56 H102 Q64 56 64 90 Q64 124 102 124 H124 Q160 124 160 156 Q160 188 124 188 H56"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="44"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000" />
+        <path
+            android:pathData="M186 196 L246 62 L296 174 L348 84"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="44"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000" />
+        <path
+            android:pathData="M384 22 L381 103 L317 66 Z"
+            android:fillColor="#FFFFFF" />
+    </group>
+</vector>

@@ -174,14 +174,12 @@ function IngresosSection() {
   const settings = useFinanceStore((s) => s.settings)
   const profile = useFinanceStore((s) => s.profile)
   const debts = useFinanceStore((s) => s.debts)
-  const activeMonthId = useFinanceStore((s) => s.activeMonthId)
   const setPayroll = useFinanceStore((s) => s.setPayroll)
   const setPaySchedule = useFinanceStore((s) => s.setPaySchedule)
   const setSavings = useFinanceStore((s) => s.setSavings)
-  const setSettings = useFinanceStore((s) => s.setSettings)
+  const setDefaultSalaryEverywhere = useFinanceStore((s) => s.setDefaultSalaryEverywhere)
   const setProfile = useFinanceStore((s) => s.setProfile)
   const updateDebt = useFinanceStore((s) => s.updateDebt)
-  const updateIncome = useFinanceStore((s) => s.updateIncome)
 
   const p = settings.payroll
   const sch = settings.paySchedule
@@ -189,15 +187,17 @@ function IngresosSection() {
   const bd = payrollBreakdown(p)
   const [newDedName, setNewDedName] = useState('')
   const [newDedAmount, setNewDedAmount] = useState(0)
-  const [applied, setApplied] = useState(false)
+  const [newDedAdvance, setNewDedAdvance] = useState(false)
 
   const linkableDebts = debts.filter((d) => !debtIsSettled(d) && !d.viaPlanilla && !p.deductions.some((x) => x.debtId === d.id))
 
   const addManualDed = () => {
     if (!newDedName.trim() || newDedAmount <= 0) return
-    setPayroll({ deductions: [...p.deductions, { id: uid(), name: newDedName.trim(), amount: newDedAmount }] })
-    setNewDedName(''); setNewDedAmount(0)
+    setPayroll({ deductions: [...p.deductions, { id: uid(), name: newDedName.trim(), amount: newDedAmount, isAdvance: newDedAdvance }] })
+    setNewDedName(''); setNewDedAmount(0); setNewDedAdvance(false)
   }
+  const toggleAdvance = (id: string) =>
+    setPayroll({ deductions: p.deductions.map((d) => d.id === id ? { ...d, isAdvance: !d.isAdvance } : d) })
   const addDebtDed = (d: Debt) => {
     setPayroll({ deductions: [...p.deductions, { id: uid(), name: d.name, amount: d.monthlyPayment, debtId: d.id }] })
     updateDebt(d.id, { viaPlanilla: true })
@@ -208,14 +208,7 @@ function IngresosSection() {
     setPayroll({ deductions: p.deductions.filter((x) => x.id !== id) })
   }
 
-  const aplicarNeto = () => {
-    setSettings({ defaultSalary: bd.net })
-    updateIncome(activeMonthId, { salary: bd.net })
-    setApplied(true)
-    setTimeout(() => setApplied(false), 2500)
-  }
-
-  const next = nextPaydays(sch, bd.net || settings.defaultSalary, 3)
+  const next = nextPaydays(sch, p.gross > 0 ? bd : { ...bd, net: settings.defaultSalary, settlementNet: settings.defaultSalary, advanceTotal: 0 }, 3)
 
   return (
     <>
@@ -230,7 +223,12 @@ function IngresosSection() {
             value={p.ccssPct}
             onChange={(e) => setPayroll({ ccssPct: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
           />
-          <p className="text-[11px] text-muted mt-1">Costa Rica: 10.83% por defecto.</p>
+          <p className="text-[11px] text-muted mt-1">
+            Costa Rica: 10.83% por defecto.
+            {p.gross > 0 && (
+              <> La CCSS te quita <span className="num font-bold" style={{ color: 'var(--c-danger)' }}>−{formatMoney(Math.round(bd.ccss))}</span> al mes (automático).</>
+            )}
+          </p>
         </Field>
 
         <div>
@@ -240,9 +238,22 @@ function IngresosSection() {
               {p.deductions.map((d) => (
                 <div key={d.id} className="flex items-center gap-2 px-3 py-2">
                   {d.debtId ? <HandCoins size={13} className="text-accent-soft shrink-0" /> : <Landmark size={13} className="text-muted shrink-0" />}
-                  <span className="flex-1 text-[13px] text-ink truncate">{d.name}{d.debtId ? ' · deuda vinculada' : ''}</span>
-                  <span className="num text-[13px] font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoney(d.amount)}</span>
-                  <button onClick={() => removeDed(d.id)} aria-label={`Quitar ${d.name}`} className="pressable w-7 h-7 rounded-full flex items-center justify-center text-muted">
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13px] text-ink truncate">{d.name}{d.debtId ? ' · deuda vinculada' : ''}</span>
+                    {/* una cuota de deuda nunca es adelanto: el chip solo aplica a deducciones manuales */}
+                    {!d.debtId && (
+                      <button
+                        onClick={() => toggleAdvance(d.id)}
+                        className={`pressable chip !py-0 !px-1.5 !text-[9.5px] mt-0.5 ${d.isAdvance ? 'chip-active' : ''}`}
+                      >
+                        {d.isAdvance ? 'Adelanto: es tu 1ª quincena' : '¿Es adelanto de quincena?'}
+                      </button>
+                    )}
+                  </span>
+                  <span className="num text-[13px] font-semibold shrink-0" style={{ color: d.isAdvance ? 'var(--c-income)' : 'var(--c-danger)' }}>
+                    {d.isAdvance ? '' : '−'}{formatMoney(d.amount)}
+                  </span>
+                  <button onClick={() => removeDed(d.id)} aria-label={`Quitar ${d.name}`} className="pressable w-7 h-7 rounded-full flex items-center justify-center text-muted shrink-0">
                     <X size={13} />
                   </button>
                 </div>
@@ -256,6 +267,15 @@ function IngresosSection() {
               <Plus size={18} />
             </button>
           </div>
+          <label className="flex items-center gap-2 mt-2 text-[12px] text-muted cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={newDedAdvance}
+              onChange={(e) => setNewDedAdvance(e.target.checked)}
+              className="w-4 h-4 accent-[var(--app-accent)]"
+            />
+            Es un ADELANTO de salario (mi pago de la 1ª quincena — no es plata perdida)
+          </label>
           {linkableDebts.length > 0 && (
             <div className="mt-2">
               <p className="text-[11.5px] text-muted mb-1">O vincula una deuda existente (se pagará por planilla):</p>
@@ -270,17 +290,29 @@ function IngresosSection() {
           )}
         </div>
 
-        {p.gross > 0 && (
+        {p.gross > 0 ? (
           <div className="card bg-elevated/60 p-3.5">
             <Row2 label="Salario bruto" value={formatMoney(bd.gross)} />
-            <Row2 label={`CCSS (${p.ccssPct}%)`} value={`−${formatMoney(Math.round(bd.ccss))}`} danger />
+            <Row2 label={`CCSS (${p.ccssPct}%) automático`} value={`−${formatMoney(Math.round(bd.ccss))}`} danger />
             {bd.deductions.map((d, i) => <Row2 key={i} label={d.name} value={`−${formatMoney(d.amount)}`} danger />)}
             <div className="border-t border-dashed my-1.5" style={{ borderColor: 'var(--c-border)' }} />
-            <Row2 label="LÍQUIDO PAGABLE (neto)" value={formatMoney(Math.round(bd.net))} strong />
-            <button onClick={aplicarNeto} className="pressable btn-primary w-full mt-2.5 !py-2.5 text-[13.5px]">
-              {applied ? 'Aplicado ✓' : 'Usar el neto como mi salario del mes'}
-            </button>
+            <Row2 label="TU INGRESO MENSUAL (neto)" value={formatMoney(Math.round(bd.net))} strong />
+            {sch.frequency === 'biweekly' && bd.advanceTotal > 0 && bd.advanceTotal < bd.net && (
+              <div className="mt-1.5 rounded-xl px-2.5 py-2" style={{ background: 'color-mix(in oklab, var(--c-income) 10%, transparent)' }}>
+                <p className="text-[11.5px] text-muted mb-1">Así te llega (el adelanto es parte de tu pago):</p>
+                <Row2 label="1ª quincena (adelanto)" value={formatMoney(Math.round(bd.advanceTotal))} />
+                <Row2 label="2ª quincena (liquidación)" value={formatMoney(Math.round(bd.settlementNet))} />
+              </div>
+            )}
+            <p className="text-[11px] text-muted mt-2">
+              Este neto se usa automáticamente como el salario del mes actual y los siguientes.
+            </p>
           </div>
+        ) : (
+          <Field label="¿No usas planilla? Escribe tu salario NETO mensual">
+            <CurrencyInput value={settings.defaultSalary} onChange={setDefaultSalaryEverywhere} />
+            <p className="text-[11px] text-muted mt-1">Se aplica solo al mes actual y a los siguientes.</p>
+          </Field>
         )}
       </Card>
 

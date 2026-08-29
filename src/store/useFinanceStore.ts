@@ -7,7 +7,7 @@ import type {
 } from '../types/finance'
 import { currentMonthId, todayISO } from '../lib/dates'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
-import { DEFAULT_CCSS_PCT } from '../lib/payroll'
+import { DEFAULT_CCSS_PCT, payrollBreakdown } from '../lib/payroll'
 
 // ─── Valores por defecto ─────────────────────────────────────────────────────
 
@@ -141,6 +141,8 @@ interface FinanceActions {
   setPayroll(patch: Partial<PayrollConfig>): void
   setPaySchedule(patch: Partial<PaySchedule>): void
   setSavings(patch: Partial<SavingsConfig>): void
+  /** salario neto manual (sin planilla): actualiza default + mes actual y futuros */
+  setDefaultSalaryEverywhere(v: number): void
   setViewMode(mode: ViewMode): void
 
   markCelebrated(monthId: string): void
@@ -407,12 +409,40 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set((s) => ({ settings: { ...s.settings, animations: { ...s.settings.animations, ...patch } }, ...touch() })),
       setNotifications: (patch) =>
         set((s) => ({ settings: { ...s.settings, notifications: { ...s.settings.notifications, ...patch } }, ...touch() })),
+      // La planilla manda: al cambiarla, el salario del mes actual y los futuros
+      // se actualizan SOLOS con el neto (el ingreso ya no se edita en la vista Mes).
+      // viewPeriod es solo visual: no dispara la sincronización ni escritura a la nube.
       setPayroll: (patch) =>
-        set((s) => ({ settings: { ...s.settings, payroll: { ...s.settings.payroll, ...patch } }, ...touch() })),
+        set((s) => {
+          const payroll = { ...s.settings.payroll, ...patch }
+          const settings = { ...s.settings, payroll }
+          const affectsMoney = 'gross' in patch || 'ccssPct' in patch || 'deductions' in patch
+          if (affectsMoney && payroll.gross > 0) {
+            const net = Math.round(payrollBreakdown(payroll).net)
+            const nowId = currentMonthId()
+            const months = Object.fromEntries(
+              Object.entries(s.months).map(([id, m]) =>
+                id >= nowId ? [id, { ...m, income: { ...m.income, salary: net } }] : [id, m],
+              ),
+            )
+            return { settings: { ...settings, defaultSalary: net }, months, ...touch() }
+          }
+          return { settings, ...touch() }
+        }),
       setPaySchedule: (patch) =>
         set((s) => ({ settings: { ...s.settings, paySchedule: { ...s.settings.paySchedule, ...patch } }, ...touch() })),
       setSavings: (patch) =>
         set((s) => ({ settings: { ...s.settings, savings: { ...s.settings.savings, ...patch } }, ...touch() })),
+      setDefaultSalaryEverywhere: (v) =>
+        set((s) => {
+          const nowId = currentMonthId()
+          const months = Object.fromEntries(
+            Object.entries(s.months).map(([id, m]) =>
+              id >= nowId ? [id, { ...m, income: { ...m.income, salary: v } }] : [id, m],
+            ),
+          )
+          return { settings: { ...s.settings, defaultSalary: v }, months, ...touch() }
+        }),
       setViewMode: (mode) =>
         set((s) => ({ settings: { ...s.settings, viewMode: mode }, ...touch() })),
 

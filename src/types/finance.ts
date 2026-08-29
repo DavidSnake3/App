@@ -204,6 +204,11 @@ export interface PayrollDeduction {
   amount: number
   /** deuda vinculada: se paga por planilla y no aparece en el mes */
   debtId?: string
+  /**
+   * Es un ADELANTO de salario (ej. pago de la 1ª quincena): la planilla lo
+   * resta en la liquidación, pero NO es plata perdida — es parte de tu pago.
+   */
+  isAdvance?: boolean
 }
 
 export interface PayrollConfig {

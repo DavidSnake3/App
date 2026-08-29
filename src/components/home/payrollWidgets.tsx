@@ -16,7 +16,7 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
   const setPayroll = useFinanceStore((s) => s.setPayroll)
   const bd = payrollBreakdown(payroll)
   const p = payroll.viewPeriod
-  const next = useMemo(() => nextPaydays(schedule, bd.net, 2), [schedule, bd.net])
+  const next = nextPaydays(schedule, bd, 2)
 
   if (payroll.gross <= 0) {
     return (
@@ -76,6 +76,12 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
             {formatMoney(Math.round(perPeriod(bd.net, p)))}
           </span>
         </div>
+        {schedule.frequency === 'biweekly' && bd.advanceTotal > 0 && bd.advanceTotal < bd.net && (
+          <p className="text-[11px] text-muted mt-0.5">
+            Te llega: <span className="num font-semibold text-ink">{formatMoney(Math.round(bd.advanceTotal))}</span> (adelanto, 1ª q)
+            {' + '}<span className="num font-semibold text-ink">{formatMoney(Math.round(bd.settlementNet))}</span> (2ª q)
+          </p>
+        )}
       </div>
 
       {size !== 'sm' && next.length > 0 && (
@@ -85,7 +91,8 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
               {i === 0 ? 'Próximo pago: ' : 'Luego: '}
               <span className="font-semibold text-ink capitalize">{formatPayday(pd.date)}</span>
               {' · '}<span className="num font-semibold" style={{ color: 'var(--c-income)' }}>{formatMoney(Math.round(pd.amount))}</span>
-              {pd.adjusted && <span style={{ color: 'var(--c-warning)' }}> (movido por fin de semana)</span>}
+              {pd.label && <span> ({pd.label})</span>}
+              {pd.adjusted && <span style={{ color: 'var(--c-warning)' }}> · movido por fin de semana</span>}
             </p>
           ))}
         </div>
