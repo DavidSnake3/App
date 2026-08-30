@@ -5,6 +5,7 @@
 import type { Debt } from '../types/finance'
 import { geminiChat, type GeminiTurn } from './ai'
 import { buildPayables, debtEndMonthId, debtPaidCount, debtRemaining, getMonthSummary } from './finance'
+import { carryOver, hormigasTotal, realBalance } from './fund'
 import { PERIOD_LABEL, formatPayday, nextPaydays, payrollBreakdown } from './payroll'
 import { addMonthsToId, currentMonthId, monthLabel, todayDay } from './dates'
 import { useFinanceStore } from '../store/useFinanceStore'
@@ -43,8 +44,12 @@ Formato: párrafos cortos; usa **negritas** para montos/nombres y listas con "- 
 
 CONOCES LA APP COMPLETA (guía para el usuario):
 - Pestañas: Inicio (widgets personalizables: mantener presionado ~1s para editar tamaño S/M/L, mover, quitar o agregar), Mes, Deudas, Año, Ajustes. Se puede deslizar entre pestañas.
-- Mes: pagos del mes en 5 vistas (tarjetas, lista, tabla, calendario, gantt). Botón + para agregar gasto/servicio/personal con ícono, recurrencia y recordatorio. Los pagos se ponen rojos al acercarse su fecha límite. Al entrar a un mes nuevo la app PREGUNTA si copiar los recurrentes (nunca copia sola); las deudas siguen solas. El salario NO se edita aquí: viene de Ajustes → Ingresos y planilla (los "Adicionales" del mes sí se editan en línea).
-- Deudas: cada deuda tiene estado de cuenta estilo recibo (saldo anterior, aporte capital/intereses, nuevo saldo, cuotas pagadas/pendientes, próximo pago, monto al día), historial de abonos y registro de abono con desglose. Una deuda puede pagarse "por planilla" (se deduce del salario y no aparece en el mes).
+- Mes: pagos del mes en 5 vistas (tarjetas, lista, tabla, calendario, gantt). Botón + para agregar gasto/servicio/personal con ícono, recurrencia y recordatorio. Los pagos se ponen rojos al acercarse su fecha límite. Al entrar a un mes nuevo la app PREGUNTA si copiar los recurrentes (nunca copia sola); las deudas siguen solas. El salario NO se edita aquí: viene de Ajustes → Ingresos y planilla (los "Adicionales" del mes sí se editan en línea). Botón "Compartir" para generar una imagen-resumen del mes.
+- SALDO REAL (en Mes): el usuario escribe cuánto tiene HOY en el banco y desde entonces la app lo lleva en vivo: suma las quincenas al llegar y resta cada pago, gasto hormiga y aporte al ahorro. El sobrante del mes se arrastra solo al siguiente (NO es ahorro, es lo que sobró). El ahorro va aparte.
+- GASTOS HORMIGA (en Mes): anotar al instante gastos pequeños (café, uber…); se restan del saldo real y se ve el total del mes y de la semana.
+- Mes por quincenas (en Mes): tarjeta con cuánto le llega, cuánto vence y cuánto le queda en cada quincena.
+- Deudas: cada deuda tiene estado de cuenta estilo recibo (saldo anterior, aporte capital/intereses, nuevo saldo, cuotas pagadas/pendientes, próximo pago, monto al día), historial de abonos y registro de abono con desglose. Una deuda puede pagarse "por planilla" (se deduce del salario y no aparece en el mes). Arriba hay una gráfica "camino a cero deudas" con la fecha en que quedará libre.
+- Ahorro: plan mensual (% o fijo) + APORTES REALES con fecha (botón Apartar en el widget o en Ajustes). El progreso a la meta usa los aportes reales. Hay meta sugerida de FONDO DE EMERGENCIA = 3 meses de gastos promedio.
 - Ingresos y planilla (Ajustes): el usuario configura su comprobante REAL como semanal, quincenal o mensual: salario bruto, % CCSS (10.83 por defecto en Costa Rica, calculado automático), deducciones (créditos/embargos) y ADELANTOS (un adelanto es su pago de la 1ª quincena, NO es plata perdida). El neto mensual se usa automáticamente como salario del mes actual y futuros. También configura cuándo le pagan (días, ajuste si cae en fin de semana) y su plan de ahorro (% o monto fijo, con meta).
 - Año: calendario anual, proyección de ingresos/ahorro/gastos y gantt de deudas.
 - Ajustes: cuenta (correo/Google, sincronización en la nube), tema (claro/oscuro, paletas, fondo propio), animaciones y 3+3 sonidos a elegir con pruebas, notificaciones y alarmas (con pruebas), exportar Excel, respaldo JSON, borrar datos.
@@ -84,7 +89,16 @@ export function buildUserContext(): string {
   }
 
   if (settings.savings.enabled) {
-    lines.push(`Plan de ahorro: ${settings.savings.mode === 'percent' ? settings.savings.value + '% del neto' : settings.savings.value + ' fijo'} al mes${settings.savings.goal ? `, meta ${settings.savings.goal} (${settings.savings.goalName || 'sin nombre'})` : ''}.`)
+    const ahorrado = settings.savings.deposits.reduce((t, d) => t + d.amount, 0)
+    lines.push(`Plan de ahorro: ${settings.savings.mode === 'percent' ? settings.savings.value + '% del neto' : settings.savings.value + ' fijo'} al mes${settings.savings.goal ? `, meta ${settings.savings.goal} (${settings.savings.goalName || 'sin nombre'})` : ''}. Ahorrado real (aportes): ${Math.round(ahorrado)}.`)
+  }
+
+  // Saldo real y gastos hormiga (control total del dinero)
+  const saldo = realBalance(months, debts, settings)
+  if (saldo != null) {
+    const mesNow = months[nowId]
+    const horm = mesNow ? hormigasTotal(mesNow) : 0
+    lines.push(`SALDO REAL en el banco ahora: ${Math.round(saldo)} (incluye sobrante arrastrado ${Math.round(carryOver(months, debts, settings))}). Gastos hormiga de este mes: ${Math.round(horm)}${mesNow?.hormigas?.length ? ` (${mesNow.hormigas.slice(-8).map((h) => `${h.name} ${h.amount}`).join(', ')})` : ''}.`)
   }
 
   // Mes activo + anterior (detalle) y totales del año

@@ -62,12 +62,22 @@ export interface MonthlyIncome {
   additionalLabel: string
 }
 
+/** Gasto hormiga: salida pequeña anotada al instante (café, uber, snack…) */
+export interface AntExpense {
+  id: string
+  name: string
+  amount: number
+  dateISO: string // 'yyyy-MM-dd'
+}
+
 export interface MonthData {
   id: string   // 'yyyy-MM'
   year: number
   month: number // 1-12
   income: MonthlyIncome
   expenses: Expense[]
+  /** gastos hormiga del mes (control total del dinero) */
+  hormigas?: AntExpense[]
   celebrated: boolean // ya se mostró la felicitación de mes completado (punto 22)
   /** ya se preguntó si copiar los recurrentes del mes anterior */
   carryAsked?: boolean
@@ -166,6 +176,7 @@ export type WidgetId =
   | 'ahorro'      // panel de ahorro
   | 'dona'        // dona: distribución de gastos por tipo
   | 'pilares'     // pilares: ingresos vs gastos por mes
+  | 'saldo'       // saldo real: lo que tienes en el banco ahora
 
 export type WidgetSize = 'sm' | 'lg' | 'xl'
 
@@ -246,6 +257,14 @@ export interface PaySchedule {
 
 // ─── Ahorro (dashboard) ──────────────────────────────────────────────────────
 
+/** Aporte REAL al ahorro: mueve dinero del saldo real al fondo de ahorro */
+export interface SavingsDeposit {
+  id: string
+  amount: number // negativo = retiro del ahorro
+  dateISO: string
+  note?: string
+}
+
 export interface SavingsConfig {
   enabled: boolean
   mode: 'percent' | 'fixed'
@@ -254,6 +273,27 @@ export interface SavingsConfig {
   /** meta total opcional */
   goal: number
   goalName: string
+  /** aportes reales con fecha (el progreso se calcula con esto) */
+  deposits: SavingsDeposit[]
+}
+
+// ─── Saldo real (control total del dinero, mejora del usuario) ───────────────
+
+/**
+ * El saldo real refleja lo que el usuario tiene EN EL BANCO ahora mismo:
+ * parte de un monto base que él escribe y desde entonces la app suma lo que
+ * le llega (quincenas) y resta lo que paga, los gastos hormiga y los aportes
+ * al ahorro. El sobrante de cada mes se arrastra solo a los siguientes.
+ */
+export interface FundConfig {
+  enabled: boolean
+  /** cuánto tenía al activar/ajustar el control */
+  baseAmount: number
+  /** mes desde el que se cuenta el flujo */
+  anchorMonthId: string
+  /** flujo acumulado en el momento de fijar el saldo (para no contar doble) */
+  snapshot: number
+  setAtISO: string
 }
 
 export interface NotificationPrefs {
@@ -278,6 +318,8 @@ export interface AppSettings {
   payroll: PayrollConfig
   paySchedule: PaySchedule
   savings: SavingsConfig
+  /** saldo real: control total del dinero en el banco */
+  fund: FundConfig
 }
 
 // ─── Proyecciones (punto 13) ─────────────────────────────────────────────────

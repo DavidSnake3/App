@@ -17,6 +17,7 @@ import { PaidCheck } from '../month/ItemBits'
 import { LineChart } from '../year/LineChart'
 import { AhorroWidget, ComprobanteWidget } from './payrollWidgets'
 import { DonaGastosWidget, PilaresWidget } from './chartWidgets'
+import { SaldoWidget } from './fundWidget'
 
 export function RenderWidget({ id, size, ctx }: { id: WidgetId; size: WidgetSize; ctx: WidgetCtx }) {
   switch (id) {
@@ -33,6 +34,7 @@ export function RenderWidget({ id, size, ctx }: { id: WidgetId; size: WidgetSize
     case 'calendario': return <CalendarioWidget ctx={ctx} />
     case 'dona': return <DonaGastosWidget size={size} />
     case 'pilares': return <PilaresWidget size={size} />
+    case 'saldo': return <SaldoWidget size={size} ctx={ctx} />
   }
 }
 

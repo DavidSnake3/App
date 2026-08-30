@@ -1,6 +1,6 @@
 import {
   CalendarClock, CalendarDays, ChartColumnBig, ChartLine, ChartPie, ChartSpline,
-  CreditCard, FileText, LayoutGrid, Lightbulb, ListChecks, PiggyBank, Wallet,
+  CreditCard, FileText, Landmark, LayoutGrid, Lightbulb, ListChecks, PiggyBank, Wallet,
 } from 'lucide-react'
 import type { TabId, WidgetId, WidgetSize } from '../../types/finance'
 
@@ -20,6 +20,7 @@ export const WIDGET_META: Record<WidgetId, { name: string; desc: string; icon: R
   pendientes: { name: 'Pagos pendientes', desc: 'Próximos vencimientos', icon: <ListChecks size={16} />, defaultSize: 'lg' },
   proyeccion: { name: 'Proyección anual', desc: 'Ingresos, ahorro y gastos del año', icon: <ChartLine size={16} />, defaultSize: 'lg' },
   flujo: { name: 'Flujo del mes', desc: 'Balance acumulado día a día', icon: <ChartSpline size={16} />, defaultSize: 'lg' },
+  saldo: { name: 'Saldo real', desc: 'Lo que tienes en el banco, actualizado en vivo', icon: <Landmark size={16} />, defaultSize: 'sm' },
   dona: { name: 'Distribución de gastos', desc: 'Dona: ¿en qué se va tu dinero este mes?', icon: <ChartPie size={16} />, defaultSize: 'lg' },
   pilares: { name: 'Ingresos vs gastos', desc: 'Pilares de los últimos 6 meses con tu balance', icon: <ChartColumnBig size={16} />, defaultSize: 'lg' },
   deudas: { name: 'Deudas', desc: 'Saldo pendiente y cuota del mes', icon: <CreditCard size={16} />, defaultSize: 'sm' },

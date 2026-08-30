@@ -10,6 +10,7 @@ import { monthLabel } from '../../lib/dates'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddDebtSheet } from './AddDebtSheet'
 import { DebtDetailSheet } from './DebtDetailSheet'
+import { DebtTrend } from './DebtTrend'
 import { PaidCheck } from '../month/ItemBits'
 
 export function DebtsView() {
@@ -55,7 +56,8 @@ export function DebtsView() {
           </div>
         </div>
 
-
+        {/* Camino a cero deudas (nueva funcionalidad 5) */}
+        <DebtTrend debts={debts} />
 
         {/* Deudas activas */}
         {active.length === 0 && settled.length === 0 && (

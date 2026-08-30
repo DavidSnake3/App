@@ -4,7 +4,6 @@ import { ArrowRight, FileText, PiggyBank } from 'lucide-react'
 import type { WidgetSize } from '../../types/finance'
 import type { WidgetCtx } from './widgetMeta'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import { getMonthSummary } from '../../lib/finance'
 import { PERIOD_LABEL, formatPayday, inView, nextPaydays, payrollBreakdown } from '../../lib/payroll'
 import { currentMonthId } from '../../lib/dates'
 import { formatMoney, formatMoneyExact } from '../../lib/format'
@@ -113,21 +112,20 @@ export function AhorroWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }
   const savings = useFinanceStore((s) => s.settings.savings)
   const payroll = useFinanceStore((s) => s.settings.payroll)
   const defaultSalary = useFinanceStore((s) => s.settings.defaultSalary)
-  const months = useFinanceStore((s) => s.months)
-  const debts = useFinanceStore((s) => s.debts)
+  const addSavingsDeposit = useFinanceStore((s) => s.addSavingsDeposit)
 
   const base = payrollBreakdown(payroll).monthlyNet || defaultSalary
   const planMensual = savings.mode === 'percent'
     ? Math.round(Math.max(0, base) * savings.value / 100)
     : savings.value
 
-  // ahorro real: balances positivos de meses anteriores con datos
-  const acumulado = useMemo(() => {
-    const nowId = currentMonthId()
-    return Object.values(months)
-      .filter((m) => m.id < nowId && m.expenses.length > 0)
-      .reduce((s, m) => s + Math.max(0, getMonthSummary(m, debts).savings), 0)
-  }, [months, debts])
+  // ahorro REAL: la suma de tus aportes (se registran con el botón Aportar)
+  const acumulado = useMemo(() => savings.deposits.reduce((s, d) => s + d.amount, 0), [savings.deposits])
+  const nowId = currentMonthId()
+  const aportadoEsteMes = useMemo(
+    () => savings.deposits.filter((d) => d.dateISO.slice(0, 7) === nowId).reduce((s, d) => s + d.amount, 0),
+    [savings.deposits, nowId],
+  )
 
   if (!savings.enabled) {
     return (
@@ -161,8 +159,8 @@ export function AhorroWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }
         <div className="flex-1 min-w-0">
           <p className="text-[11px] text-muted">Plan mensual ({savings.mode === 'percent' ? `${savings.value}% del neto` : 'monto fijo'})</p>
           <p className="num text-[18px] font-bold leading-tight" style={{ color: 'var(--c-income)' }}>{formatMoney(planMensual)}</p>
-          <p className="text-[11px] text-muted mt-1.5">Ahorrado (meses cerrados)</p>
-          <p className="num text-[14px] font-bold text-ink leading-tight">{formatMoney(acumulado)}</p>
+          <p className="text-[11px] text-muted mt-1.5">Ahorrado real (tus aportes)</p>
+          <p className="num text-[14px] font-bold text-ink leading-tight">{formatMoney(Math.round(acumulado))}</p>
           {savings.goal > 0 && size !== 'sm' && (
             <p className="text-[11px] text-muted mt-1">
               Meta: <span className="num font-semibold text-ink">{formatMoney(savings.goal)}</span>
@@ -173,6 +171,21 @@ export function AhorroWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }
           )}
         </div>
       </div>
+      {planMensual > 0 && (
+        aportadoEsteMes >= planMensual ? (
+          <p className="text-[11.5px] font-semibold mt-2.5 flex items-center gap-1" style={{ color: 'var(--c-income)' }}>
+            ✓ Este mes ya apartaste {formatMoney(Math.round(aportadoEsteMes))}
+          </p>
+        ) : (
+          <button
+            onClick={() => addSavingsDeposit(planMensual - Math.max(0, aportadoEsteMes), 'Aporte del mes')}
+            className="pressable mt-2.5 w-full rounded-xl py-2 text-[12.5px] font-semibold text-white"
+            style={{ background: 'linear-gradient(90deg, var(--c-income), var(--app-accent))' }}
+          >
+            Apartar {formatMoney(planMensual - Math.max(0, aportadoEsteMes))} de este mes
+          </button>
+        )
+      )}
     </div>
   )
 }

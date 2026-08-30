@@ -1,13 +1,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
-  AnimationPrefs, AppSettings, Debt, DebtPayment, Expense, MonthData,
+  AnimationPrefs, AppSettings, Debt, DebtPayment, Expense, FundConfig, MonthData,
   NotificationPrefs, PayrollConfig, PaySchedule, SavingsConfig, SubItem,
   TabId, ThemeSettings, UserProfile, ViewMode, WidgetConf,
 } from '../types/finance'
 import { currentMonthId, todayISO } from '../lib/dates'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
 import { DEFAULT_CCSS_PCT, payrollBreakdown } from '../lib/payroll'
+import { makeFundConfig } from '../lib/fund'
 
 // ─── Valores por defecto ─────────────────────────────────────────────────────
 
@@ -27,6 +28,7 @@ export const DEFAULT_PROFILE: UserProfile = {
 /** Widgets del inicio por defecto (el usuario los personaliza a su gusto) */
 export const DEFAULT_WIDGETS: WidgetConf[] = [
   { id: 'estado', size: 'lg' },
+  { id: 'saldo', size: 'lg' },
   { id: 'resumen', size: 'lg' },
   { id: 'dona', size: 'lg' },
   { id: 'consejo', size: 'lg' },
@@ -73,6 +75,15 @@ export const DEFAULT_SAVINGS: SavingsConfig = {
   value: 10,
   goal: 0,
   goalName: '',
+  deposits: [],
+}
+
+export const DEFAULT_FUND: FundConfig = {
+  enabled: false,
+  baseAmount: 0,
+  anchorMonthId: '',
+  snapshot: 0,
+  setAtISO: '',
 }
 
 export const DEFAULT_NOTIFICATIONS: NotificationPrefs = {
@@ -96,6 +107,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   payroll: DEFAULT_PAYROLL,
   paySchedule: DEFAULT_PAY_SCHEDULE,
   savings: DEFAULT_SAVINGS,
+  fund: DEFAULT_FUND,
 }
 
 // ─── Estado ──────────────────────────────────────────────────────────────────
@@ -145,6 +157,16 @@ interface FinanceActions {
   setPayroll(patch: Partial<PayrollConfig>): void
   setPaySchedule(patch: Partial<PaySchedule>): void
   setSavings(patch: Partial<SavingsConfig>): void
+  /** aporta (o retira, con monto negativo) al ahorro con fecha de hoy */
+  addSavingsDeposit(amount: number, note?: string): void
+  deleteSavingsDeposit(id: string): void
+
+  /** activa/ajusta el saldo real: "hoy tengo X en el banco" */
+  setFundNow(baseAmount: number): void
+  disableFund(): void
+
+  addHormiga(monthId: string, h: { name: string; amount: number }): void
+  deleteHormiga(monthId: string, id: string): void
   /** salario neto manual (sin planilla): actualiza default + mes actual y futuros */
   setDefaultSalaryEverywhere(v: number): void
   setViewMode(mode: ViewMode): void
@@ -437,6 +459,44 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set((s) => ({ settings: { ...s.settings, paySchedule: { ...s.settings.paySchedule, ...patch } }, ...touch() })),
       setSavings: (patch) =>
         set((s) => ({ settings: { ...s.settings, savings: { ...s.settings.savings, ...patch } }, ...touch() })),
+      addSavingsDeposit: (amount, note) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            savings: {
+              ...s.settings.savings,
+              deposits: [...s.settings.savings.deposits, { id: uid(), amount, dateISO: todayISO().slice(0, 10), note }],
+            },
+          },
+          ...touch(),
+        })),
+      deleteSavingsDeposit: (id) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            savings: { ...s.settings.savings, deposits: s.settings.savings.deposits.filter((d) => d.id !== id) },
+          },
+          ...touch(),
+        })),
+
+      setFundNow: (baseAmount) =>
+        set((s) => ({
+          settings: { ...s.settings, fund: makeFundConfig(baseAmount, s.months, s.debts, s.settings) },
+          ...touch(),
+        })),
+      disableFund: () =>
+        set((s) => ({ settings: { ...s.settings, fund: { ...s.settings.fund, enabled: false } }, ...touch() })),
+
+      addHormiga: (monthId, h) =>
+        set((s) => patchMonth(s, monthId, (m) => ({
+          ...m,
+          hormigas: [...(m.hormigas ?? []), { ...h, id: uid(), dateISO: todayISO().slice(0, 10) }],
+        }))),
+      deleteHormiga: (monthId, id) =>
+        set((s) => patchMonth(s, monthId, (m) => ({
+          ...m,
+          hormigas: (m.hormigas ?? []).filter((x) => x.id !== id),
+        }))),
       setDefaultSalaryEverywhere: (v) =>
         set((s) => {
           const nowId = currentMonthId()
@@ -467,6 +527,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             payroll: { ...DEFAULT_PAYROLL, ...data.settings?.payroll },
             paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...data.settings?.paySchedule },
             savings: { ...DEFAULT_SAVINGS, ...data.settings?.savings },
+            fund: { ...DEFAULT_FUND, ...data.settings?.fund },
             homeWidgets: data.settings?.homeWidgets ?? DEFAULT_WIDGETS,
           },
           activeMonthId: data.activeMonthId ?? currentMonthId(),
@@ -486,7 +547,28 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
     }),
     {
       name: 'finance-app-state',
-      version: 4,
+      version: 5,
+      // Merge profundo de settings: cualquier estado guardado sin los campos
+      // nuevos (clientes viejos, nube) recibe los defaults sin romper nada
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<FinanceState>
+        return {
+          ...current,
+          ...p,
+          profile: { ...DEFAULT_PROFILE, ...p.profile },
+          settings: {
+            ...DEFAULT_SETTINGS,
+            ...p.settings,
+            theme: { ...DEFAULT_THEME, ...p.settings?.theme },
+            animations: { ...DEFAULT_ANIMATIONS, ...p.settings?.animations },
+            notifications: { ...DEFAULT_NOTIFICATIONS, ...p.settings?.notifications },
+            payroll: { ...DEFAULT_PAYROLL, ...p.settings?.payroll },
+            paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...p.settings?.paySchedule },
+            savings: { ...DEFAULT_SAVINGS, ...p.settings?.savings },
+            fund: { ...DEFAULT_FUND, ...p.settings?.fund },
+          },
+        }
+      },
       migrate: (persisted, version) => {
         if (version < 2) {
           const migrated = migrateV1((persisted ?? {}) as V1State)
@@ -520,6 +602,18 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
               paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...(s.settings as Partial<AppSettings>)?.paySchedule },
               savings: { ...DEFAULT_SAVINGS, ...(s.settings as Partial<AppSettings>)?.savings },
               homeWidgets: s.settings?.homeWidgets ?? DEFAULT_WIDGETS,
+            },
+          } as FinanceState & FinanceActions
+        }
+        if (version < 5) {
+          // v4 → v5: saldo real, gastos hormiga y aportes reales de ahorro
+          const s = persisted as FinanceState
+          return {
+            ...s,
+            settings: {
+              ...s.settings,
+              savings: { ...DEFAULT_SAVINGS, ...s.settings?.savings },
+              fund: { ...DEFAULT_FUND, ...(s.settings as Partial<AppSettings>)?.fund },
             },
           } as FinanceState & FinanceActions
         }

@@ -3,7 +3,7 @@ import {
   AlarmClock, ArrowLeft, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
   Database, Download, FileText, HandCoins, Image as ImageIcon, KeyRound,
   Landmark, LifeBuoy, LogOut, Mail, MessageCircleQuestion, Moon, Palette,
-  PartyPopper, PiggyBank, Play, Plus, Sparkles, Sun, Trash2, Upload,
+  PartyPopper, PiggyBank, Play, Plus, ShieldCheck, Sparkles, Sun, Trash2, Upload,
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
 import type { AlarmSoundId, Debt, PayPeriod, PaySoundId, PendingAlarm } from '../../types/finance'
@@ -16,6 +16,7 @@ import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm, playSuccess } from '../../lib/s
 import { aiAvailable } from '../../lib/ai'
 import { firebaseReady, isAdmin, logout } from '../../lib/firebase'
 import { PERIOD_LABEL, PERIOD_UNIT, convertPeriod, formatPayday, nextPaydays, payrollBreakdown, periodToMonthlyFactor } from '../../lib/payroll'
+import { suggestedEmergencyGoal } from '../../lib/fund'
 import { debtIsSettled, uid } from '../../lib/finance'
 import { celebrate, payBurst } from '../../lib/fx'
 import { applyBackup, exportBackup, readBackup } from '../../lib/backup'
@@ -115,7 +116,7 @@ function VersionFooter() {
   const debts = useFinanceStore((s) => s.debts)
   return (
     <p className="text-[11px] text-muted text-center">
-      SNBusiness v1.4 · {Object.keys(months).length} meses · {debts.length} deudas
+      SNBusiness v1.5 · {Object.keys(months).length} meses · {debts.length} deudas
     </p>
   )
 }
@@ -184,6 +185,9 @@ function IngresosSection() {
   const setPayroll = useFinanceStore((s) => s.setPayroll)
   const setPaySchedule = useFinanceStore((s) => s.setPaySchedule)
   const setSavings = useFinanceStore((s) => s.setSavings)
+  const addSavingsDeposit = useFinanceStore((s) => s.addSavingsDeposit)
+  const deleteSavingsDeposit = useFinanceStore((s) => s.deleteSavingsDeposit)
+  const months = useFinanceStore((s) => s.months)
   const setDefaultSalaryEverywhere = useFinanceStore((s) => s.setDefaultSalaryEverywhere)
   const setProfile = useFinanceStore((s) => s.setProfile)
   const updateDebt = useFinanceStore((s) => s.updateDebt)
@@ -195,6 +199,8 @@ function IngresosSection() {
   const [newDedName, setNewDedName] = useState('')
   const [newDedAmount, setNewDedAmount] = useState(0)
   const [newDedAdvance, setNewDedAdvance] = useState(false)
+  const [newDeposit, setNewDeposit] = useState(0)
+  const emergencyGoal = suggestedEmergencyGoal(months, debts)
 
   const linkableDebts = debts.filter((d) => !debtIsSettled(d) && !d.viaPlanilla && !p.deductions.some((x) => x.debtId === d.id))
 
@@ -472,6 +478,57 @@ function IngresosSection() {
               <Field label="Nombre de la meta">
                 <input className="input-base" placeholder="Ej. Viaje, carro…" value={sav.goalName} onChange={(e) => setSavings({ goalName: e.target.value })} />
               </Field>
+            </div>
+
+            {/* Fondo de emergencia sugerido (nueva funcionalidad 1) */}
+            {emergencyGoal > 0 && sav.goal !== emergencyGoal && (
+              <button
+                onClick={() => setSavings({ goal: emergencyGoal, goalName: sav.goalName || 'Fondo de emergencia' })}
+                className="pressable card p-3 flex items-center gap-2.5 text-left"
+                style={{ borderColor: 'color-mix(in oklab, var(--c-income) 40%, var(--c-border))' }}
+              >
+                <ShieldCheck size={16} className="shrink-0" style={{ color: 'var(--c-income)' }} />
+                <span className="flex-1">
+                  <span className="block text-[12.5px] font-semibold text-ink">Usar meta sugerida: fondo de emergencia</span>
+                  <span className="block text-[11px] text-muted mt-0.5">
+                    {formatMoney(emergencyGoal)} = 3 meses de tus gastos promedio. Es el colchón que te protege de imprevistos.
+                  </span>
+                </span>
+              </button>
+            )}
+
+            {/* Aporte manual + historial de aportes reales */}
+            <div>
+              <p className="text-[12px] text-muted mb-1.5">Aportar al ahorro ahora (sale de tu saldo real)</p>
+              <div className="flex gap-2">
+                <CurrencyInput value={newDeposit} onChange={setNewDeposit} className="flex-1" />
+                <button
+                  onClick={() => { if (newDeposit > 0) { addSavingsDeposit(newDeposit); setNewDeposit(0) } }}
+                  aria-label="Aportar al ahorro"
+                  className="pressable w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-white"
+                  style={{ background: 'var(--c-income)' }}
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+              {sav.deposits.length > 0 && (
+                <div className="card overflow-hidden divide-y divide-[var(--c-border)] mt-2">
+                  {sav.deposits.slice(-4).reverse().map((d) => (
+                    <div key={d.id} className="flex items-center gap-2 px-3 py-2">
+                      <span className="text-[12.5px] text-ink flex-1 truncate">{d.note || 'Aporte'}</span>
+                      <span className="text-[10.5px] text-muted num">{d.dateISO.slice(8, 10)}/{d.dateISO.slice(5, 7)}</span>
+                      <span className="num text-[12.5px] font-semibold" style={{ color: 'var(--c-income)' }}>+{formatMoney(d.amount)}</span>
+                      <button onClick={() => deleteSavingsDeposit(d.id)} aria-label="Eliminar aporte" className="pressable w-6 h-6 rounded-full flex items-center justify-center text-muted">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-muted mt-1.5">
+                Ahorrado real: <span className="num font-semibold text-ink">{formatMoney(Math.round(sav.deposits.reduce((s, d) => s + d.amount, 0)))}</span>
+                {' · '}el progreso de la meta y los planes de Snake usan este número.
+              </p>
             </div>
             <p className="text-[11.5px] text-muted">Agrega el widget «Ahorro» en tu inicio para verlo como dashboard.</p>
           </div>
@@ -868,7 +925,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNBusiness v1.4 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNBusiness v1.5 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

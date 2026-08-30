@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays, ChartGantt, ChevronLeft, ChevronRight, LayoutGrid,
-  List, Plus, Settings2, Table2, Trash2, TrendingDown, TrendingUp,
+  List, Plus, Settings2, Share2, Table2, Trash2, TrendingDown, TrendingUp,
 } from 'lucide-react'
 import type { Expense, ExpenseKind, PayableItem, ViewMode } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -14,6 +14,10 @@ import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddExpenseSheet } from './AddExpenseSheet'
 import { ExpenseDetailSheet } from './ExpenseDetailSheet'
+import { FundCard, HormigasCard, QuincenaCard } from './FundCards'
+import { buildMonthCardBlob } from '../../lib/shareCard'
+import { downloadWorkbook } from '../../lib/excel'
+import { withLoading } from '../../store/useLoading'
 import { CardsView } from './views/CardsView'
 import { ListView } from './views/ListView'
 import { TableView } from './views/TableView'
@@ -109,13 +113,25 @@ export function MonthView() {
           </button>
           <div className="text-center">
             <h2 className="font-display text-[19px] font-bold text-ink leading-tight">{monthLabel(monthId)}</h2>
-            {isCurrentMonth(monthId)
-              ? <span className="text-[11px] font-semibold" style={{ color: 'var(--app-accent-soft)' }}>Mes actual</span>
-              : (
-                <button onClick={() => setConfirmDelete(true)} className="pressable text-[11px] text-muted inline-flex items-center gap-1">
-                  <Trash2 size={11} /> Borrar este mes
-                </button>
-              )}
+            <span className="inline-flex items-center gap-2">
+              {isCurrentMonth(monthId)
+                ? <span className="text-[11px] font-semibold" style={{ color: 'var(--app-accent-soft)' }}>Mes actual</span>
+                : (
+                  <button onClick={() => setConfirmDelete(true)} className="pressable text-[11px] text-muted inline-flex items-center gap-1">
+                    <Trash2 size={11} /> Borrar este mes
+                  </button>
+                )}
+              <button
+                onClick={() => void withLoading('Generando tu resumen…', async () => {
+                  const s = useFinanceStore.getState()
+                  const blob = await buildMonthCardBlob(month, debts, s.settings, s.months, s.profile.name)
+                  await downloadWorkbook(blob, `Resumen-${monthId}.png`)
+                }).catch(() => {})}
+                className="pressable text-[11px] text-muted inline-flex items-center gap-1"
+              >
+                <Share2 size={11} /> Compartir
+              </button>
+            </span>
           </div>
           <button
             onClick={() => setActiveMonth(addMonthsToId(monthId, 1))}
@@ -191,6 +207,11 @@ export function MonthView() {
             )}
           </div>
         </div>
+
+        {/* Saldo real, hormigas y quincenas (nuevas funcionalidades) */}
+        <FundCard />
+        <HormigasCard />
+        <QuincenaCard />
 
         {/* Selector de vista (punto 10) */}
         <Segmented value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />

@@ -7,6 +7,7 @@ import type { AppSettings, Debt, MonthData, PendingAlarm, ReminderPref } from '.
 import { buildPayables } from './finance'
 import { dueDate } from './dates'
 import { formatMoney } from './format'
+import { nextPaydays, payrollBreakdown } from './payroll'
 
 export interface ReminderTask {
   id: string
@@ -110,6 +111,39 @@ export function buildReminderTasks(
     for (const e of month.expenses) {
       if (e.paid || !e.dueDay || !e.reminder?.enabled) continue
       push(`ov-${month.id}-${e.id}`, e.name, e.amount, month.id, e.dueDay, e.reminder)
+    }
+  }
+
+  // Día de pago inteligente: cuando cae la quincena, avisa cuánto llega y
+  // qué pagos siguen pendientes (nueva funcionalidad 2)
+  const bd = payrollBreakdown(settings.payroll)
+  const salaryBase = bd.monthlyNet > 0 ? bd.monthlyNet : settings.defaultSalary
+  if (salaryBase > 0) {
+    const bdUse = bd.monthlyNet > 0
+      ? bd
+      : { ...bd, monthlyNet: salaryBase, monthlyAdvance: 0, monthlySettlement: salaryBase }
+    const [hh, mm] = parseTime(prefs.time)
+    for (const pd of nextPaydays(settings.paySchedule, bdUse, 4)) {
+      const fire = new Date(pd.date.getFullYear(), pd.date.getMonth(), pd.date.getDate(), hh, mm, 0)
+      const fireAt = fire.getTime()
+      if (fireAt <= now || fireAt > horizon) continue
+      const mid = `${pd.date.getFullYear()}-${String(pd.date.getMonth() + 1).padStart(2, '0')}`
+      const pendientes = months[mid]
+        ? buildPayables(months[mid], debts).filter((i) => !i.paid)
+        : []
+      const pendTotal = pendientes.reduce((s, i) => s + i.amount, 0)
+      const detalle = pendientes.length
+        ? ` Tienes ${pendientes.length} pago${pendientes.length === 1 ? '' : 's'} pendiente${pendientes.length === 1 ? '' : 's'} por ${formatMoney(pendTotal)}.`
+        : ' No tienes pagos pendientes este mes. 🎉'
+      tasks.push({
+        id: `payday-${mid}-${pd.date.getDate()}`,
+        title: 'Hoy es tu día de pago 💰',
+        body: `Te llegan ${formatMoney(Math.round(pd.amount))}${pd.label ? ` (${pd.label})` : ''}.${detalle}`,
+        fireAt,
+        alarm: false,
+        itemName: 'Día de pago',
+        amount: Math.round(pd.amount),
+      })
     }
   }
 
