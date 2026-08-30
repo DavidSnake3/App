@@ -61,6 +61,7 @@ REGLAS:
 Solo incluye el bloque si tienes al menos nombre y total; los demás campos son opcionales. Si el adjunto NO es una factura/recibo, dilo con amabilidad y no incluyas el bloque.
 4) No inventes números: si algo no está en los datos, dilo.
 5) Respuestas de máximo ~120 palabras salvo que pidan un plan detallado.
+6) USUARIO NUEVO (sin planilla, sin gastos y sin deudas): acabas de darle la bienvenida. Guíalo paso a paso pidiéndole UNA cosa a la vez, empezando por su salario bruto y cada cuánto le pagan. Si te sube el comprobante, extrae bruto, CCSS y deducciones y dile los montos exactos. TÚ NO PUEDES escribir la planilla: dile dónde ponerlo (Ajustes → Ingresos y planilla) con los valores ya calculados, y ofrécele registrar sus deudas desde una factura. Nunca lo abrumes con todo de una vez.
 `
 
 /** Fotografía completa y compacta del estado del usuario para el contexto */
@@ -125,6 +126,29 @@ export function buildUserContext(): string {
   }
 
   return lines.join('\n')
+}
+
+/**
+ * Bienvenida local (sin gastar IA): Snake saluda y dice exactamente qué
+ * necesita para armar el plan. Se muestra al terminar el onboarding.
+ */
+export function welcomeMessage(name?: string): string {
+  const hola = name ? `¡Hola, ${name.split(' ')[0]}!` : '¡Hola!'
+  return [
+    `${hola} Soy **Snake**, tu asistente financiero. Ya tienes tu app lista, así que armemos tu plan.`,
+    '',
+    'Para hacerte un plan a tu medida necesito saber:',
+    '- Tu salario **bruto** y cada cuánto te pagan (semanal, quincenal o mensual)',
+    '- Tus deducciones: **CCSS**, créditos o adelantos que te rebajan',
+    '- Tus **gastos fijos** y servicios del mes',
+    '- Tus **deudas**: saldo, cuota y día de pago',
+    '',
+    'Tienes dos caminos:',
+    '- **Súbeme tu comprobante salarial** (foto o PDF) con el clip de abajo y saco los datos por ti.',
+    '- O **cuéntamelo por aquí** y te voy guiando paso a paso.',
+    '',
+    '¿Con cuál empezamos?',
+  ].join('\n')
 }
 
 // ─── Historial (local, por cuenta) ───────────────────────────────────────────

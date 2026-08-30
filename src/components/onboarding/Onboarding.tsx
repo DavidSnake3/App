@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowLeft, ArrowRight, Bell, CalendarRange, Check, Rocket, Wallet } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Bell, CalendarRange, Check, FileUp, MessageCircle, Rocket, Wallet } from 'lucide-react'
 import type { AppUser } from '../../lib/firebase'
 import type { PayPeriod } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -24,7 +24,15 @@ const SUGGESTED_SERVICES: ServiceDraft[] = [
   { name: 'Streaming', amount: 0, on: false, dueDay: 10 },
 ]
 
-type StepId = 'bienvenida' | 'datos' | 'ingresos' | 'modo' | 'servicios' | 'final'
+type StepId = 'bienvenida' | 'datos' | 'ingresos' | 'modo' | 'servicios' | 'final' | 'snake'
+
+/** Lo que Snake necesita para armar el plan (se muestra en el último paso) */
+const SNAKE_NEEDS = [
+  'Tu salario bruto y cada cuánto te pagan',
+  'Tus deducciones: CCSS, créditos o adelantos',
+  'Tus gastos fijos y servicios del mes',
+  'Tus deudas: saldo, cuota y día de pago',
+]
 
 /** Onboarding: con Google se saltan los datos personales (mejora 11) */
 export function Onboarding({ user }: { user: AppUser | null }) {
@@ -41,8 +49,8 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   // Con cuenta de Google no preguntamos nombre/correo/teléfono
   const steps: StepId[] = useMemo(
     () => user
-      ? ['bienvenida', 'ingresos', 'modo', 'servicios', 'final']
-      : ['bienvenida', 'datos', 'ingresos', 'modo', 'servicios', 'final'],
+      ? ['bienvenida', 'ingresos', 'modo', 'servicios', 'final', 'snake']
+      : ['bienvenida', 'datos', 'ingresos', 'modo', 'servicios', 'final', 'snake'],
     [user],
   )
 
@@ -64,6 +72,8 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   const [services, setServices] = useState(SUGGESTED_SERVICES)
   const [notifOn, setNotifOn] = useState(false)
   const [error, setError] = useState('')
+  // último paso: cómo quiere arrancar su plan con Snake
+  const [snakeChoice, setSnakeChoice] = useState<'plan' | 'comprobante' | null>(null)
 
   const canNext = useMemo(() => {
     if (step === 'datos') return name.trim().length >= 2
@@ -82,7 +92,13 @@ export function Onboarding({ user }: { user: AppUser | null }) {
     setIdx((i) => Math.min(steps.length - 1, i + 1))
   }
 
-  const finish = () => {
+  const finish = (choice?: 'plan' | 'comprobante' | 'skipped') => {
+    const snakeIntro = choice ?? snakeChoice
+    if (!snakeIntro) {
+      setError('Elige cómo quieres armar tu plan, o toca «Prefiero configurarlo después».')
+      return
+    }
+    setError('')
     const monthId = currentMonthId()
     setProfile({
       name: (user?.name ?? name).trim(),
@@ -94,6 +110,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
       payFrequency: inputPeriod === 'weekly' ? 'monthly' : inputPeriod === 'biweekly' ? 'biweekly' : 'monthly',
       planMode,
       onboarded: true,
+      snakeIntro,
     })
     // La planilla manda: configura salario del mes automáticamente (mejora general)
     if (!skipPayroll && gross > 0) {
@@ -325,6 +342,50 @@ export function Onboarding({ user }: { user: AppUser | null }) {
             </button>
           </StepShell>
         )}
+
+        {/* Último paso: arrancar el plan con Snake (o dejarlo para después) */}
+        {step === 'snake' && (
+          <StepShell
+            title="Arma tu plan con Snake"
+            subtitle="Tu asistente hace las cuentas por vos y te dice qué pagar y cuánto apartar."
+          >
+            <div className="card p-3.5" style={{ background: 'color-mix(in oklab, var(--app-accent) 8%, var(--c-card))' }}>
+              <p className="text-[12px] font-semibold text-ink mb-1.5">Para tu plan, Snake necesita:</p>
+              <div className="flex flex-col gap-1">
+                {SNAKE_NEEDS.map((n) => (
+                  <p key={n} className="text-[12px] text-muted flex items-start gap-1.5">
+                    <Check size={12} className="shrink-0 mt-0.5" style={{ color: 'var(--c-income)' }} />
+                    {n}
+                  </p>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <ModeCard
+                icon={<FileUp size={20} />}
+                title="Subir mi comprobante salarial"
+                desc="Foto o PDF: Snake lee tu bruto, la CCSS y tus deducciones en segundos."
+                selected={snakeChoice === 'comprobante'}
+                onClick={() => { setSnakeChoice('comprobante'); setError('') }}
+              />
+              <ModeCard
+                icon={<MessageCircle size={20} />}
+                title="Que Snake me guíe"
+                desc="Le contás lo que ganás y tus pagos por el chat, y él arma el plan."
+                selected={snakeChoice === 'plan'}
+                onClick={() => { setSnakeChoice('plan'); setError('') }}
+              />
+            </div>
+
+            <button
+              onClick={() => finish('skipped')}
+              className="pressable text-[13px] text-muted underline decoration-dotted self-start"
+            >
+              Prefiero configurarlo después
+            </button>
+          </StepShell>
+        )}
       </div>
 
       {error && <p className="text-[13px] text-center anim-shake px-6 pb-2" style={{ color: 'var(--c-danger)' }}>{error}</p>}
@@ -341,8 +402,8 @@ export function Onboarding({ user }: { user: AppUser | null }) {
             {idx === 0 ? 'Comenzar' : 'Continuar'} <ArrowRight size={16} />
           </button>
         ) : (
-          <button onClick={finish} className="pressable btn-primary flex-1 flex items-center justify-center gap-2">
-            <Rocket size={16} /> Entrar a SNBusiness
+          <button onClick={() => finish()} className="pressable btn-primary flex-1 flex items-center justify-center gap-2">
+            <Rocket size={16} /> {snakeChoice ? 'Entrar y hablar con Snake' : 'Entrar a SNBusiness'}
           </button>
         )}
       </div>

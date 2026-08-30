@@ -4,7 +4,7 @@ import type { AuthState } from '../../hooks/useAuth'
 import { useChat } from '../../store/useChat'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import {
-  actionToDebt, clearChat, loadChat, saveChat, sendToFin,
+  actionToDebt, clearChat, loadChat, saveChat, sendToFin, welcomeMessage,
   type ChatAttachment, type ChatMsg,
 } from '../../lib/chatbot'
 import { aiAvailable } from '../../lib/ai'
@@ -61,10 +61,18 @@ export function ChatBot({ auth }: { auth: AuthState }) {
 
 function ChatSession({ uidKey }: { uidKey: string | null }) {
   const prefill = useChat((s) => s.prefill)
+  const intent = useChat((s) => s.intent)
   const closeChat = useChat((s) => s.closeChat)
   const addDebt = useFinanceStore((s) => s.addDebt)
+  const profileName = useFinanceStore((s) => s.profile.name)
 
-  const [msgs, setMsgs] = useState<ChatMsg[]>(() => loadChat(uidKey))
+  // la intención solo importa al abrir (bienvenida del onboarding)
+  const [mountIntent] = useState(intent)
+  const [msgs, setMsgs] = useState<ChatMsg[]>(() => {
+    const stored = loadChat(uidKey)
+    if (stored.length || mountIntent === 'none') return stored
+    return [{ id: 'welcome', role: 'model', text: welcomeMessage(profileName) }]
+  })
   const [input, setInput] = useState(() => prefill)
   const [busy, setBusy] = useState(false)
   const [attach, setAttach] = useState<ChatAttachment | null>(null)
@@ -77,6 +85,13 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [msgs, busy])
+
+  // Si viene del onboarding con "subir comprobante", abrir el selector solo
+  useEffect(() => {
+    if (mountIntent !== 'attach') return
+    const t = setTimeout(() => fileRef.current?.click(), 500)
+    return () => clearTimeout(t)
+  }, [mountIntent])
 
   const persist = (list: ChatMsg[]) => { setMsgs(list); saveChat(uidKey, list) }
 

@@ -158,6 +158,12 @@ export interface UserProfile {
   onboarded: boolean
   /** ya vio (o rechazó) el recorrido de bienvenida */
   tourDone: boolean
+  /**
+   * Bienvenida de Snake al terminar el onboarding:
+   * 'plan' / 'comprobante' = pendiente de abrirse con esa intención,
+   * 'done' = ya se mostró, 'skipped' = el usuario prefirió configurarlo después.
+   */
+  snakeIntro: 'plan' | 'comprobante' | 'done' | 'skipped'
 }
 
 // ─── Widgets del inicio (personalizables) ────────────────────────────────────

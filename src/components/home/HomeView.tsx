@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
-import { Check, ChevronDown, ChevronRight, ChevronUp, Plus, Proportions, TriangleAlert, Wallet, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ChevronUp, Plus, Proportions, Sparkles, TriangleAlert, Wallet, X } from 'lucide-react'
 import type { WidgetConf, WidgetId, WidgetSize } from '../../types/finance'
 import { DEFAULT_WIDGETS, useFinanceStore } from '../../store/useFinanceStore'
+import { useChat } from '../../store/useChat'
 import type { AuthState } from '../../hooks/useAuth'
 import { greeting, longToday } from '../../lib/dates'
 import { buildWorkbook, downloadWorkbook } from '../../lib/excel'
@@ -26,6 +27,7 @@ export function HomeView({ auth }: { auth: AuthState }) {
   const defaultSalary = useFinanceStore((s) => s.settings.defaultSalary)
   const setSettings = useFinanceStore((s) => s.setSettings)
   const setActiveTab = useFinanceStore((s) => s.setActiveTab)
+  const openChat = useChat((s) => s.openChat)
 
   const widgets = homeWidgets ?? DEFAULT_WIDGETS
   const [editMode, setEditMode] = useState(false)
@@ -136,20 +138,35 @@ export function HomeView({ auth }: { auth: AuthState }) {
 
         {/* Alerta: ingresos sin configurar (mejora 11) */}
         {payrollGross <= 0 && defaultSalary <= 0 && (
-          <button
-            onClick={() => setActiveTab('settings')}
-            className="pressable card p-3.5 flex items-center gap-3 text-left anim-pop"
+          <div
+            className="card p-3.5 anim-pop"
             style={{ borderColor: 'color-mix(in oklab, var(--c-warning) 55%, var(--c-border))' }}
           >
-            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--c-warning) 18%, transparent)' }}>
-              <TriangleAlert size={17} style={{ color: 'var(--c-warning)' }} />
-            </span>
-            <span className="flex-1">
-              <span className="block text-[13.5px] font-semibold text-ink">Configura tus ingresos</span>
-              <span className="block text-[11.5px] text-muted mt-0.5">Sin tu salario la app no puede calcular tu balance ni planes</span>
-            </span>
-            <ChevronRight size={16} className="text-muted shrink-0" />
-          </button>
+            <div className="flex items-center gap-3">
+              <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--c-warning) 18%, transparent)' }}>
+                <TriangleAlert size={17} style={{ color: 'var(--c-warning)' }} />
+              </span>
+              <span className="flex-1">
+                <span className="block text-[13.5px] font-semibold text-ink">Te falta configurar tus ingresos</span>
+                <span className="block text-[11.5px] text-muted mt-0.5">Sin tu salario no puedo calcular tu balance, tu saldo real ni tus planes</span>
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-2.5">
+              <button
+                onClick={() => openChat('', 'welcome')}
+                className="pressable rounded-xl py-2 text-[12.5px] font-semibold text-white flex items-center justify-center gap-1.5"
+                style={{ background: 'var(--app-gradient)' }}
+              >
+                <Sparkles size={13} /> Que Snake me ayude
+              </button>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className="pressable btn-ghost !py-2 !text-[12.5px] flex items-center justify-center gap-1"
+              >
+                Hacerlo yo <ChevronRight size={13} />
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Cuadrícula de widgets (mantén presionado un widget para editar) */}

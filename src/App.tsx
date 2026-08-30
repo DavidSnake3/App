@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFinanceStore } from './store/useFinanceStore'
+import { useChat } from './store/useChat'
 import { useTheme } from './hooks/useTheme'
 import { useAuth } from './hooks/useAuth'
 import { useReminders } from './hooks/useReminders'
@@ -29,6 +30,7 @@ function App() {
   const swipe = useSwipeTabs()
 
   const onboarded = useFinanceStore((s) => s.profile.onboarded)
+  const snakeIntro = useFinanceStore((s) => s.profile.snakeIntro)
   const activeTab = useFinanceStore((s) => s.activeTab)
   const ensureMonthExists = useFinanceStore((s) => s.ensureMonthExists)
   const setActiveMonth = useFinanceStore((s) => s.setActiveMonth)
@@ -61,6 +63,19 @@ function App() {
   useEffect(() => {
     useFinanceStore.getState().setActiveTab('home')
   }, [])
+
+  // Al terminar el onboarding, Snake abre solo y da la bienvenida (con la
+  // opción elegida: guiarlo o leerle el comprobante). Si la app se cerró
+  // antes, queda pendiente y se abre en el siguiente arranque.
+  useEffect(() => {
+    if (!onboarded || showSplash) return
+    if (snakeIntro !== 'plan' && snakeIntro !== 'comprobante') return
+    const t = setTimeout(() => {
+      useChat.getState().openChat('', snakeIntro === 'comprobante' ? 'attach' : 'welcome')
+      useFinanceStore.getState().setProfile({ snakeIntro: 'done' })
+    }, 600)
+    return () => clearTimeout(t)
+  }, [onboarded, snakeIntro, showSplash])
 
   // Fondos guardados con la compresión vieja (muy pesados para la nube):
   // reducirlos una vez para que sincronicen con la cuenta

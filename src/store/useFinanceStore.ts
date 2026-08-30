@@ -23,6 +23,8 @@ export const DEFAULT_PROFILE: UserProfile = {
   planMode: 'monthly',
   onboarded: false,
   tourDone: false,
+  // quien ya usa la app no recibe la bienvenida del onboarding
+  snakeIntro: 'done',
 }
 
 /** Widgets del inicio por defecto (el usuario los personaliza a su gusto) */
