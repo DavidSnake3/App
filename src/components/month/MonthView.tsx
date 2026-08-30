@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays, ChartGantt, ChevronLeft, ChevronRight, LayoutGrid,
-  List, Plus, Settings2, Sparkles, Table2, Trash2, TrendingDown, TrendingUp,
+  List, Plus, Settings2, Table2, Trash2, TrendingDown, TrendingUp,
 } from 'lucide-react'
 import type { Expense, ExpenseKind, PayableItem, ViewMode } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import { useChat } from '../../store/useChat'
 import { buildPayables, getMonthSummary, recurringCandidates } from '../../lib/finance'
 import { addMonthsToId, isCurrentMonth, monthLabel } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
@@ -42,7 +41,6 @@ export function MonthView() {
   const markCelebrated = useFinanceStore((s) => s.markCelebrated)
   const animPrefs = useFinanceStore((s) => s.settings.animations)
   const setActiveTab = useFinanceStore((s) => s.setActiveTab)
-  const openChat = useChat((s) => s.openChat)
   const importRecurring = useFinanceStore((s) => s.importRecurring)
   const markCarryAsked = useFinanceStore((s) => s.markCarryAsked)
   const prevMonth = useFinanceStore((s) => s.months[addMonthsToId(s.activeMonthId, -1)])
@@ -194,27 +192,6 @@ export function MonthView() {
           </div>
         </div>
 
-        {/* Banner: pedirle un plan a Fin cuando ya hay datos (punto 14) */}
-        {summary.countTotal >= 3 && summary.totalIncome > 0 && (
-          <button
-            onClick={() => openChat('Ármame un plan recomendado para pagar todo este mes según mis gastos, deudas y salario.')}
-            className="pressable card p-3.5 flex items-center gap-3 text-left"
-            style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 45%, var(--c-border))' }}
-          >
-            <span
-              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: 'color-mix(in oklab, var(--app-accent) 20%, transparent)' }}
-            >
-              <Sparkles size={17} style={{ color: 'var(--app-accent-soft)' }} />
-            </span>
-            <span className="flex-1">
-              <span className="block text-[13.5px] font-semibold text-ink">Pídele a Fin tu plan de pago del mes</span>
-              <span className="block text-[11.5px] text-muted mt-0.5">Analiza tus gastos, deudas y salario en segundos</span>
-            </span>
-            <ChevronRight size={16} className="text-muted shrink-0" />
-          </button>
-        )}
-
         {/* Selector de vista (punto 10) */}
         <Segmented value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
 
@@ -264,7 +241,7 @@ export function MonthView() {
       <button
         onClick={() => { setEditingExpense(null); setAddOpen(true) }}
         aria-label="Agregar pago"
-        className="pressable absolute bottom-[72px] right-4 w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-xl z-30"
+        className="pressable absolute bottom-[20px] right-4 w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-xl z-30"
         style={{ background: 'var(--app-gradient)', boxShadow: '0 10px 30px color-mix(in oklab, var(--app-accent) 45%, transparent)' }}
       >
         <Plus size={26} />

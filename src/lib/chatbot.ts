@@ -1,4 +1,4 @@
-// "Fin": el chatbot asistente de SNBusiness (mejoras 1, 2, 8 y 15).
+// "Snake": el chatbot asistente de SNBusiness (mejoras 1, 2, 8 y 15).
 // Único punto de IA de la app: conoce todas las funciones, puede leer los
 // datos del usuario para explicar cualquier número, armar planes de pago y
 // ahorro a la medida, y registrar deudas desde una factura (imagen o PDF).
@@ -15,7 +15,7 @@ export interface ChatMsg {
   text: string
   /** nombre del archivo adjuntado (solo informativo) */
   attachment?: string
-  /** acción propuesta por Fin pendiente de confirmar */
+  /** acción propuesta por Snake pendiente de confirmar */
   action?: ChatAction
   actionDone?: boolean
   /** el envío falló: se ofrece "Intentar de nuevo" */
@@ -37,7 +37,7 @@ export interface ChatAction {
 // ─── Conocimiento de la app + datos del usuario ──────────────────────────────
 
 const APP_KNOWLEDGE = `
-Eres "Fin", el asistente financiero oficial de SNBusiness.
+Eres "Snake", el asistente financiero oficial de SNBusiness.
 Personalidad: cercano, claro, breve y motivador. SIEMPRE en español. Sin emojis.
 Formato: párrafos cortos; usa **negritas** para montos/nombres y listas con "- " cuando ayuden.
 

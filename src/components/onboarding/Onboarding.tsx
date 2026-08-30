@@ -153,7 +153,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
               {[
                 'Organiza el mes en segundos',
                 'Recordatorios y alarmas de pago',
-                'Fin: tu asistente con IA',
+                'Snake: tu asistente con IA',
               ].map((txt) => (
                 <div key={txt} className="flex items-center gap-2.5 card px-4 py-3">
                   <Check size={15} style={{ color: 'var(--c-income)' }} className="shrink-0" />

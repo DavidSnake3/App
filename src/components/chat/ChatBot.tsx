@@ -39,7 +39,18 @@ const SUGERENCIAS = [
   'Quiero un plan de ahorro a mi medida',
 ]
 
-/** Chatbot "Fin": único punto de IA de la app (mejoras 1, 2, 8, 15) */
+/** Mensajes que rotan mientras Snake piensa (mejora del usuario) */
+const THINKING_MSGS = [
+  'Snake está pensando…',
+  'Espera un momento…',
+  'Verificando tus datos…',
+  'Analizando tus números…',
+  'La IA piensa más para darte una mejor respuesta financiera',
+  'Puede que tome un tiempo…',
+  'Pronto tendrás tu respuesta…',
+]
+
+/** Chatbot "Snake": único punto de IA de la app (mejoras 1, 2, 8, 15) */
 export function ChatBot({ auth }: { auth: AuthState }) {
   const open = useChat((s) => s.open)
   const uidKey = auth.user?.uid ?? null
@@ -69,11 +80,11 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
 
   const persist = (list: ChatMsg[]) => { setMsgs(list); saveChat(uidKey, list) }
 
-  /** Pregunta a Fin con el CARGANDO GLOBAL de la marca (bloquea la app) */
+  /** Pregunta a Snake con el CARGANDO GLOBAL de la marca (bloquea la app) */
   const doAsk = async (base: ChatMsg[], history: ChatMsg[], text: string, att: ChatAttachment | null) => {
     setBusy(true)
     try {
-      const res = await withLoading('Fin está pensando…', () => sendToFin(history, text, att ?? undefined))
+      const res = await withLoading(THINKING_MSGS, () => sendToFin(history, text, att ?? undefined))
       persist([...base, { id: newId(), role: 'model', text: res.text, action: res.action }])
     } catch {
       persist([...base, {
@@ -142,14 +153,14 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
 
   return (
     <div className="fixed inset-0 z-[90] flex flex-col max-w-[520px] mx-auto bg-surface anim-fade">
-      {/* Encabezado con la mascota */}
+      {/* Encabezado: logo SN estático (sin animación, a pedido del usuario) */}
       <header
         className="flex items-center gap-3 px-4 pb-3 border-b border-edge shrink-0"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)', background: 'var(--c-card)' }}
       >
-        <span style={{ animation: 'splashFloat 2.6s ease-in-out infinite' }}><SnAvatar size={40} id="chat-h" /></span>
+        <SnAvatar size={40} id="chat-h" />
         <div className="flex-1 min-w-0">
-          <h2 className="font-display text-[16.5px] font-bold text-ink leading-tight">Fin</h2>
+          <h2 className="font-display text-[16.5px] font-bold text-ink leading-tight">Snake</h2>
           <p className="text-[11.5px]" style={{ color: 'var(--c-income)' }}>
             {busy ? 'escribiendo…' : 'Tu asistente financiero'}
           </p>
@@ -179,7 +190,7 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
             <span style={{ animation: 'splashFloat 2.6s ease-in-out infinite' }}>
               <AppLogo size={72} id="chat-hero" />
             </span>
-            <h3 className="font-display text-[19px] font-bold text-ink mt-3">¡Hola! Soy Fin</h3>
+            <h3 className="font-display text-[19px] font-bold text-ink mt-3">¡Hola! Soy Snake</h3>
             <p className="text-[13px] text-muted mt-1.5 max-w-[280px] leading-relaxed">
               Conozco toda tu app y tus números. Pregúntame lo que sea, pídeme planes
               o adjúntame una factura para registrar una deuda.
@@ -289,7 +300,7 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
-          placeholder="Escríbele a Fin…"
+          placeholder="Escríbele a Snake…"
           rows={1}
           className="input-base flex-1 resize-none max-h-28 !rounded-3xl"
           style={{ minHeight: 44 }}

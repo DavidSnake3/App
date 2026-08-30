@@ -876,7 +876,7 @@ function AyudaSection() {
     {
       icon: <MessageCircleQuestion size={17} />,
       title: '¿Necesitas ayuda con la app?',
-      desc: 'Pregúntale a Fin: conoce todas las funciones',
+      desc: 'Pregúntale a Snake: conoce todas las funciones',
       run: () => openChat('¿Cómo se usa la app? Explícame lo básico.'),
     },
     {

@@ -7,8 +7,8 @@ export function ChatLauncher() {
   return (
     <button
       onClick={() => openChat()}
-      aria-label="Hablar con Fin, tu asistente"
-      className="pressable absolute bottom-[72px] left-4 z-30 w-14 h-14 rounded-full flex items-center justify-center"
+      aria-label="Hablar con Snake, tu asistente"
+      className="pressable absolute bottom-[20px] left-4 z-30 w-14 h-14 rounded-full flex items-center justify-center"
       style={{
         background: 'var(--c-card)',
         border: '2px solid color-mix(in oklab, var(--app-accent) 55%, var(--c-border))',

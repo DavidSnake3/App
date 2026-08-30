@@ -136,7 +136,7 @@ function ResumenWidget() {
 function ConsejoWidget() {
   const [tip, setTip] = useState<{ tip: string } | null>(null)
 
-  // Consejo local del día (la IA ahora vive solo en el chatbot Fin)
+  // Consejo local del día (la IA ahora vive solo en el chatbot Snake)
   useEffect(() => {
     let alive = true
     getDailyTip('', false).then((t) => { if (alive) setTip(t) })
@@ -164,7 +164,7 @@ function AccionesWidget({ ctx }: { ctx: WidgetCtx }) {
     <div className="grid grid-cols-4 gap-2.5 h-full">
       <Accion icon={<Plus size={19} />} label="Gasto" onClick={() => ctx.setActiveTab('month')} primary />
       <Accion icon={<CreditCard size={18} />} label="Deudas" onClick={() => ctx.setActiveTab('debts')} />
-      <Accion icon={<Sparkles size={18} />} label="Fin" onClick={() => openChat()} />
+      <Accion icon={<Sparkles size={18} />} label="Snake" onClick={() => openChat()} />
       <Accion
         icon={<FileSpreadsheet size={18} className={ctx.exporting ? 'animate-pulse' : ''} />}
         label={ctx.exporting ? '…' : 'Excel'}

@@ -7,7 +7,7 @@ interface ChatUI {
   closeChat(): void
 }
 
-/** Estado de apertura del chatbot Fin (cualquier pantalla puede abrirlo) */
+/** Estado de apertura del chatbot Snake (cualquier pantalla puede abrirlo) */
 export const useChat = create<ChatUI>((set) => ({
   open: false,
   prefill: '',
