@@ -115,7 +115,7 @@ function VersionFooter() {
   const debts = useFinanceStore((s) => s.debts)
   return (
     <p className="text-[11px] text-muted text-center">
-      SNBusiness v1.3 · {Object.keys(months).length} meses · {debts.length} deudas
+      SNBusiness v1.4 · {Object.keys(months).length} meses · {debts.length} deudas
     </p>
   )
 }
@@ -868,7 +868,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNBusiness v1.3 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNBusiness v1.4 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

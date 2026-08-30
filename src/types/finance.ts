@@ -164,6 +164,8 @@ export type WidgetId =
   | 'calendario'  // mini calendario del mes
   | 'comprobante' // comprobante salarial (planilla)
   | 'ahorro'      // panel de ahorro
+  | 'dona'        // dona: distribución de gastos por tipo
+  | 'pilares'     // pilares: ingresos vs gastos por mes
 
 export type WidgetSize = 'sm' | 'lg' | 'xl'
 

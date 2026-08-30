@@ -48,56 +48,73 @@ export async function askGemini(prompt: string, opts: GeminiOpts = {}): Promise<
   return geminiChat([{ role: 'user', parts: [{ text: prompt }] }], opts)
 }
 
+type ApiError = Error & { status?: number }
+
+/** Un intento contra un modelo. `fast` apaga el razonamiento interno (mucho más rápido). */
+async function requestOnce(model: string, turns: GeminiTurn[], opts: GeminiOpts, fast: boolean): Promise<string> {
+  const key = getGeminiKey()
+  const res = await fetchWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: turns,
+        ...(opts.system
+          ? { systemInstruction: { parts: [{ text: opts.system }] } }
+          : {}),
+        generationConfig: {
+          temperature: opts.temperature ?? 0.7,
+          maxOutputTokens: opts.maxTokens ?? 1024,
+          ...(opts.json ? { responseMimeType: 'application/json' } : {}),
+          // Sin "pensar" el modelo responde en segundos en lugar de decenas
+          ...(fast ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        },
+      }),
+    },
+    opts.timeoutMs ?? 15_000,
+  )
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    const err = new Error(`Gemini ${res.status}: ${txt.slice(0, 200)}`) as ApiError
+    err.status = res.status
+    throw err
+  }
+  const data = await res.json()
+  const parts: { text?: string; thought?: boolean }[] = data?.candidates?.[0]?.content?.parts ?? []
+  // ignorar las partes de razonamiento interno del modelo
+  const text = parts.filter((p) => !p.thought).map((p) => p.text ?? '').join('')
+  if (!text) throw new Error(`Respuesta vacía de ${model}`)
+  return text.trim()
+}
+
+/** 4xx que ningún reintento arregla (clave inválida, petición mal formada…) */
+function isPermanent(e: unknown): boolean {
+  const s = (e as ApiError)?.status
+  return typeof s === 'number' && s >= 400 && s < 500 && s !== 404 && s !== 429
+}
+
 /** Conversación multi-turno con adjuntos (imágenes/PDF), usada por el chatbot */
 export async function geminiChat(turns: GeminiTurn[], opts: GeminiOpts = {}): Promise<string> {
-  const key = getGeminiKey()
-  if (!key) throw new Error('Sin clave de IA')
+  if (!getGeminiKey()) throw new Error('Sin clave de IA')
 
   let lastErr: unknown = null
   for (const model of MODELS) {
+    // 1º en modo rápido (sin razonamiento). Si el modelo rechaza la opción
+    // (400), un único reintento en modo normal; otros errores → siguiente modelo.
     try {
-      const res = await fetchWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: turns,
-            ...(opts.system
-              ? { systemInstruction: { parts: [{ text: opts.system }] } }
-              : {}),
-            generationConfig: {
-              temperature: opts.temperature ?? 0.7,
-              maxOutputTokens: opts.maxTokens ?? 1024,
-              ...(opts.json ? { responseMimeType: 'application/json' } : {}),
-            },
-          }),
-        },
-        opts.timeoutMs ?? 15_000,
-      )
-      // 404 = modelo retirado; 429/503 = saturado → probar el siguiente
-      if (res.status === 404 || res.status === 429 || res.status === 503) {
-        lastErr = new Error(`Modelo ${model} no disponible (${res.status})`)
-        continue
-      }
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '')
-        const err = new Error(`Gemini ${res.status}: ${txt.slice(0, 200)}`) as Error & { permanent?: boolean }
-        // 4xx permanente (clave inválida, petición mal formada…): reintentar
-        // con otro modelo no lo arregla — fallar de una vez
-        if (res.status >= 400 && res.status < 500) err.permanent = true
-        throw err
-      }
-      const data = await res.json()
-      const parts: { text?: string; thought?: boolean }[] = data?.candidates?.[0]?.content?.parts ?? []
-      // ignorar las partes de razonamiento interno del modelo
-      const text = parts.filter((p) => !p.thought).map((p) => p.text ?? '').join('')
-      if (!text) { lastErr = new Error(`Respuesta vacía de ${model}`); continue }
-      return text.trim()
+      return await requestOnce(model, turns, opts, true)
     } catch (e) {
       lastErr = e
-      if ((e as { permanent?: boolean })?.permanent) throw e
-      // error de red o modelo saturado: probar el siguiente
+      if (isPermanent(e)) {
+        try {
+          return await requestOnce(model, turns, opts, false)
+        } catch (e2) {
+          if (isPermanent(e2)) throw e2 // sí era permanente (p. ej. clave inválida)
+          lastErr = e2
+        }
+      }
+      // 404 retirado / 429 y 503 saturado / red o vacía: probar el siguiente
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('IA no disponible')

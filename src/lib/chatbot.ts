@@ -189,7 +189,7 @@ export async function sendToFin(
     system: APP_KNOWLEDGE,
     temperature: 0.6,
     maxTokens: 2048,
-    timeoutMs: attachment ? 45_000 : 25_000,
+    timeoutMs: attachment ? 40_000 : 18_000,
   })
   const { clean, action } = parseAction(raw)
   return { text: clean || 'Listo.', action }

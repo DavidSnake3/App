@@ -28,9 +28,11 @@ export const DEFAULT_PROFILE: UserProfile = {
 export const DEFAULT_WIDGETS: WidgetConf[] = [
   { id: 'estado', size: 'lg' },
   { id: 'resumen', size: 'lg' },
+  { id: 'dona', size: 'lg' },
   { id: 'consejo', size: 'lg' },
   { id: 'acciones', size: 'lg' },
   { id: 'pendientes', size: 'lg' },
+  { id: 'pilares', size: 'lg' },
 ]
 
 export const DEFAULT_THEME: ThemeSettings = {
