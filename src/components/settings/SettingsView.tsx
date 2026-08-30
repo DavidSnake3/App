@@ -16,7 +16,7 @@ import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm, playSuccess } from '../../lib/s
 import { aiAvailable } from '../../lib/ai'
 import { firebaseReady, isAdmin, logout } from '../../lib/firebase'
 import { PERIOD_LABEL, PERIOD_UNIT, convertPeriod, formatPayday, nextPaydays, payrollBreakdown, periodToMonthlyFactor } from '../../lib/payroll'
-import { suggestedEmergencyGoal } from '../../lib/fund'
+import { realBalance, suggestedEmergencyGoal } from '../../lib/fund'
 import { debtIsSettled, uid } from '../../lib/finance'
 import { celebrate, payBurst } from '../../lib/fx'
 import { applyBackup, exportBackup, readBackup } from '../../lib/backup'
@@ -187,6 +187,8 @@ function IngresosSection() {
   const setSavings = useFinanceStore((s) => s.setSavings)
   const addSavingsDeposit = useFinanceStore((s) => s.addSavingsDeposit)
   const deleteSavingsDeposit = useFinanceStore((s) => s.deleteSavingsDeposit)
+  const setFundNow = useFinanceStore((s) => s.setFundNow)
+  const disableFund = useFinanceStore((s) => s.disableFund)
   const months = useFinanceStore((s) => s.months)
   const setDefaultSalaryEverywhere = useFinanceStore((s) => s.setDefaultSalaryEverywhere)
   const setProfile = useFinanceStore((s) => s.setProfile)
@@ -200,7 +202,9 @@ function IngresosSection() {
   const [newDedAmount, setNewDedAmount] = useState(0)
   const [newDedAdvance, setNewDedAdvance] = useState(false)
   const [newDeposit, setNewDeposit] = useState(0)
+  const [fundAmount, setFundAmount] = useState(0)
   const emergencyGoal = suggestedEmergencyGoal(months, debts)
+  const saldoReal = realBalance(months, debts, settings)
 
   const linkableDebts = debts.filter((d) => !debtIsSettled(d) && !d.viaPlanilla && !p.deductions.some((x) => x.debtId === d.id))
 
@@ -440,6 +444,40 @@ function IngresosSection() {
             ))}
             <p className="text-[10.5px] text-muted mt-1">Vista del comprobante: {PERIOD_LABEL[settings.payroll.viewPeriod]} (cámbiala en el widget del inicio).</p>
           </div>
+        )}
+      </Card>
+
+      {/* Saldo real: control total del dinero (se configura aquí y se ve en Mes) */}
+      <Card title="Saldo real (tu banco)" icon={<Landmark size={14} />}>
+        {settings.fund?.enabled && saldoReal != null && (
+          <div className="card bg-elevated/60 p-3.5 flex items-center justify-between">
+            <span className="text-[12.5px] text-muted">Saldo actual calculado</span>
+            <span className="num text-[17px] font-bold" style={{ color: saldoReal >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
+              {formatMoney(Math.round(saldoReal))}
+            </span>
+          </div>
+        )}
+        <Field label={settings.fund?.enabled ? 'Ajustar: ¿cuánto tienes HOY en el banco?' : 'Activar: ¿cuánto tienes HOY en el banco?'}>
+          <div className="flex gap-2">
+            <CurrencyInput value={fundAmount} onChange={setFundAmount} className="flex-1" />
+            <button
+              onClick={() => { setFundNow(fundAmount); setFundAmount(0) }}
+              className="pressable rounded-2xl px-4 text-[13px] font-semibold text-white shrink-0"
+              style={{ background: 'var(--app-gradient)' }}
+            >
+              {settings.fund?.enabled ? 'Ajustar' : 'Activar'}
+            </button>
+          </div>
+        </Field>
+        <p className="text-[11px] text-muted">
+          Desde ese momento la app lo lleva en vivo: suma tus pagos de salario al llegar y resta
+          cada pago, gasto hormiga y aporte al ahorro. El sobrante del mes se arrastra solo al
+          siguiente (aparte del ahorro). Lo ves en la pestaña Mes y en el widget «Saldo real».
+        </p>
+        {settings.fund?.enabled && (
+          <button onClick={disableFund} className="pressable text-[12px] text-muted underline decoration-dotted self-start">
+            Desactivar el saldo real
+          </button>
         )}
       </Card>
 
