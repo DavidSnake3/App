@@ -1,34 +1,55 @@
-// Comprobante salarial y plan de pago del salario (mejoras 2, 3 y 8)
-import type { PayrollConfig, PaySchedule } from '../types/finance'
+// Comprobante salarial y plan de pago del salario (mejoras 2, 3, 8 y 9)
+// El comprobante REAL del usuario puede ser semanal, quincenal o mensual:
+// todos los montos se guardan en ese período (inputPeriod) y se convierten
+// con exactitud de céntimos, igual que una planilla real.
+import type { PayPeriod, PayrollConfig, PaySchedule } from '../types/finance'
 import { daysInMonth } from './dates'
 
 export const DEFAULT_CCSS_PCT = 10.83 // CCSS empleado (Costa Rica)
 
+/** Factor período → mensual (semanal usa 52 semanas / 12 meses) */
+export function periodToMonthlyFactor(p: PayPeriod): number {
+  if (p === 'weekly') return 52 / 12
+  if (p === 'biweekly') return 2
+  return 1
+}
+
+/** Convierte un monto entre períodos (vía base mensual), con céntimos */
+export function convertPeriod(value: number, from: PayPeriod, to: PayPeriod): number {
+  const monthly = value * periodToMonthlyFactor(from)
+  return round2(monthly / periodToMonthlyFactor(to))
+}
+
+function round2(v: number): number {
+  return Math.round(v * 100) / 100
+}
+
 export interface PayrollBreakdown {
+  /** período en el que están expresados gross/ccss/deducciones/net */
+  period: PayPeriod
   gross: number
-  /** monto que quita la CCSS (automático a partir del %) */
+  /** monto que quita la CCSS en el período del comprobante (automático) */
   ccss: number
   /** deducciones reales (créditos, embargos…) — SIN contar adelantos */
   deductions: { name: string; amount: number; debtId?: string }[]
   /** adelantos de salario: parte de tu pago (ej. tu 1ª quincena) */
   advances: { name: string; amount: number }[]
   advanceTotal: number
-  /** deducciones reales totales (CCSS + otras, sin adelantos) */
   totalDeductions: number
-  /** tu ingreso mensual REAL: bruto − CCSS − deducciones reales */
+  /** líquido del comprobante en su período (exacto, con céntimos) */
   net: number
-  /** lo que llega en la liquidación (neto − adelantos ya recibidos) */
   settlementNet: number
+  /** agregados mensuales (para presupuesto, salario y proyecciones) */
+  monthlyNet: number
+  monthlyAdvance: number
+  monthlySettlement: number
 }
 
-/**
- * Desglose del comprobante. Los adelantos NO reducen tu ingreso mensual:
- * solo cambian CUÁNDO te llega (1ª quincena vs. liquidación).
- */
 export function payrollBreakdown(p: PayrollConfig): PayrollBreakdown {
+  const period: PayPeriod = p.inputPeriod ?? 'monthly'
   const gross = Math.max(0, p.gross)
-  // CCSS a colón entero: así las filas visibles siempre suman el total visible
-  const ccss = Math.round(gross * (p.ccssPct / 100))
+  // exacto a céntimos, como los comprobantes reales (ej. 10,916.64)
+  const ccss = round2(gross * (p.ccssPct / 100))
   // Una deducción vinculada a deuda NUNCA es adelanto (la cuota es plata que sale)
   const deductions = p.deductions
     .filter((d) => !d.isAdvance || d.debtId)
@@ -36,28 +57,37 @@ export function payrollBreakdown(p: PayrollConfig): PayrollBreakdown {
   const advances = p.deductions
     .filter((d) => d.isAdvance && !d.debtId)
     .map((d) => ({ name: d.name, amount: d.amount }))
-  const other = deductions.reduce((s, d) => s + d.amount, 0)
-  const advanceTotal = advances.reduce((s, d) => s + d.amount, 0)
-  const totalDeductions = ccss + other
-  const net = Math.max(0, gross - totalDeductions)
+  const other = round2(deductions.reduce((s, d) => s + d.amount, 0))
+  const advanceTotal = round2(advances.reduce((s, d) => s + d.amount, 0))
+  const totalDeductions = round2(ccss + other)
+  const net = Math.max(0, round2(gross - totalDeductions))
+  const settlementNet = Math.max(0, round2(net - advanceTotal))
+  const f = periodToMonthlyFactor(period)
   return {
-    gross, ccss, deductions, advances, advanceTotal, totalDeductions,
-    net,
-    settlementNet: Math.max(0, net - advanceTotal),
+    period, gross, ccss, deductions, advances, advanceTotal, totalDeductions,
+    net, settlementNet,
+    monthlyNet: round2(net * f),
+    // El adelanto es un evento del MES (tu 1ª quincena): no se escala por período
+    monthlyAdvance: round2(advanceTotal),
+    monthlySettlement: Math.max(0, round2(net * f - advanceTotal)),
   }
 }
 
-/** Divide un monto mensual según el período de vista del comprobante */
-export function perPeriod(monthly: number, period: PayrollConfig['viewPeriod']): number {
-  if (period === 'biweekly') return monthly / 2
-  if (period === 'weekly') return monthly * 12 / 52
-  return monthly
+/** Un valor del comprobante (en bd.period) mostrado en otro período de vista */
+export function inView(bd: PayrollBreakdown, value: number, view: PayPeriod): number {
+  return convertPeriod(value, bd.period, view)
 }
 
-export const PERIOD_LABEL: Record<PayrollConfig['viewPeriod'], string> = {
+export const PERIOD_LABEL: Record<PayPeriod, string> = {
   weekly: 'Semanal',
   biweekly: 'Quincenal',
   monthly: 'Mensual',
+}
+
+export const PERIOD_UNIT: Record<PayPeriod, string> = {
+  weekly: 'por semana',
+  biweekly: 'por quincena',
+  monthly: 'por mes',
 }
 
 // ─── Fechas de pago (plan de ingresos, mejora 3) ─────────────────────────────
@@ -83,18 +113,18 @@ export interface PaydayInfo {
 }
 
 /**
- * Montos por día de pago del mes. Si te pagan quincenal y tienes un adelanto
- * configurado, la 1ª quincena = adelanto y la 2ª = liquidación (neto − adelanto).
+ * Montos por día de pago del mes (en colones mensuales). Si te pagan quincenal
+ * y tienes un adelanto, la 1ª quincena = adelanto y la 2ª = liquidación.
  */
 export function paydayAmounts(schedule: PaySchedule, bd: PayrollBreakdown): { amount: number; label?: string }[] {
   const paydays = (schedule.paydays.length ? schedule.paydays : [30]).slice().sort((a, b) => a - b)
-  if (schedule.frequency === 'biweekly' && paydays.length >= 2 && bd.advanceTotal > 0 && bd.advanceTotal < bd.net) {
+  if (schedule.frequency === 'biweekly' && paydays.length >= 2 && bd.monthlyAdvance > 0 && bd.monthlyAdvance < bd.monthlyNet) {
     return [
-      { amount: bd.advanceTotal, label: 'adelanto' },
-      { amount: bd.settlementNet, label: 'liquidación' },
+      { amount: bd.monthlyAdvance, label: 'adelanto' },
+      { amount: bd.monthlySettlement, label: 'liquidación' },
     ]
   }
-  const per = bd.net / paydays.length
+  const per = bd.monthlyNet / paydays.length
   return paydays.map(() => ({ amount: per }))
 }
 
@@ -110,7 +140,7 @@ export function nextPaydays(schedule: PaySchedule, bd: PayrollBreakdown, n = 4, 
     while (d.getDay() !== targetJs) d.setDate(d.getDate() + 1)
     for (let i = 0; i < n; i++) {
       const pay = adjustForWeekend(new Date(d), schedule.adjustWeekend)
-      out.push({ date: pay, amount: bd.net * 12 / 52, adjusted: pay.getTime() !== d.getTime() })
+      out.push({ date: pay, amount: round2(bd.monthlyNet * 12 / 52), adjusted: pay.getTime() !== d.getTime() })
       d.setDate(d.getDate() + 7)
     }
     return out
@@ -129,7 +159,7 @@ export function nextPaydays(schedule: PaySchedule, bd: PayrollBreakdown, n = 4, 
       if (pay >= start && out.length < n) {
         out.push({
           date: pay,
-          amount: amounts[i]?.amount ?? bd.net / paydays.length,
+          amount: amounts[i]?.amount ?? bd.monthlyNet / paydays.length,
           adjusted: pay.getTime() !== exact.getTime(),
           label: amounts[i]?.label,
         })

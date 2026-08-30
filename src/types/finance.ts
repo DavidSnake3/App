@@ -146,6 +146,8 @@ export interface UserProfile {
   payFrequency: 'monthly' | 'biweekly'
   planMode: 'monthly' | 'annual' // elección del onboarding (punto 24)
   onboarded: boolean
+  /** ya vio (o rechazó) el recorrido de bienvenida */
+  tourDone: boolean
 }
 
 // ─── Widgets del inicio (personalizables) ────────────────────────────────────
@@ -211,14 +213,22 @@ export interface PayrollDeduction {
   isAdvance?: boolean
 }
 
+export type PayPeriod = 'weekly' | 'biweekly' | 'monthly'
+
 export interface PayrollConfig {
-  /** salario base bruto mensual */
+  /**
+   * Período del comprobante REAL del usuario (mejora 9): los montos de
+   * `gross` y `deductions` están expresados en este período.
+   */
+  inputPeriod: PayPeriod
+  /** salario base bruto (por inputPeriod) */
   gross: number
   /** % de CCSS del empleado (Costa Rica: 10.83 por defecto) */
   ccssPct: number
+  /** deducciones por inputPeriod */
   deductions: PayrollDeduction[]
   /** cómo prefiere ver el comprobante */
-  viewPeriod: 'weekly' | 'biweekly' | 'monthly'
+  viewPeriod: PayPeriod
 }
 
 /** Plan de pago del salario: cuándo y cuánto te llega */

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Eye, EyeOff, Lock, Mail, User as UserIcon } from 'lucide-react'
 import { authErrorMessage, getLastEmail, loginEmail, loginGoogle, registerEmail, rememberEmail, resetPassword } from '../../lib/firebase'
+import { withLoading } from '../../store/useLoading'
 import { AppLogo } from '../ui/AppLogo'
 
 type Mode = 'login' | 'register' | 'reset'
@@ -24,9 +25,13 @@ export function AuthScreen({ onSkip }: { onSkip: () => void }) {
     if (mode === 'register' && name.trim().length < 2) { setError('Escribe tu nombre.'); return }
     setBusy(true)
     try {
-      if (mode === 'login') { await loginEmail(email.trim(), password); rememberEmail(email.trim()) }
-      else if (mode === 'register') { await registerEmail(name.trim(), email.trim(), password); rememberEmail(email.trim()) }
-      else {
+      if (mode === 'login') {
+        await withLoading('Entrando…', () => loginEmail(email.trim(), password))
+        rememberEmail(email.trim())
+      } else if (mode === 'register') {
+        await withLoading('Creando tu cuenta…', () => registerEmail(name.trim(), email.trim(), password))
+        rememberEmail(email.trim())
+      } else {
         await resetPassword(email.trim())
         setInfo('Te enviamos un correo para restablecer tu contraseña.')
       }
@@ -40,7 +45,7 @@ export function AuthScreen({ onSkip }: { onSkip: () => void }) {
   const google = async () => {
     setError(''); setBusy(true)
     try {
-      await loginGoogle()
+      await withLoading('Conectando con Google…', () => loginGoogle())
     } catch (e) {
       setError(authErrorMessage(e))
     } finally {

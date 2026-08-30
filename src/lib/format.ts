@@ -59,3 +59,18 @@ export const CURRENCIES: { code: string; label: string }[] = [
 export function formatPercent(v: number): string {
   return `${Math.round(v * 100)}%`
 }
+
+/** Como los comprobantes reales: muestra céntimos solo cuando existen */
+export function formatMoneyExact(amount: number, currency = _currency): string {
+  const hasCents = Math.round(amount * 100) % 100 !== 0
+  try {
+    return new Intl.NumberFormat('es-CR', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: hasCents ? 2 : 0,
+      maximumFractionDigits: hasCents ? 2 : 0,
+    }).format(amount)
+  } catch {
+    return `${amount.toLocaleString('es-CR')}`
+  }
+}

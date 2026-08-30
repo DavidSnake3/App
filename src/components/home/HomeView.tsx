@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
-import { Check, ChevronDown, ChevronUp, Plus, Proportions, Wallet, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ChevronUp, Plus, Proportions, TriangleAlert, Wallet, X } from 'lucide-react'
 import type { WidgetConf, WidgetId, WidgetSize } from '../../types/finance'
 import { DEFAULT_WIDGETS, useFinanceStore } from '../../store/useFinanceStore'
 import type { AuthState } from '../../hooks/useAuth'
 import { greeting, longToday } from '../../lib/dates'
 import { buildWorkbook, downloadWorkbook } from '../../lib/excel'
+import { withLoading } from '../../store/useLoading'
 import { vibrate } from '../../lib/fx'
-import { PlansSheet } from '../debts/PlansSheet'
 import { BottomSheet } from '../ui/BottomSheet'
 import { RenderWidget } from './widgets'
 import { WIDGET_META, type WidgetCtx } from './widgetMeta'
@@ -22,13 +22,14 @@ export function HomeView({ auth }: { auth: AuthState }) {
   const monthId = useFinanceStore((s) => s.activeMonthId)
   const homeWidgets = useFinanceStore((s) => s.settings.homeWidgets)
   const animPrefs = useFinanceStore((s) => s.settings.animations)
+  const payrollGross = useFinanceStore((s) => s.settings.payroll.gross)
+  const defaultSalary = useFinanceStore((s) => s.settings.defaultSalary)
   const setSettings = useFinanceStore((s) => s.setSettings)
   const setActiveTab = useFinanceStore((s) => s.setActiveTab)
 
   const widgets = homeWidgets ?? DEFAULT_WIDGETS
   const [editMode, setEditMode] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
-  const [plansOpen, setPlansOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
 
   // Mantener presionado ~0.7 s sobre un widget para entrar al modo edición (mejora 5)
@@ -81,14 +82,15 @@ export function HomeView({ auth }: { auth: AuthState }) {
 
   const ctx: WidgetCtx = {
     setActiveTab,
-    openPlans: () => setPlansOpen(true),
     exporting,
     exportExcel: async () => {
       if (exporting) return
       setExporting(true)
       try {
-        const blob = await buildWorkbook(months, debts, profile, monthId)
-        await downloadWorkbook(blob, `SNBusiness-${monthId}.xlsx`)
+        await withLoading('Generando tu Excel…', async () => {
+          const blob = await buildWorkbook(months, debts, profile, monthId)
+          await downloadWorkbook(blob, `SNBusiness-${monthId}.xlsx`)
+        })
       } catch { /* silencioso */ }
       setExporting(false)
     },
@@ -130,6 +132,24 @@ export function HomeView({ auth }: { auth: AuthState }) {
           <p className="text-[12px] text-muted -mt-2 anim-fade">
             Modo edición: mueve (↑↓), tamaño (S·M·L), quita (✕) o agrega widgets.
           </p>
+        )}
+
+        {/* Alerta: ingresos sin configurar (mejora 11) */}
+        {payrollGross <= 0 && defaultSalary <= 0 && (
+          <button
+            onClick={() => setActiveTab('settings')}
+            className="pressable card p-3.5 flex items-center gap-3 text-left anim-pop"
+            style={{ borderColor: 'color-mix(in oklab, var(--c-warning) 55%, var(--c-border))' }}
+          >
+            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--c-warning) 18%, transparent)' }}>
+              <TriangleAlert size={17} style={{ color: 'var(--c-warning)' }} />
+            </span>
+            <span className="flex-1">
+              <span className="block text-[13.5px] font-semibold text-ink">Configura tus ingresos</span>
+              <span className="block text-[11.5px] text-muted mt-0.5">Sin tu salario la app no puede calcular tu balance ni planes</span>
+            </span>
+            <ChevronRight size={16} className="text-muted shrink-0" />
+          </button>
         )}
 
         {/* Cuadrícula de widgets (mantén presionado un widget para editar) */}
@@ -219,7 +239,6 @@ export function HomeView({ auth }: { auth: AuthState }) {
         </div>
       </BottomSheet>
 
-      <PlansSheet open={plansOpen} onClose={() => setPlansOpen(false)} />
     </div>
   )
 }

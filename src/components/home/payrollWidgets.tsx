@@ -1,13 +1,13 @@
-// Widgets de Comprobante salarial (mejora 8) y Ahorro (mejora 15)
+// Widgets de Comprobante salarial (mejoras 8 y 9) y Ahorro (mejora 15)
 import { useMemo } from 'react'
 import { ArrowRight, FileText, PiggyBank } from 'lucide-react'
 import type { WidgetSize } from '../../types/finance'
 import type { WidgetCtx } from './widgetMeta'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { getMonthSummary } from '../../lib/finance'
-import { PERIOD_LABEL, formatPayday, nextPaydays, payrollBreakdown, perPeriod } from '../../lib/payroll'
+import { PERIOD_LABEL, formatPayday, inView, nextPaydays, payrollBreakdown } from '../../lib/payroll'
 import { currentMonthId } from '../../lib/dates'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, formatMoneyExact } from '../../lib/format'
 import { ProgressRing } from '../ui/ProgressRing'
 
 export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }) {
@@ -26,7 +26,7 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
         </span>
         <span className="flex-1">
           <span className="block text-[14px] font-semibold text-ink">Configura tu comprobante</span>
-          <span className="block text-[12px] text-muted mt-0.5">Salario bruto, CCSS y deducciones en Ajustes → Ingresos</span>
+          <span className="block text-[12px] text-muted mt-0.5">Semanal, quincenal o mensual, en Ajustes → Ingresos</span>
         </span>
         <ArrowRight size={15} className="text-muted shrink-0" />
       </button>
@@ -34,9 +34,9 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
   }
 
   const rows: { label: string; value: number; neg?: boolean }[] = [
-    { label: 'Salario bruto', value: perPeriod(bd.gross, p) },
-    { label: `CCSS (${payroll.ccssPct}%)`, value: perPeriod(bd.ccss, p), neg: true },
-    ...bd.deductions.map((d) => ({ label: d.name, value: perPeriod(d.amount, p), neg: true })),
+    { label: 'Salario bruto', value: inView(bd, bd.gross, p) },
+    { label: `CCSS (${payroll.ccssPct}%)`, value: inView(bd, bd.ccss, p), neg: true },
+    ...bd.deductions.map((d) => ({ label: d.name, value: inView(bd, d.amount, p), neg: true })),
   ]
 
   return (
@@ -65,7 +65,15 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
           <div key={i} className="flex items-center justify-between text-[12.5px]">
             <span className="text-muted truncate pr-2">{r.label}</span>
             <span className="num font-semibold shrink-0" style={{ color: r.neg ? 'var(--c-danger)' : 'var(--c-text)' }}>
-              {r.neg ? '−' : ''}{formatMoney(Math.round(r.value))}
+              {r.neg ? '−' : ''}{formatMoneyExact(r.value)}
+            </span>
+          </div>
+        ))}
+        {bd.advances.map((a, i) => (
+          <div key={`a${i}`} className="flex items-center justify-between text-[12.5px]">
+            <span className="text-muted truncate pr-2">{a.name} (adelanto: es tu pago)</span>
+            <span className="num font-semibold shrink-0" style={{ color: 'var(--c-income)' }}>
+              {formatMoneyExact(inView(bd, a.amount, p))}
             </span>
           </div>
         ))}
@@ -73,13 +81,13 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
         <div className="flex items-center justify-between">
           <span className="text-[12.5px] font-bold text-ink">LÍQUIDO {PERIOD_LABEL[p].toUpperCase()}</span>
           <span className="num text-[17px] font-bold" style={{ color: 'var(--c-income)' }}>
-            {formatMoney(Math.round(perPeriod(bd.net, p)))}
+            {formatMoneyExact(inView(bd, bd.net, p))}
           </span>
         </div>
-        {schedule.frequency === 'biweekly' && bd.advanceTotal > 0 && bd.advanceTotal < bd.net && (
+        {schedule.frequency === 'biweekly' && bd.monthlyAdvance > 0 && bd.monthlyAdvance < bd.monthlyNet && (
           <p className="text-[11px] text-muted mt-0.5">
-            Te llega: <span className="num font-semibold text-ink">{formatMoney(Math.round(bd.advanceTotal))}</span> (adelanto, 1ª q)
-            {' + '}<span className="num font-semibold text-ink">{formatMoney(Math.round(bd.settlementNet))}</span> (2ª q)
+            Te llega: <span className="num font-semibold text-ink">{formatMoney(Math.round(bd.monthlyAdvance))}</span> (adelanto, 1ª q)
+            {' + '}<span className="num font-semibold text-ink">{formatMoney(Math.round(bd.monthlySettlement))}</span> (2ª q)
           </p>
         )}
       </div>
@@ -108,7 +116,7 @@ export function AhorroWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }
   const months = useFinanceStore((s) => s.months)
   const debts = useFinanceStore((s) => s.debts)
 
-  const base = payrollBreakdown(payroll).net || defaultSalary
+  const base = payrollBreakdown(payroll).monthlyNet || defaultSalary
   const planMensual = savings.mode === 'percent'
     ? Math.round(Math.max(0, base) * savings.value / 100)
     : savings.value

@@ -1,10 +1,13 @@
 /* eslint-disable react-refresh/only-export-components -- catálogo compartido, no es una vista */
 // Catálogo de íconos para gastos, servicios y deudas (mejora 10)
 import {
-  Baby, Banknote, Bike, Bus, Car, Coffee, CreditCard, Dumbbell, Film, Fuel,
-  Gamepad2, Gift, GraduationCap, HandCoins, Heart, House, Landmark, Lightbulb,
-  PawPrint, Phone, Pizza, Plane, Receipt, Shirt, ShoppingCart, Smartphone,
-  Sparkles, Stethoscope, Tv, Utensils, Wifi, Wrench, Droplets, Music,
+  Baby, Banknote, Bike, BookOpen, Briefcase, Building2, Bus, Camera, Car,
+  Cat, Coffee, CreditCard, Dog, Droplets, Dumbbell, Film, Flower2, Fuel,
+  Gamepad2, Gift, GraduationCap, HandCoins, Headphones, Heart, House,
+  Landmark, Laptop, Lightbulb, Music, PartyPopper, PawPrint, Phone,
+  PiggyBank, Pill, Pizza, Plane, Receipt, Scissors, Shirt, ShoppingBag,
+  ShoppingCart, Smartphone, Sofa, Sparkles, Stethoscope, Store, Trophy,
+  Tv, Umbrella, Utensils, Wifi, Wrench,
 } from 'lucide-react'
 
 export const ITEM_ICONS: Record<string, { label: string; Icon: typeof House }> = {
@@ -42,6 +45,24 @@ export const ITEM_ICONS: Record<string, { label: string; Icon: typeof House }> =
   belleza: { label: 'Belleza', Icon: Sparkles },
   reparacion: { label: 'Reparaciones', Icon: Wrench },
   recibo: { label: 'Recibo', Icon: Receipt },
+  farmacia: { label: 'Farmacia', Icon: Pill },
+  barberia: { label: 'Barbería', Icon: Scissors },
+  libros: { label: 'Libros', Icon: BookOpen },
+  trabajo: { label: 'Trabajo', Icon: Briefcase },
+  oficina: { label: 'Oficina', Icon: Building2 },
+  seguro: { label: 'Seguros', Icon: Umbrella },
+  perro: { label: 'Perro', Icon: Dog },
+  gato: { label: 'Gato', Icon: Cat },
+  jardin: { label: 'Jardín', Icon: Flower2 },
+  laptop: { label: 'Tecnología', Icon: Laptop },
+  audio: { label: 'Audio', Icon: Headphones },
+  foto: { label: 'Fotografía', Icon: Camera },
+  muebles: { label: 'Muebles', Icon: Sofa },
+  compras: { label: 'Compras', Icon: ShoppingBag },
+  tienda: { label: 'Tienda', Icon: Store },
+  fiesta: { label: 'Fiestas', Icon: PartyPopper },
+  deporte: { label: 'Deportes', Icon: Trophy },
+  ahorro: { label: 'Ahorro', Icon: PiggyBank },
 }
 
 export const ICON_IDS = Object.keys(ITEM_ICONS)

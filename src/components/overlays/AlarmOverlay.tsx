@@ -35,7 +35,7 @@ export function AlarmOverlay({ alarm, onDismiss }: Props) {
   }, [sounds, haptics, alarmSound])
 
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col items-center justify-center px-8 max-w-[520px] mx-auto anim-fade"
+    <div className="fixed inset-0 z-[96] flex flex-col items-center justify-center px-8 max-w-[520px] mx-auto anim-fade"
       style={{ background: 'color-mix(in oklab, var(--c-bg-base) 88%, var(--c-danger))' }}
     >
       <div

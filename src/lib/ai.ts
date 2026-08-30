@@ -1,6 +1,4 @@
 // Integración con Google Gemini (punto 26) — con fallbacks sin conexión
-import type { PaymentPlan } from '../types/finance'
-
 const ENV_KEY = (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) ?? ''
 const ENV_MODEL = (import.meta.env.VITE_GEMINI_MODEL as string | undefined) ?? ''
 
@@ -28,7 +26,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
   }
 }
 
-interface GeminiOpts {
+export interface GeminiOpts {
   system?: string
   json?: boolean
   temperature?: number
@@ -36,7 +34,22 @@ interface GeminiOpts {
   timeoutMs?: number
 }
 
+export interface GeminiPart {
+  text?: string
+  inlineData?: { mimeType: string; data: string }
+}
+
+export interface GeminiTurn {
+  role: 'user' | 'model'
+  parts: GeminiPart[]
+}
+
 export async function askGemini(prompt: string, opts: GeminiOpts = {}): Promise<string> {
+  return geminiChat([{ role: 'user', parts: [{ text: prompt }] }], opts)
+}
+
+/** Conversación multi-turno con adjuntos (imágenes/PDF), usada por el chatbot */
+export async function geminiChat(turns: GeminiTurn[], opts: GeminiOpts = {}): Promise<string> {
   const key = getGeminiKey()
   if (!key) throw new Error('Sin clave de IA')
 
@@ -49,7 +62,7 @@ export async function askGemini(prompt: string, opts: GeminiOpts = {}): Promise<
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            contents: turns,
             ...(opts.system
               ? { systemInstruction: { parts: [{ text: opts.system }] } }
               : {}),
@@ -69,7 +82,11 @@ export async function askGemini(prompt: string, opts: GeminiOpts = {}): Promise<
       }
       if (!res.ok) {
         const txt = await res.text().catch(() => '')
-        throw new Error(`Gemini ${res.status}: ${txt.slice(0, 200)}`)
+        const err = new Error(`Gemini ${res.status}: ${txt.slice(0, 200)}`) as Error & { permanent?: boolean }
+        // 4xx permanente (clave inválida, petición mal formada…): reintentar
+        // con otro modelo no lo arregla — fallar de una vez
+        if (res.status >= 400 && res.status < 500) err.permanent = true
+        throw err
       }
       const data = await res.json()
       const parts: { text?: string; thought?: boolean }[] = data?.candidates?.[0]?.content?.parts ?? []
@@ -79,22 +96,11 @@ export async function askGemini(prompt: string, opts: GeminiOpts = {}): Promise<
       return text.trim()
     } catch (e) {
       lastErr = e
-      // error de red o modelo: probar el siguiente
+      if ((e as { permanent?: boolean })?.permanent) throw e
+      // error de red o modelo saturado: probar el siguiente
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('IA no disponible')
-}
-
-function extractJSON<T>(raw: string): T {
-  const cleaned = raw.replace(/```json|```/g, '').trim()
-  const start = cleaned.indexOf('{')
-  const end = cleaned.lastIndexOf('}')
-  const arrStart = cleaned.indexOf('[')
-  const arrEnd = cleaned.lastIndexOf(']')
-  if (arrStart !== -1 && (start === -1 || arrStart < start)) {
-    return JSON.parse(cleaned.slice(arrStart, arrEnd + 1)) as T
-  }
-  return JSON.parse(cleaned.slice(start, end + 1)) as T
 }
 
 // ─── Consejo financiero diario (punto 16) ────────────────────────────────────
@@ -152,47 +158,3 @@ export async function getDailyTip(context: string, aiOn: boolean): Promise<{ tip
   return { tip, fromAI }
 }
 
-// ─── Planes de pago con IA (puntos 6 y 14) ───────────────────────────────────
-
-interface AIPlanRaw {
-  id?: string
-  nombre?: string
-  descripcion?: string
-  pasos?: { name?: string; nombre?: string; amount?: number; monto?: number; day?: number; dia?: number; detail?: string; detalle?: string }[]
-  ventajas?: string[]
-  duracionMeses?: number
-}
-
-export async function getAIPlans(context: string): Promise<PaymentPlan[]> {
-  const raw = await askGemini(
-    `Situación financiera:\n${context}\n\n` +
-    `Genera exactamente 3 planes de pago alternativos para este mes que faciliten pagar deudas y no atrasarse. ` +
-    `Responde SOLO JSON con esta forma: {"plans":[{"id":"string-corto","nombre":"string","descripcion":"string (máx 180 caracteres)","pasos":[{"name":"string","amount":number,"day":number,"detail":"string"}],"ventajas":["string"],"duracionMeses":number}]}. ` +
-    `Los montos en la moneda del usuario, los días entre 1 y 28. Usa los nombres reales de los pagos y deudas del contexto.`,
-    { system: 'Eres un planificador financiero experto. Respondes únicamente JSON válido.', json: true, temperature: 0.5, maxTokens: 6144, timeoutMs: 30_000 },
-  )
-  const parsed = extractJSON<{ plans?: AIPlanRaw[] }>(raw)
-  const list = parsed.plans ?? []
-  return list.slice(0, 3).map((p, i) => ({
-    id: `ia-${p.id ?? i}`,
-    nombre: p.nombre ?? `Plan IA ${i + 1}`,
-    descripcion: p.descripcion ?? '',
-    pasos: (p.pasos ?? []).map((s) => ({
-      name: s.name ?? s.nombre ?? 'Pago',
-      amount: Math.max(0, Math.round(s.amount ?? s.monto ?? 0)),
-      day: Math.min(28, Math.max(1, Math.round(s.day ?? s.dia ?? 1))),
-      detail: s.detail ?? s.detalle,
-    })),
-    ventajas: (p.ventajas ?? []).slice(0, 4),
-    duracionMeses: p.duracionMeses,
-    esIA: true,
-  }))
-}
-
-/** Recomendación breve de pago según deudas y gastos (punto 6) */
-export async function getPaymentAdvice(context: string): Promise<string> {
-  return askGemini(
-    `Situación financiera:\n${context}\n\nEn máximo 3 oraciones y 300 caracteres: ¿qué debería pagar primero este mes y por qué? Español claro, sin emojis.`,
-    { system: 'Eres un asesor de finanzas personales conciso.', temperature: 0.4, maxTokens: 1024 },
-  )
-}

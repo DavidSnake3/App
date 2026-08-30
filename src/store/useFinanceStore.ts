@@ -21,6 +21,7 @@ export const DEFAULT_PROFILE: UserProfile = {
   payFrequency: 'monthly',
   planMode: 'monthly',
   onboarded: false,
+  tourDone: false,
 }
 
 /** Widgets del inicio por defecto (el usuario los personaliza a su gusto) */
@@ -50,6 +51,7 @@ export const DEFAULT_ANIMATIONS: AnimationPrefs = {
 }
 
 export const DEFAULT_PAYROLL: PayrollConfig = {
+  inputPeriod: 'monthly',
   gross: 0,
   ccssPct: DEFAULT_CCSS_PCT,
   deductions: [],
@@ -416,9 +418,9 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set((s) => {
           const payroll = { ...s.settings.payroll, ...patch }
           const settings = { ...s.settings, payroll }
-          const affectsMoney = 'gross' in patch || 'ccssPct' in patch || 'deductions' in patch
+          const affectsMoney = 'gross' in patch || 'ccssPct' in patch || 'deductions' in patch || 'inputPeriod' in patch
           if (affectsMoney && payroll.gross > 0) {
-            const net = Math.round(payrollBreakdown(payroll).net)
+            const net = Math.round(payrollBreakdown(payroll).monthlyNet)
             const nowId = currentMonthId()
             const months = Object.fromEntries(
               Object.entries(s.months).map(([id, m]) =>
@@ -482,7 +484,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
     }),
     {
       name: 'finance-app-state',
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
         if (version < 2) {
           const migrated = migrateV1((persisted ?? {}) as V1State)
@@ -497,11 +499,17 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             ...migrated,
           } as FinanceState & FinanceActions
         }
-        if (version < 3) {
-          // v2 → v3: nuevos campos (planilla, plan de pago, ahorro, sonidos, widgets)
+        if (version < 4) {
+          // v2/v3 → v4: nuevos campos (planilla por período, tour, sonidos, widgets)
           const s = persisted as FinanceState
           return {
             ...s,
+            profile: {
+              ...DEFAULT_PROFILE,
+              ...s.profile,
+              // quien ya usaba la app no necesita el recorrido de bienvenida
+              tourDone: (s.profile as Partial<UserProfile>)?.tourDone ?? Boolean(s.profile?.onboarded),
+            },
             settings: {
               ...DEFAULT_SETTINGS,
               ...s.settings,

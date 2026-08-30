@@ -4,6 +4,7 @@ import { firebaseReady, loadCloud, rememberEmail, saveCloud, watchAuth, watchClo
 import { exportState, useFinanceStore } from '../store/useFinanceStore'
 
 const SKIP_KEY = 'snb-skip-auth'
+const LAST_UID_KEY = 'snb-last-uid'
 
 export interface AuthState {
   user: AppUser | null
@@ -25,6 +26,9 @@ export function useAuth(): AuthState {
     try { return localStorage.getItem(SKIP_KEY) === '1' } catch { return false }
   })
   const syncing = useRef(false)
+  // Solo subimos cambios cuando ya leímos la nube con éxito: si la lectura
+  // falló (red/permiso) subir podría PISAR los datos reales de esa cuenta
+  const cloudReady = useRef(false)
 
   // Sesión
   useEffect(() => {
@@ -44,15 +48,48 @@ export function useAuth(): AuthState {
     let cancelled = false
 
     const run = async () => {
-      const local = exportState()
-      const remote = await loadCloud(user.uid).catch(() => null)
-      if (cancelled) return
+      cloudReady.current = false
+      // Aislamiento por cuenta (mejora 10): si entra un uid DISTINTO al último,
+      // los datos locales del anterior se descartan (viven en SU nube) y esta
+      // cuenta arranca desde su propia nube o desde cero. Nunca se mezclan.
+      let lastUid: string | null = null
+      try { lastUid = localStorage.getItem(LAST_UID_KEY) } catch { /* nada */ }
+      const isDifferentAccount = Boolean(lastUid && lastUid !== user.uid)
+      if (isDifferentAccount) {
+        syncing.current = true
+        useFinanceStore.getState().resetAll()
+        syncing.current = false
+        // El historial del chat también es por cuenta: no dejar residuos
+        try {
+          for (const k of Object.keys(localStorage)) {
+            if (k.startsWith('snb-chat-')) localStorage.removeItem(k)
+          }
+        } catch { /* nada */ }
+      }
+      try { localStorage.setItem(LAST_UID_KEY, user.uid) } catch { /* nada */ }
 
-      if (remote && remote.updatedAt > local.updatedAt) {
+      // Leer la nube con reintentos: null = "no hay documento" (cuenta nueva),
+      // un error de red/permiso NO debe tratarse como cuenta vacía
+      let remote: Awaited<ReturnType<typeof loadCloud>> = null
+      let readOk = false
+      for (let i = 0; i < 3 && !cancelled; i++) {
+        try {
+          remote = await loadCloud(user.uid)
+          readOk = true
+          break
+        } catch {
+          await new Promise((r) => setTimeout(r, 800 * (i + 1)))
+        }
+      }
+      if (cancelled) return
+      cloudReady.current = readOk
+
+      const local = exportState()
+      if (remote && (isDifferentAccount || remote.updatedAt > local.updatedAt)) {
         syncing.current = true
         useFinanceStore.getState().hydrateFrom(remote)
         syncing.current = false
-      } else if (local.updatedAt > 0) {
+      } else if (readOk && !isDifferentAccount && local.updatedAt > 0) {
         await saveCloud(user.uid, local).catch(() => {})
       }
 
@@ -66,6 +103,8 @@ export function useAuth(): AuthState {
       }
 
       unsub = await watchCloud(user.uid, (remoteData) => {
+        // Un snapshot entregado equivale a una lectura exitosa de la nube
+        cloudReady.current = true
         const localNow = useFinanceStore.getState().updatedAt
         if (remoteData.updatedAt > localNow) {
           syncing.current = true
@@ -73,6 +112,7 @@ export function useAuth(): AuthState {
           syncing.current = false
         }
       })
+      if (cancelled) unsub()
     }
     void run()
     return () => { cancelled = true; unsub?.() }
@@ -83,11 +123,11 @@ export function useAuth(): AuthState {
     if (!user) return
     let timer: ReturnType<typeof setTimeout> | null = null
     const unsub = useFinanceStore.subscribe((s, prev) => {
-      if (syncing.current) return
+      if (syncing.current || !cloudReady.current) return
       if (s.updatedAt === prev.updatedAt) return
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
-        void saveCloud(user.uid, exportState()).catch(() => {})
+        if (cloudReady.current) void saveCloud(user.uid, exportState()).catch(() => {})
       }, 1500)
     })
     return () => { if (timer) clearTimeout(timer); unsub() }

@@ -1,13 +1,13 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import {
-  ArrowRight, CalendarClock, CreditCard, FileSpreadsheet, HandCoins,
+  ArrowRight, CalendarClock, CreditCard, FileSpreadsheet,
   Lightbulb, Plus, Sparkles,
 } from 'lucide-react'
 import type { WidgetId, WidgetSize } from '../../types/finance'
 import type { WidgetCtx } from './widgetMeta'
 import { useFinanceStore } from '../../store/useFinanceStore'
+import { useChat } from '../../store/useChat'
 import { buildAnnualProjection, buildMonthFlow, buildPayables, debtIsActiveInMonth, debtIsSettled, debtRemaining, getMonthSummary } from '../../lib/finance'
-import { financeSnapshot } from '../../lib/plans'
 import { getDailyTip } from '../../lib/ai'
 import { WEEKDAY_SHORT, daysInMonth, firstWeekday, getUrgency, isCurrentMonth, monthLabel, todayDay, urgencyColor, urgencyLabel } from '../../lib/dates'
 import { formatMoney, formatMoneyShort } from '../../lib/format'
@@ -134,17 +134,14 @@ function ResumenWidget() {
 }
 
 function ConsejoWidget() {
-  const { month, debts } = useMonthData()
-  const profile = useFinanceStore((s) => s.profile)
-  const aiEnabled = useFinanceStore((s) => s.settings.aiEnabled)
-  const [tip, setTip] = useState<{ tip: string; fromAI: boolean } | null>(null)
+  const [tip, setTip] = useState<{ tip: string } | null>(null)
 
+  // Consejo local del día (la IA ahora vive solo en el chatbot Fin)
   useEffect(() => {
-    const ctx = month ? financeSnapshot(month, debts, profile) : 'Sin datos todavía.'
     let alive = true
-    getDailyTip(ctx, aiEnabled).then((t) => { if (alive) setTip(t) })
+    getDailyTip('', false).then((t) => { if (alive) setTip(t) })
     return () => { alive = false }
-  }, [month, debts, profile, aiEnabled])
+  }, [])
 
   return (
     <div className="card p-4 flex gap-3 h-full" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 40%, var(--c-border))' }}>
@@ -152,11 +149,9 @@ function ConsejoWidget() {
         <Lightbulb size={17} style={{ color: 'var(--c-warning)' }} />
       </span>
       <div className="flex-1">
-        <p className="text-[11.5px] font-semibold text-muted flex items-center gap-1.5">
-          Consejo del día {tip?.fromAI && <Sparkles size={11} style={{ color: 'var(--app-accent-soft)' }} />}
-        </p>
+        <p className="text-[11.5px] font-semibold text-muted">Consejo del día</p>
         <p className="text-[13.5px] text-ink leading-relaxed mt-0.5">
-          {tip?.tip ?? <span className="text-muted">Pensando tu consejo <LoaderDots /></span>}
+          {tip?.tip ?? <span className="text-muted"><LoaderDots /></span>}
         </p>
       </div>
     </div>
@@ -164,11 +159,12 @@ function ConsejoWidget() {
 }
 
 function AccionesWidget({ ctx }: { ctx: WidgetCtx }) {
+  const openChat = useChat((s) => s.openChat)
   return (
     <div className="grid grid-cols-4 gap-2.5 h-full">
       <Accion icon={<Plus size={19} />} label="Gasto" onClick={() => ctx.setActiveTab('month')} primary />
       <Accion icon={<CreditCard size={18} />} label="Deudas" onClick={() => ctx.setActiveTab('debts')} />
-      <Accion icon={<HandCoins size={18} />} label="Planes" onClick={ctx.openPlans} />
+      <Accion icon={<Sparkles size={18} />} label="Fin" onClick={() => openChat()} />
       <Accion
         icon={<FileSpreadsheet size={18} className={ctx.exporting ? 'animate-pulse' : ''} />}
         label={ctx.exporting ? '…' : 'Excel'}

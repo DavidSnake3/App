@@ -1,36 +1,27 @@
 import { useMemo, useState } from 'react'
-import { CalendarClock, HandCoins, Lightbulb, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { CalendarClock, HandCoins, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { Debt } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import {
-  debtEndMonthId, debtIsActiveInMonth, debtIsSettled, debtPaidCount, debtRemaining,
+  buildPayables, debtEndMonthId, debtIsActiveInMonth, debtIsSettled, debtPaidCount, debtRemaining,
 } from '../../lib/finance'
-import { financeSnapshot } from '../../lib/plans'
-import { getPaymentAdvice } from '../../lib/ai'
 import { formatMoney } from '../../lib/format'
 import { monthLabel } from '../../lib/dates'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddDebtSheet } from './AddDebtSheet'
 import { DebtDetailSheet } from './DebtDetailSheet'
-import { PlansSheet } from './PlansSheet'
 import { PaidCheck } from '../month/ItemBits'
-import { buildPayables } from '../../lib/finance'
 
 export function DebtsView() {
   const debts = useFinanceStore((s) => s.debts)
   const monthId = useFinanceStore((s) => s.activeMonthId)
   const month = useFinanceStore((s) => s.months[monthId])
-  const profile = useFinanceStore((s) => s.profile)
-  const aiEnabled = useFinanceStore((s) => s.settings.aiEnabled)
   const deleteDebt = useFinanceStore((s) => s.deleteDebt)
 
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Debt | null>(null)
-  const [plansOpen, setPlansOpen] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [toDelete, setToDelete] = useState<Debt | null>(null)
-  const [advice, setAdvice] = useState('')
-  const [adviceLoading, setAdviceLoading] = useState(false)
 
   const active = debts.filter((d) => !debtIsSettled(d))
   const settled = debts.filter((d) => debtIsSettled(d))
@@ -40,18 +31,6 @@ export function DebtsView() {
     .reduce((s, d) => s + d.monthlyPayment, 0)
 
   const monthItems = useMemo(() => (month ? buildPayables(month, debts) : []), [month, debts])
-
-  const askAdvice = async () => {
-    if (!month) return
-    setAdviceLoading(true)
-    try {
-      setAdvice(await getPaymentAdvice(financeSnapshot(month, debts, profile)))
-    } catch {
-      setAdvice('No se pudo obtener la recomendación. Revisa tu conexión o tu clave de IA en Ajustes.')
-    } finally {
-      setAdviceLoading(false)
-    }
-  }
 
   return (
     <div className="flex-1 overflow-y-auto overscroll-contain">
@@ -76,32 +55,7 @@ export function DebtsView() {
           </div>
         </div>
 
-        {/* Recomendación de pagos (punto 6) */}
-        <div className="flex gap-2.5">
-          <button
-            onClick={() => setPlansOpen(true)}
-            className="pressable btn-primary flex-1 flex items-center justify-center gap-2 !py-3"
-          >
-            <HandCoins size={17} /> Planes de pago
-          </button>
-          {aiEnabled && (
-            <button
-              onClick={askAdvice}
-              disabled={adviceLoading}
-              className="pressable btn-ghost flex-1 flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              <Sparkles size={16} className={adviceLoading ? 'animate-pulse' : ''} style={{ color: 'var(--app-accent-soft)' }} />
-              {adviceLoading ? 'Analizando…' : 'Consejo IA'}
-            </button>
-          )}
-        </div>
 
-        {advice && (
-          <div className="card p-3.5 anim-pop flex gap-2.5" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 40%, var(--c-border))' }}>
-            <Lightbulb size={17} className="shrink-0 mt-0.5" style={{ color: 'var(--c-warning)' }} />
-            <p className="text-[13px] text-ink leading-relaxed">{advice}</p>
-          </div>
-        )}
 
         {/* Deudas activas */}
         {active.length === 0 && settled.length === 0 && (
@@ -229,7 +183,6 @@ export function DebtsView() {
         onClose={() => setDetailId(null)}
         onEdit={(d) => { setDetailId(null); setEditing(d); setAddOpen(true) }}
       />
-      <PlansSheet open={plansOpen} onClose={() => setPlansOpen(false)} />
       <ConfirmDialog
         open={!!toDelete}
         title={`¿Eliminar "${toDelete?.name}"?`}

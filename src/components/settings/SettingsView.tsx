@@ -1,22 +1,25 @@
 import { useRef, useState } from 'react'
 import {
-  AlarmClock, ArrowLeft, Bell, BellRing, ChevronRight, Cloud, CloudOff,
+  AlarmClock, ArrowLeft, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
   Database, Download, FileText, HandCoins, Image as ImageIcon, KeyRound,
-  Landmark, LogOut, Moon, Palette, PartyPopper, PiggyBank, Play, Plus,
-  Sparkles, Sun, Trash2, Upload, User as UserIcon, Vibrate, Volume2, Wallet, X,
+  Landmark, LifeBuoy, LogOut, Mail, MessageCircleQuestion, Moon, Palette,
+  PartyPopper, PiggyBank, Play, Plus, Sparkles, Sun, Trash2, Upload,
+  User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
-import type { AlarmSoundId, Debt, PaySoundId, PendingAlarm } from '../../types/finance'
+import type { AlarmSoundId, Debt, PayPeriod, PaySoundId, PendingAlarm } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
+import { useChat } from '../../store/useChat'
 import { BG_PRESETS, PALETTES, compressImage } from '../../lib/themes'
-import { CURRENCIES, formatMoney } from '../../lib/format'
+import { CURRENCIES, formatMoney, formatMoneyExact } from '../../lib/format'
 import { requestPermission, sendTestNotification } from '../../lib/notifications'
 import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm, playSuccess } from '../../lib/sound'
 import { aiAvailable } from '../../lib/ai'
 import { firebaseReady, isAdmin, logout } from '../../lib/firebase'
-import { PERIOD_LABEL, formatPayday, nextPaydays, payrollBreakdown } from '../../lib/payroll'
+import { PERIOD_LABEL, PERIOD_UNIT, convertPeriod, formatPayday, nextPaydays, payrollBreakdown, periodToMonthlyFactor } from '../../lib/payroll'
 import { debtIsSettled, uid } from '../../lib/finance'
 import { celebrate, payBurst } from '../../lib/fx'
 import { applyBackup, exportBackup, readBackup } from '../../lib/backup'
+import { withLoading } from '../../store/useLoading'
 import { buildWorkbook, downloadWorkbook } from '../../lib/excel'
 import type { AuthState } from '../../hooks/useAuth'
 import { CurrencyInput } from '../ui/CurrencyInput'
@@ -27,7 +30,9 @@ import { AlarmOverlay } from '../overlays/AlarmOverlay'
 
 const ACCENT_CHOICES = ['#7c5cff', '#10b981', '#0ea5e9', '#f43f5e', '#d97706', '#ec4899', '#14b8a6', '#8b5cf6']
 
-type SectionId = 'cuenta' | 'ingresos' | 'apariencia' | 'animaciones' | 'notificaciones' | 'ia' | 'datos'
+type SectionId = 'cuenta' | 'ingresos' | 'apariencia' | 'animaciones' | 'notificaciones' | 'ia' | 'datos' | 'ayuda'
+
+const SUPPORT_EMAIL = 'davidjosuevillegassalas@gmail.com'
 
 /** Ajustes organizado por submenús (mejora 16) */
 export function SettingsView({ auth }: { auth: AuthState }) {
@@ -41,6 +46,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
     { id: 'notificaciones', icon: <Bell size={17} />, title: 'Notificaciones y alarmas', desc: 'Recordatorios, modo alarma y pruebas' },
     { id: 'ia', icon: <Sparkles size={17} />, title: 'Inteligencia artificial', desc: 'Funciones con Gemini y clave', adminOnly: true },
     { id: 'datos', icon: <Database size={17} />, title: 'Datos y respaldo', desc: 'Excel, exportar/importar respaldo, borrar todo' },
+    { id: 'ayuda', icon: <LifeBuoy size={17} />, title: 'Ayuda y soporte', desc: '¿Necesitas ayuda? Reporta un error o contáctanos' },
   ]
   const visible = items.filter((i) => !i.adminOnly || isAdmin(auth.user))
 
@@ -69,6 +75,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
           {section === 'notificaciones' && <NotificacionesSection />}
           {section === 'ia' && <IASection />}
           {section === 'datos' && <DatosSection />}
+          {section === 'ayuda' && <AyudaSection />}
         </div>
       </div>
     )
@@ -108,7 +115,7 @@ function VersionFooter() {
   const debts = useFinanceStore((s) => s.debts)
   return (
     <p className="text-[11px] text-muted text-center">
-      SNBusiness v1.2 · {Object.keys(months).length} meses · {debts.length} deudas
+      SNBusiness v1.3 · {Object.keys(months).length} meses · {debts.length} deudas
     </p>
   )
 }
@@ -191,16 +198,31 @@ function IngresosSection() {
 
   const linkableDebts = debts.filter((d) => !debtIsSettled(d) && !d.viaPlanilla && !p.deductions.some((x) => x.debtId === d.id))
 
+  const inputPeriod = p.inputPeriod ?? 'monthly'
+
   const addManualDed = () => {
     if (!newDedName.trim() || newDedAmount <= 0) return
-    setPayroll({ deductions: [...p.deductions, { id: uid(), name: newDedName.trim(), amount: newDedAmount, isAdvance: newDedAdvance }] })
+    setPayroll({ deductions: [...p.deductions, { id: uid(), name: newDedName.trim(), amount: newDedAmount, isAdvance: inputPeriod === 'monthly' && newDedAdvance }] })
     setNewDedName(''); setNewDedAmount(0); setNewDedAdvance(false)
   }
   const toggleAdvance = (id: string) =>
     setPayroll({ deductions: p.deductions.map((d) => d.id === id ? { ...d, isAdvance: !d.isAdvance } : d) })
   const addDebtDed = (d: Debt) => {
-    setPayroll({ deductions: [...p.deductions, { id: uid(), name: d.name, amount: d.monthlyPayment, debtId: d.id }] })
+    // La cuota de la deuda es MENSUAL; la deducción vive en el período del comprobante
+    setPayroll({ deductions: [...p.deductions, { id: uid(), name: d.name, amount: convertPeriod(d.monthlyPayment, 'monthly', inputPeriod), debtId: d.id }] })
     updateDebt(d.id, { viaPlanilla: true })
+  }
+  const changeInputPeriod = (v: PayPeriod) => {
+    if (v === inputPeriod) return
+    // Las deducciones vinculadas a deuda se recalculan desde su cuota mensual real
+    setPayroll({
+      inputPeriod: v,
+      deductions: p.deductions.map((d) => {
+        if (!d.debtId) return d
+        const debt = debts.find((x) => x.id === d.debtId)
+        return debt ? { ...d, amount: convertPeriod(debt.monthlyPayment, 'monthly', v) } : d
+      }),
+    })
   }
   const removeDed = (id: string) => {
     const ded = p.deductions.find((x) => x.id === id)
@@ -208,13 +230,33 @@ function IngresosSection() {
     setPayroll({ deductions: p.deductions.filter((x) => x.id !== id) })
   }
 
-  const next = nextPaydays(sch, p.gross > 0 ? bd : { ...bd, net: settings.defaultSalary, settlementNet: settings.defaultSalary, advanceTotal: 0 }, 3)
+  const next = nextPaydays(
+    sch,
+    p.gross > 0
+      ? bd
+      : { ...bd, monthlyNet: settings.defaultSalary, monthlyAdvance: 0, monthlySettlement: settings.defaultSalary },
+    3,
+  )
 
   return (
     <>
-      {/* Comprobante (mejoras 2 y 8) */}
+      {/* Comprobante (mejoras 2, 8 y 9: semanal, quincenal o mensual) */}
       <Card title="Comprobante salarial" icon={<FileText size={14} />}>
-        <Field label="Salario base BRUTO mensual">
+        <Field label="¿Cada cuánto recibes tu comprobante?">
+          <Segmented
+            value={inputPeriod}
+            onChange={changeInputPeriod}
+            options={[
+              { value: 'weekly', label: 'Semanal' },
+              { value: 'biweekly', label: 'Quincenal' },
+              { value: 'monthly', label: 'Mensual' },
+            ]}
+          />
+          <p className="text-[11px] text-muted mt-1">
+            Escribe los montos tal como vienen en tu comprobante ({PERIOD_UNIT[p.inputPeriod ?? 'monthly']}).
+          </p>
+        </Field>
+        <Field label={`Salario base BRUTO (${PERIOD_UNIT[p.inputPeriod ?? 'monthly']})`}>
           <CurrencyInput value={p.gross} onChange={(v) => setPayroll({ gross: v })} />
         </Field>
         <Field label="Deducción CCSS del empleado (%)">
@@ -226,7 +268,8 @@ function IngresosSection() {
           <p className="text-[11px] text-muted mt-1">
             Costa Rica: 10.83% por defecto.
             {p.gross > 0 && (
-              <> La CCSS te quita <span className="num font-bold" style={{ color: 'var(--c-danger)' }}>−{formatMoney(Math.round(bd.ccss))}</span> al mes (automático).</>
+              <> La CCSS te quita <span className="num font-bold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bd.ccss)}</span> {PERIOD_UNIT[bd.period]} (automático)
+              {bd.period !== 'monthly' && <> ≈ <span className="num">−{formatMoney(Math.round(bd.ccss * periodToMonthlyFactor(bd.period)))}</span> al mes</>}.</>
             )}
           </p>
         </Field>
@@ -240,8 +283,8 @@ function IngresosSection() {
                   {d.debtId ? <HandCoins size={13} className="text-accent-soft shrink-0" /> : <Landmark size={13} className="text-muted shrink-0" />}
                   <span className="flex-1 min-w-0">
                     <span className="block text-[13px] text-ink truncate">{d.name}{d.debtId ? ' · deuda vinculada' : ''}</span>
-                    {/* una cuota de deuda nunca es adelanto: el chip solo aplica a deducciones manuales */}
-                    {!d.debtId && (
+                    {/* una cuota de deuda nunca es adelanto; el adelanto solo aplica al comprobante mensual */}
+                    {!d.debtId && inputPeriod === 'monthly' && (
                       <button
                         onClick={() => toggleAdvance(d.id)}
                         className={`pressable chip !py-0 !px-1.5 !text-[9.5px] mt-0.5 ${d.isAdvance ? 'chip-active' : ''}`}
@@ -267,15 +310,17 @@ function IngresosSection() {
               <Plus size={18} />
             </button>
           </div>
-          <label className="flex items-center gap-2 mt-2 text-[12px] text-muted cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={newDedAdvance}
-              onChange={(e) => setNewDedAdvance(e.target.checked)}
-              className="w-4 h-4 accent-[var(--app-accent)]"
-            />
-            Es un ADELANTO de salario (mi pago de la 1ª quincena — no es plata perdida)
-          </label>
+          {inputPeriod === 'monthly' && (
+            <label className="flex items-center gap-2 mt-2 text-[12px] text-muted cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={newDedAdvance}
+                onChange={(e) => setNewDedAdvance(e.target.checked)}
+                className="w-4 h-4 accent-[var(--app-accent)]"
+              />
+              Es un ADELANTO de salario (mi pago de la 1ª quincena — no es plata perdida)
+            </label>
+          )}
           {linkableDebts.length > 0 && (
             <div className="mt-2">
               <p className="text-[11.5px] text-muted mb-1">O vincula una deuda existente (se pagará por planilla):</p>
@@ -292,20 +337,24 @@ function IngresosSection() {
 
         {p.gross > 0 ? (
           <div className="card bg-elevated/60 p-3.5">
-            <Row2 label="Salario bruto" value={formatMoney(bd.gross)} />
-            <Row2 label={`CCSS (${p.ccssPct}%) automático`} value={`−${formatMoney(Math.round(bd.ccss))}`} danger />
-            {bd.deductions.map((d, i) => <Row2 key={i} label={d.name} value={`−${formatMoney(d.amount)}`} danger />)}
+            <Row2 label={`Salario bruto (${PERIOD_UNIT[bd.period]})`} value={formatMoneyExact(bd.gross)} />
+            <Row2 label={`CCSS (${p.ccssPct}%) automático`} value={`−${formatMoneyExact(bd.ccss)}`} danger />
+            {bd.deductions.map((d, i) => <Row2 key={i} label={d.name} value={`−${formatMoneyExact(d.amount)}`} danger />)}
+            {bd.advances.map((a, i) => <Row2 key={`a${i}`} label={`${a.name} (adelanto: es tu pago)`} value={formatMoneyExact(a.amount)} />)}
             <div className="border-t border-dashed my-1.5" style={{ borderColor: 'var(--c-border)' }} />
-            <Row2 label="TU INGRESO MENSUAL (neto)" value={formatMoney(Math.round(bd.net))} strong />
-            {sch.frequency === 'biweekly' && bd.advanceTotal > 0 && bd.advanceTotal < bd.net && (
+            <Row2 label={`LÍQUIDO ${PERIOD_LABEL[bd.period].toUpperCase()}`} value={formatMoneyExact(bd.net)} strong />
+            {bd.period !== 'monthly' && (
+              <Row2 label="Tu ingreso mensual" value={formatMoney(Math.round(bd.monthlyNet))} strong />
+            )}
+            {sch.frequency === 'biweekly' && bd.monthlyAdvance > 0 && bd.monthlyAdvance < bd.monthlyNet && (
               <div className="mt-1.5 rounded-xl px-2.5 py-2" style={{ background: 'color-mix(in oklab, var(--c-income) 10%, transparent)' }}>
                 <p className="text-[11.5px] text-muted mb-1">Así te llega (el adelanto es parte de tu pago):</p>
-                <Row2 label="1ª quincena (adelanto)" value={formatMoney(Math.round(bd.advanceTotal))} />
-                <Row2 label="2ª quincena (liquidación)" value={formatMoney(Math.round(bd.settlementNet))} />
+                <Row2 label="1ª quincena (adelanto)" value={formatMoney(Math.round(bd.monthlyAdvance))} />
+                <Row2 label="2ª quincena (liquidación)" value={formatMoney(Math.round(bd.monthlySettlement))} />
               </div>
             )}
             <p className="text-[11px] text-muted mt-2">
-              Este neto se usa automáticamente como el salario del mes actual y los siguientes.
+              Tu ingreso mensual se aplica automáticamente al mes actual y los siguientes.
             </p>
           </div>
         ) : (
@@ -743,8 +792,10 @@ function DatosSection() {
     if (exporting) return
     setExporting(true)
     try {
-      const blob = await buildWorkbook(months, debts, profile, activeMonthId)
-      await downloadWorkbook(blob, `SNBusiness-${activeMonthId}.xlsx`)
+      await withLoading('Generando tu Excel…', async () => {
+        const blob = await buildWorkbook(months, debts, profile, activeMonthId)
+        await downloadWorkbook(blob, `SNBusiness-${activeMonthId}.xlsx`)
+      })
     } catch { /* nada */ }
     setExporting(false)
   }
@@ -753,7 +804,7 @@ function DatosSection() {
     if (!f) return
     setBackupMsg('')
     try {
-      setPendingImport(await readBackup(f))
+      setPendingImport(await withLoading('Leyendo tu respaldo…', () => readBackup(f)))
     } catch {
       setBackupMsg('Ese archivo no es un respaldo válido de SNBusiness.')
     }
@@ -766,7 +817,7 @@ function DatosSection() {
         <button onClick={() => void exportExcel()} disabled={exporting} className="pressable btn-ghost w-full flex items-center justify-center gap-2 disabled:opacity-60">
           <Download size={15} /> {exporting ? 'Generando…' : 'Excel con plantilla (.xlsx)'}
         </button>
-        <button onClick={() => void exportBackup()} className="pressable btn-ghost w-full flex items-center justify-center gap-2">
+        <button onClick={() => void withLoading('Creando tu respaldo…', exportBackup)} className="pressable btn-ghost w-full flex items-center justify-center gap-2">
           <Database size={15} /> Respaldo completo (.json)
         </button>
         <p className="text-[11px] text-muted">El respaldo incluye meses, deudas, perfil y configuración.</p>
@@ -807,6 +858,59 @@ function DatosSection() {
         onCancel={() => setPendingImport(null)}
         onConfirm={() => { if (pendingImport) applyBackup(pendingImport.data); setPendingImport(null) }}
       />
+    </>
+  )
+}
+
+// ─── Ayuda y soporte (mejora 14) ─────────────────────────────────────────────
+
+function AyudaSection() {
+  const openChat = useChat((s) => s.openChat)
+
+  const mail = (subject: string, body: string) => {
+    const info = `\n\n—\nSNBusiness v1.3 · ${navigator.userAgent.slice(0, 80)}`
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
+  }
+
+  const rows: { icon: React.ReactNode; title: string; desc: string; run: () => void }[] = [
+    {
+      icon: <MessageCircleQuestion size={17} />,
+      title: '¿Necesitas ayuda con la app?',
+      desc: 'Pregúntale a Fin: conoce todas las funciones',
+      run: () => openChat('¿Cómo se usa la app? Explícame lo básico.'),
+    },
+    {
+      icon: <Bug size={17} />,
+      title: 'Reportar un error o proponer una mejora',
+      desc: 'Cuéntanos qué pasó o qué te gustaría ver',
+      run: () => mail('SNBusiness · Reporte de error / mejora', 'Hola, quiero reportar:\n\nQué pasó (o mi idea):\n\nPasos para verlo:\n1. \n2. \n\nPantalla donde ocurre: '),
+    },
+    {
+      icon: <Mail size={17} />,
+      title: 'Contactar al equipo',
+      desc: 'Consultas, quejas o cualquier otro tema',
+      run: () => mail('SNBusiness · Contacto', 'Hola, les escribo por: '),
+    },
+  ]
+
+  return (
+    <>
+      <Card title="¿En qué te ayudamos?">
+        <div className="flex flex-col gap-2">
+          {rows.map((r) => (
+            <button key={r.title} onClick={r.run} className="pressable card p-3.5 flex items-center gap-3 text-left">
+              <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--app-accent) 14%, transparent)', color: 'var(--app-accent-soft)' }}>
+                {r.icon}
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14px] font-semibold text-ink">{r.title}</span>
+                <span className="block text-[11.5px] text-muted mt-0.5">{r.desc}</span>
+              </span>
+              <ChevronRight size={15} className="text-muted shrink-0" />
+            </button>
+          ))}
+        </div>
+      </Card>
     </>
   )
 }

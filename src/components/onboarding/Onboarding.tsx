@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, Bell, CalendarRange, Check, Rocket, Wallet } from 'lucide-react'
+import type { AppUser } from '../../lib/firebase'
+import type { PayPeriod } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { currentMonthId } from '../../lib/dates'
-import { CURRENCIES } from '../../lib/format'
+import { CURRENCIES, formatMoney, formatMoneyExact } from '../../lib/format'
+import { DEFAULT_CCSS_PCT, PERIOD_UNIT, payrollBreakdown } from '../../lib/payroll'
 import { PALETTES } from '../../lib/themes'
 import { celebrate } from '../../lib/fx'
 import { requestPermission } from '../../lib/notifications'
@@ -21,10 +24,13 @@ const SUGGESTED_SERVICES: ServiceDraft[] = [
   { name: 'Streaming', amount: 0, on: false, dueDay: 10 },
 ]
 
-/** Onboarding obligatorio de primera vez (punto 24) */
-export function Onboarding() {
+type StepId = 'bienvenida' | 'datos' | 'ingresos' | 'modo' | 'servicios' | 'final'
+
+/** Onboarding: con Google se saltan los datos personales (mejora 11) */
+export function Onboarding({ user }: { user: AppUser | null }) {
   const setProfile = useFinanceStore((s) => s.setProfile)
-  const setSettings = useFinanceStore((s) => s.setSettings)
+  const setPayroll = useFinanceStore((s) => s.setPayroll)
+  const setPaySchedule = useFinanceStore((s) => s.setPaySchedule)
   const setTheme = useFinanceStore((s) => s.setTheme)
   const setNotifications = useFinanceStore((s) => s.setNotifications)
   const ensureMonthExists = useFinanceStore((s) => s.ensureMonthExists)
@@ -32,47 +38,76 @@ export function Onboarding() {
   const animPrefs = useFinanceStore((s) => s.settings.animations)
   const themeNow = useFinanceStore((s) => s.settings.theme)
 
-  const [step, setStep] = useState(0)
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  // Con cuenta de Google no preguntamos nombre/correo/teléfono
+  const steps: StepId[] = useMemo(
+    () => user
+      ? ['bienvenida', 'ingresos', 'modo', 'servicios', 'final']
+      : ['bienvenida', 'datos', 'ingresos', 'modo', 'servicios', 'final'],
+    [user],
+  )
+
+  const [idx, setIdx] = useState(0)
+  const step = steps[idx]
+
+  const [name, setName] = useState(user?.name ?? '')
+  const [email, setEmail] = useState(user?.email ?? '')
   const [phone, setPhone] = useState('')
   const [currency, setCurr] = useState('CRC')
-  const [salary, setSalary] = useState(0)
-  const [payFrequency, setPayFrequency] = useState<'monthly' | 'biweekly'>('monthly')
-  const [payday, setPayday] = useState(30)
+
+  // Ingresos/planilla (mejoras 9 y 11): el período del comprobante REAL
+  const [inputPeriod, setInputPeriod] = useState<PayPeriod>('monthly')
+  const [gross, setGross] = useState(0)
+  const [skipPayroll, setSkipPayroll] = useState(false)
+  const bdPreview = payrollBreakdown({ inputPeriod, gross, ccssPct: DEFAULT_CCSS_PCT, deductions: [], viewPeriod: 'monthly' })
+
   const [planMode, setPlanMode] = useState<'monthly' | 'annual'>('monthly')
   const [services, setServices] = useState(SUGGESTED_SERVICES)
   const [notifOn, setNotifOn] = useState(false)
   const [error, setError] = useState('')
 
-  const TOTAL = 6
-
   const canNext = useMemo(() => {
-    if (step === 1) return name.trim().length >= 2
-    if (step === 2) return salary > 0
+    if (step === 'datos') return name.trim().length >= 2
+    if (step === 'ingresos') return skipPayroll || gross > 0
     return true
-  }, [step, name, salary])
+  }, [step, name, gross, skipPayroll])
 
   const next = () => {
     if (!canNext) {
-      setError(step === 1 ? 'Tu nombre es obligatorio.' : 'Ingresa tu salario para planificar.')
+      setError(step === 'datos' ? 'Tu nombre es obligatorio.' : 'Escribe tu salario bruto o elige configurarlo después.')
       return
     }
+    // Si vuelve y escribe su salario, ya no cuenta como "configurar después"
+    if (step === 'ingresos' && gross > 0) setSkipPayroll(false)
     setError('')
-    setStep((s) => Math.min(TOTAL - 1, s + 1))
+    setIdx((i) => Math.min(steps.length - 1, i + 1))
   }
 
   const finish = () => {
     const monthId = currentMonthId()
     setProfile({
-      name: name.trim(), email: email.trim(), phone: phone.trim(),
-      currency, payday, payFrequency, planMode, onboarded: true,
+      name: (user?.name ?? name).trim(),
+      email: (user?.email ?? email).trim(),
+      phone: phone.trim(),
+      photoUrl: user?.photo ?? '',
+      currency,
+      payday: 30,
+      payFrequency: inputPeriod === 'weekly' ? 'monthly' : inputPeriod === 'biweekly' ? 'biweekly' : 'monthly',
+      planMode,
+      onboarded: true,
     })
-    setSettings({ defaultSalary: salary })
+    // La planilla manda: configura salario del mes automáticamente (mejora general)
+    if (!skipPayroll && gross > 0) {
+      setPayroll({ inputPeriod, gross, ccssPct: DEFAULT_CCSS_PCT })
+      // El plan de pago arranca alineado al período del comprobante
+      setPaySchedule(
+        inputPeriod === 'weekly'
+          ? { frequency: 'weekly', weekday: 4 }
+          : { frequency: inputPeriod, paydays: inputPeriod === 'biweekly' ? [15, 30] : [30] },
+      )
+    }
     ensureMonthExists(monthId)
-    useFinanceStore.getState().updateIncome(monthId, { salary })
     for (const s of services) {
-      if (!s.on) continue
+      if (!s.on || s.amount <= 0) continue
       addExpense(monthId, {
         name: s.name,
         amount: s.amount,
@@ -92,20 +127,25 @@ export function Onboarding() {
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Progreso */}
       <div className="flex gap-1.5 px-6 pt-5">
-        {Array.from({ length: TOTAL }).map((_, i) => (
+        {steps.map((_, i) => (
           <span
             key={i}
             className="h-1 flex-1 rounded-full transition-all duration-300"
-            style={{ background: i <= step ? 'var(--app-accent)' : 'var(--c-border)' }}
+            style={{ background: i <= idx ? 'var(--app-accent)' : 'var(--c-border)' }}
           />
         ))}
       </div>
 
       <div key={step} className="flex-1 overflow-y-auto px-6 py-6 anim-page">
-        {step === 0 && (
+        {step === 'bienvenida' && (
           <div className="flex flex-col items-center text-center pt-10">
             <AppLogo size={92} />
             <h1 className="font-display text-[30px] font-bold text-ink mt-6 leading-tight">SNBusiness</h1>
+            {user && (
+              <p className="text-[14px] font-semibold mt-2" style={{ color: 'var(--app-accent-soft)' }}>
+                ¡Hola, {user.name.split(' ')[0]}!
+              </p>
+            )}
             <p className="text-[15px] text-muted mt-3 leading-relaxed max-w-[280px]">
               Tus gastos, servicios y deudas bajo control. Con planes inteligentes para llegar tranquilo a fin de mes.
             </p>
@@ -113,7 +153,7 @@ export function Onboarding() {
               {[
                 'Organiza el mes en segundos',
                 'Recordatorios y alarmas de pago',
-                'Planes de pago con IA',
+                'Fin: tu asistente con IA',
               ].map((txt) => (
                 <div key={txt} className="flex items-center gap-2.5 card px-4 py-3">
                   <Check size={15} style={{ color: 'var(--c-income)' }} className="shrink-0" />
@@ -124,7 +164,7 @@ export function Onboarding() {
           </div>
         )}
 
-        {step === 1 && (
+        {step === 'datos' && (
           <StepShell title="Cuéntanos de ti" subtitle="Solo lo necesario para personalizar tu experiencia.">
             <Field label="Tu nombre *">
               <input className="input-base" placeholder="Ej. David" value={name} onChange={(e) => setName(e.target.value)} />
@@ -143,37 +183,62 @@ export function Onboarding() {
           </StepShell>
         )}
 
-        {step === 2 && (
-          <StepShell title="Tus ingresos" subtitle="Para calcular tu balance y recomendarte planes de pago.">
-            <Field label="Salario mensual *">
-              <CurrencyInput value={salary} onChange={setSalary} />
-            </Field>
-            <Field label="¿Cómo te pagan?">
+        {step === 'ingresos' && (
+          <StepShell
+            title="Tu comprobante salarial"
+            subtitle="Como viene en tu planilla real: semanal, quincenal o mensual. La app calcula la CCSS y tu neto."
+          >
+            {user && (
+              <Field label="Tu moneda">
+                <select className="input-base" value={currency} onChange={(e) => setCurr(e.target.value)}>
+                  {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+                </select>
+              </Field>
+            )}
+            <Field label="¿Cada cuánto te pagan?">
               <Segmented
-                value={payFrequency}
-                onChange={setPayFrequency}
+                value={inputPeriod}
+                onChange={(v) => setInputPeriod(v)}
                 options={[
-                  { value: 'monthly', label: 'Mensual' },
+                  { value: 'weekly', label: 'Semanal' },
                   { value: 'biweekly', label: 'Quincenal' },
+                  { value: 'monthly', label: 'Mensual' },
                 ]}
               />
             </Field>
-            <Field label="Día en que recibes tu pago">
-              <input
-                type="number" min={1} max={31} className="input-base num" value={payday}
-                onChange={(e) => setPayday(Math.max(1, Math.min(31, Number(e.target.value) || 1)))}
-              />
+            <Field label={`Salario BRUTO ${PERIOD_UNIT[inputPeriod]}`}>
+              <CurrencyInput value={gross} onChange={(v) => { setGross(v); if (v > 0) setSkipPayroll(false) }} />
             </Field>
+            {gross > 0 && (
+              <div className="card bg-elevated/60 p-3.5 anim-fade">
+                <p className="text-[12.5px] text-muted">
+                  CCSS ({DEFAULT_CCSS_PCT}%): <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.ccss)}</span>
+                </p>
+                <p className="text-[13px] text-ink mt-1">
+                  Líquido {PERIOD_UNIT[inputPeriod]}: <span className="num font-bold" style={{ color: 'var(--c-income)' }}>{formatMoneyExact(bdPreview.net)}</span>
+                  {inputPeriod !== 'monthly' && (
+                    <> · al mes: <span className="num font-bold">{formatMoney(Math.round(bdPreview.monthlyNet))}</span></>
+                  )}
+                </p>
+                <p className="text-[11px] text-muted mt-1.5">Los créditos y adelantos los agregas después en Ajustes → Ingresos.</p>
+              </div>
+            )}
+            <button
+              onClick={() => { setSkipPayroll(true); setError(''); setIdx((i) => Math.min(steps.length - 1, i + 1)) }}
+              className="pressable text-[13px] text-muted underline decoration-dotted self-start"
+            >
+              Prefiero configurarlo después
+            </button>
           </StepShell>
         )}
 
-        {step === 3 && (
+        {step === 'modo' && (
           <StepShell title="¿Cómo quieres planificar?" subtitle="Puedes cambiarlo después en Ajustes.">
             <div className="flex flex-col gap-3">
               <ModeCard
                 icon={<Wallet size={20} />}
                 title="Mes a mes"
-                desc="Cada mes se genera automáticamente con tus pagos recurrentes. Ideal para empezar."
+                desc="Cada mes te pregunta si copiar tus pagos recurrentes. Ideal para empezar."
                 selected={planMode === 'monthly'}
                 onClick={() => setPlanMode('monthly')}
               />
@@ -188,7 +253,7 @@ export function Onboarding() {
           </StepShell>
         )}
 
-        {step === 4 && (
+        {step === 'servicios' && (
           <StepShell title="Servicios obligatorios" subtitle="Márcalos y ponles monto: se repetirán cada mes (puedes editar luego).">
             <div className="flex flex-col gap-2">
               {services.map((s, i) => (
@@ -219,7 +284,7 @@ export function Onboarding() {
           </StepShell>
         )}
 
-        {step === 5 && (
+        {step === 'final' && (
           <StepShell title="Último toque" subtitle="Elige tu estilo y activa los recordatorios.">
             <div>
               <p className="text-[12px] text-muted mb-2">Paleta de color</p>
@@ -266,14 +331,14 @@ export function Onboarding() {
 
       {/* Controles */}
       <div className="px-6 pb-[calc(1.4rem+env(safe-area-inset-bottom))] flex gap-2.5">
-        {step > 0 && (
-          <button onClick={() => setStep((s) => s - 1)} aria-label="Atrás" className="pressable btn-ghost !px-4">
+        {idx > 0 && (
+          <button onClick={() => setIdx((i) => i - 1)} aria-label="Atrás" className="pressable btn-ghost !px-4">
             <ArrowLeft size={17} />
           </button>
         )}
-        {step < TOTAL - 1 ? (
+        {idx < steps.length - 1 ? (
           <button onClick={next} className="pressable btn-primary flex-1 flex items-center justify-center gap-2">
-            {step === 0 ? 'Comenzar' : 'Continuar'} <ArrowRight size={16} />
+            {idx === 0 ? 'Comenzar' : 'Continuar'} <ArrowRight size={16} />
           </button>
         ) : (
           <button onClick={finish} className="pressable btn-primary flex-1 flex items-center justify-center gap-2">

@@ -16,7 +16,10 @@ import { Onboarding } from './components/onboarding/Onboarding'
 import { AuthScreen } from './components/auth/AuthScreen'
 import { AlarmOverlay } from './components/overlays/AlarmOverlay'
 import { SplashIntro } from './components/overlays/SplashIntro'
+import { ChatBot } from './components/chat/ChatBot'
+import { ChatLauncher } from './components/chat/ChatLauncher'
 import { Loader } from './components/ui/Loader'
+import { LoadingOverlay } from './components/ui/LoadingOverlay'
 
 function App() {
   useTheme()
@@ -53,6 +56,15 @@ function App() {
     if (!months[activeMonthId]) setActiveMonth(nowId)
   }, [onboarded, ensureMonthExists, setActiveMonth])
 
+  // Al abrir la app y al iniciar sesión, aterrizar SIEMPRE en Inicio (mejora 13)
+  useEffect(() => {
+    useFinanceStore.getState().setActiveTab('home')
+  }, [])
+  const userUid = auth.user?.uid ?? null
+  useEffect(() => {
+    if (userUid) useFinanceStore.getState().setActiveTab('home')
+  }, [userUid])
+
   // El splash vive SIEMPRE en la misma posición del árbol para que React no lo
   // remonte al cambiar de pantalla (antes se reproducía dos veces, mejora 13)
   let content: React.ReactNode
@@ -71,7 +83,7 @@ function App() {
   } else if (!onboarded) {
     content = (
       <div className="h-full flex flex-col overflow-hidden">
-        <Onboarding />
+        <Onboarding user={auth.user} />
       </div>
     )
   } else {
@@ -90,11 +102,13 @@ function App() {
           {activeTab === 'debts' && <DebtsView />}
           {activeTab === 'year' && <YearView />}
           {activeTab === 'settings' && <SettingsView auth={auth} />}
+          <ChatLauncher />
         </main>
 
         <BottomNav />
 
         {alarm && <AlarmOverlay alarm={alarm} onDismiss={dismissAlarm} />}
+        <ChatBot auth={auth} />
       </div>
     )
   }
@@ -103,6 +117,7 @@ function App() {
     <>
       {showSplash && <SplashIntro onDone={() => setShowSplash(false)} />}
       {content}
+      <LoadingOverlay />
     </>
   )
 }

@@ -6,7 +6,6 @@ import type { TabId, WidgetId, WidgetSize } from '../../types/finance'
 
 export interface WidgetCtx {
   setActiveTab(t: TabId): void
-  openPlans(): void
   exportExcel(): void
   exporting: boolean
 }
@@ -17,7 +16,7 @@ export const WIDGET_META: Record<WidgetId, { name: string; desc: string; icon: R
   ahorro: { name: 'Ahorro', desc: 'Plan de ahorro y progreso a tu meta', icon: <PiggyBank size={16} />, defaultSize: 'lg' },
   resumen: { name: 'Tu día en pagos', desc: 'Qué vence hoy y qué viene', icon: <CalendarClock size={16} />, defaultSize: 'lg' },
   consejo: { name: 'Consejo del día', desc: 'Tip financiero con IA', icon: <Lightbulb size={16} />, defaultSize: 'lg' },
-  acciones: { name: 'Accesos rápidos', desc: 'Gasto, deudas, planes y Excel', icon: <LayoutGrid size={16} />, defaultSize: 'lg' },
+  acciones: { name: 'Accesos rápidos', desc: 'Gasto, deudas, Fin y Excel', icon: <LayoutGrid size={16} />, defaultSize: 'lg' },
   pendientes: { name: 'Pagos pendientes', desc: 'Próximos vencimientos', icon: <ListChecks size={16} />, defaultSize: 'lg' },
   proyeccion: { name: 'Proyección anual', desc: 'Ingresos, ahorro y gastos del año', icon: <ChartLine size={16} />, defaultSize: 'lg' },
   flujo: { name: 'Flujo del mes', desc: 'Balance acumulado día a día', icon: <ChartSpline size={16} />, defaultSize: 'lg' },

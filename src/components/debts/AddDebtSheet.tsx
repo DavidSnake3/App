@@ -3,8 +3,8 @@ import type { Debt } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { addMonthsToId, currentMonthId, monthLabel, parseMonthId } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
-import { ICON_IDS, ITEM_ICONS } from '../../lib/icons'
 import { BottomSheet } from '../ui/BottomSheet'
+import { IconPicker } from '../ui/IconPicker'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { Segmented } from '../ui/Segmented'
 import { Toggle } from '../ui/Toggle'
@@ -173,31 +173,10 @@ function DebtForm({ editing, onDone }: { editing?: Debt | null; onDone: () => vo
         </div>
       )}
 
-      {/* Ícono (mejora 10) */}
+      {/* Ícono (mejoras 6 y 10) */}
       <div>
         <span className="text-[13px] font-medium text-muted block mb-1.5">Ícono</span>
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
-          {ICON_IDS.map((id) => {
-            const { Icon, label } = ITEM_ICONS[id]
-            const active = icon === id
-            return (
-              <button
-                key={id}
-                onClick={() => setIcon(active ? '' : id)}
-                aria-label={label}
-                title={label}
-                className="pressable w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"
-                style={{
-                  borderColor: active ? 'var(--app-accent)' : 'var(--c-border)',
-                  background: active ? 'color-mix(in oklab, var(--app-accent) 18%, transparent)' : 'var(--c-elevated)',
-                  color: active ? 'var(--app-accent-soft)' : 'var(--c-muted)',
-                }}
-              >
-                <Icon size={17} />
-              </button>
-            )
-          })}
-        </div>
+        <IconPicker value={icon} onChange={setIcon} name={name} kind="deuda" />
       </div>
 
       {/* Datos del estado de cuenta (mejora 7) */}

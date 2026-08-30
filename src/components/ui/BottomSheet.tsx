@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 
 interface Props {
@@ -20,6 +20,19 @@ export function BottomSheet({ open, onClose, title, subtitle, children }: Props)
   if (!open) return null
 
   return (
+    <SheetPanel onClose={onClose} title={title} subtitle={subtitle}>
+      {children}
+    </SheetPanel>
+  )
+}
+
+/** Panel interno: se desmonta al cerrar, así la animación se reinicia en cada apertura */
+function SheetPanel({ onClose, title, subtitle, children }: Omit<Props, 'open'>) {
+  // Al terminar la animación se quita el transform: un elemento con transform se
+  // vuelve "containing block" y atraparía overlays position:fixed hijos (IconPicker)
+  const [settled, setSettled] = useState(false)
+
+  return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end max-w-[520px] mx-auto">
       <div
         className="absolute inset-0 bg-black/65 backdrop-blur-[3px]"
@@ -28,7 +41,8 @@ export function BottomSheet({ open, onClose, title, subtitle, children }: Props)
       />
       <div
         className="relative bg-card border-t border-edge rounded-t-3xl max-h-[92dvh] flex flex-col"
-        style={{ animation: 'slideUp 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both' }}
+        style={settled ? undefined : { animation: 'slideUp 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both' }}
+        onAnimationEnd={(e) => { if (e.target === e.currentTarget) setSettled(true) }}
       >
         <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-edge" />
         <div className="flex items-start justify-between px-5 pt-3 pb-2">

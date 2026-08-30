@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import type { Expense, ExpenseKind, PayableItem, ViewMode } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
+import { useChat } from '../../store/useChat'
 import { buildPayables, getMonthSummary, recurringCandidates } from '../../lib/finance'
 import { addMonthsToId, isCurrentMonth, monthLabel } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
@@ -41,6 +42,7 @@ export function MonthView() {
   const markCelebrated = useFinanceStore((s) => s.markCelebrated)
   const animPrefs = useFinanceStore((s) => s.settings.animations)
   const setActiveTab = useFinanceStore((s) => s.setActiveTab)
+  const openChat = useChat((s) => s.openChat)
   const importRecurring = useFinanceStore((s) => s.importRecurring)
   const markCarryAsked = useFinanceStore((s) => s.markCarryAsked)
   const prevMonth = useFinanceStore((s) => s.months[addMonthsToId(s.activeMonthId, -1)])
@@ -192,10 +194,10 @@ export function MonthView() {
           </div>
         </div>
 
-        {/* Banner: planes recomendados cuando ya hay datos (punto 14) */}
+        {/* Banner: pedirle un plan a Fin cuando ya hay datos (punto 14) */}
         {summary.countTotal >= 3 && summary.totalIncome > 0 && (
           <button
-            onClick={() => setActiveTab('debts')}
+            onClick={() => openChat('Ármame un plan recomendado para pagar todo este mes según mis gastos, deudas y salario.')}
             className="pressable card p-3.5 flex items-center gap-3 text-left"
             style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 45%, var(--c-border))' }}
           >
@@ -206,8 +208,8 @@ export function MonthView() {
               <Sparkles size={17} style={{ color: 'var(--app-accent-soft)' }} />
             </span>
             <span className="flex-1">
-              <span className="block text-[13.5px] font-semibold text-ink">3 formas recomendadas de pagar este mes</span>
-              <span className="block text-[11.5px] text-muted mt-0.5">La IA analiza tus gastos, deudas y salario</span>
+              <span className="block text-[13.5px] font-semibold text-ink">Pídele a Fin tu plan de pago del mes</span>
+              <span className="block text-[11.5px] text-muted mt-0.5">Analiza tus gastos, deudas y salario en segundos</span>
             </span>
             <ChevronRight size={16} className="text-muted shrink-0" />
           </button>

@@ -1,16 +1,14 @@
 import { useMemo, useState } from 'react'
-import { Landmark, Pencil, Sparkles } from 'lucide-react'
+import { Landmark, Pencil } from 'lucide-react'
 import type { Debt } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { addMonthsToId, currentMonthId, monthLabel } from '../../lib/dates'
-import { debtEndMonthId, debtPaidCount } from '../../lib/finance'
+import { debtEndMonthId, debtIsActiveInMonth, debtPaidCount } from '../../lib/finance'
 import { formatMoney } from '../../lib/format'
-import { askGemini } from '../../lib/ai'
 import { payBurst } from '../../lib/fx'
 import { ItemIcon } from '../../lib/icons'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
-import { Loader } from '../ui/Loader'
 
 interface Props {
   debt: Debt | null
@@ -36,14 +34,11 @@ function DebtDetail({ debt, onEdit }: { debt: Debt; onEdit: (d: Debt) => void })
   const payDebtInstallment = useFinanceStore((s) => s.payDebtInstallment)
   const toggleDebtPaid = useFinanceStore((s) => s.toggleDebtPaid)
   const animPrefs = useFinanceStore((s) => s.settings.animations)
-  const aiEnabled = useFinanceStore((s) => s.settings.aiEnabled)
-  const currency = useFinanceStore((s) => s.profile.currency)
+  const activeMonthId = useFinanceStore((s) => s.activeMonthId)
 
   const [abonoOpen, setAbonoOpen] = useState(false)
   const [monto, setMonto] = useState(debt.monthlyPayment)
   const [interes, setInteres] = useState(0)
-  const [ia, setIa] = useState('')
-  const [iaLoading, setIaLoading] = useState(false)
 
   const info = useMemo(() => {
     const nowId = currentMonthId()
@@ -59,31 +54,21 @@ function DebtDetail({ debt, onEdit }: { debt: Debt; onEdit: (d: Debt) => void })
     const overdue = monthIds
       .filter((id) => id < nowId && !debt.payments[id]?.paid)
       .reduce((s) => s + debt.monthlyPayment, 0)
-    return { monthIds, paidEntries, lastPaid, saldo, saldoAnterior, nextUnpaid, overdue, nowId }
-  }, [debt])
+    // La cuota a abonar es la del MES QUE ESTÁS VIENDO si está pendiente;
+    // solo si ya está pagada se ofrece la siguiente sin pagar (mejora 5)
+    const activePending = debtIsActiveInMonth(debt, activeMonthId) && !debt.payments[activeMonthId]?.paid
+    const target = activePending ? activeMonthId : nextUnpaid
+    return { monthIds, paidEntries, lastPaid, saldo, saldoAnterior, nextUnpaid, overdue, nowId, target }
+  }, [debt, activeMonthId])
 
   const registrarAbono = (el: HTMLElement | null) => {
-    const target = info.nextUnpaid ?? info.nowId
+    if (!info.target) return
     const capital = Math.max(0, monto - interes)
-    payDebtInstallment(debt.id, target, { amount: monto, capital, interest: interes || undefined })
+    payDebtInstallment(debt.id, info.target, { amount: monto, capital, interest: interes || undefined })
     payBurst(el, animPrefs)
     setAbonoOpen(false)
   }
 
-  const analizar = async () => {
-    setIaLoading(true)
-    try {
-      const resumen = `Deuda "${debt.name}" en ${currency}: total ${debt.total}, saldo ${info.saldo}, cuota mensual ${debt.monthlyPayment}, cuotas pagadas ${debtPaidCount(debt)}/${debt.installments}, vence el día ${debt.dueDay}, termina en ${monthLabel(debtEndMonthId(debt))}${info.overdue > 0 ? `, monto vencido ${info.overdue}` : ''}.`
-      setIa(await askGemini(
-        `${resumen}\n\nEn máximo 3 oraciones y 320 caracteres: ¿cómo voy con esta deuda y qué me recomiendas (adelantar capital, mantener ritmo, prioridad)? Español claro, sin emojis.`,
-        { system: 'Eres un asesor de finanzas personales conciso.', temperature: 0.4, maxTokens: 1024 },
-      ))
-    } catch {
-      setIa('No se pudo conectar con la IA. Intenta de nuevo con conexión.')
-    } finally {
-      setIaLoading(false)
-    }
-  }
 
   const fmtFecha = (iso?: string) => iso ? new Date(iso).toLocaleDateString('es-CR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
 
@@ -139,15 +124,15 @@ function DebtDetail({ debt, onEdit }: { debt: Debt; onEdit: (d: Debt) => void })
         </div>
       </div>
 
-      {/* Registrar abono */}
-      {info.nextUnpaid && !abonoOpen && (
+      {/* Registrar abono (siempre indica claramente QUÉ mes se está pagando) */}
+      {info.target && !abonoOpen && (
         <button onClick={() => setAbonoOpen(true)} className="pressable btn-primary w-full">
-          Registrar abono de {monthLabel(info.nextUnpaid, true)}
+          Registrar abono de {monthLabel(info.target, true)}
         </button>
       )}
-      {abonoOpen && (
+      {abonoOpen && info.target && (
         <div className="card p-3.5 flex flex-col gap-3 anim-fade" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 45%, var(--c-border))' }}>
-          <p className="text-[13px] font-semibold text-ink">Abono de {info.nextUnpaid ? monthLabel(info.nextUnpaid) : ''}</p>
+          <p className="text-[13px] font-semibold text-ink">Abono de la cuota de {monthLabel(info.target)}</p>
           <div>
             <label className="text-[12px] text-muted block mb-1">Monto del abono</label>
             <CurrencyInput value={monto} onChange={setMonto} />
@@ -193,24 +178,6 @@ function DebtDetail({ debt, onEdit }: { debt: Debt; onEdit: (d: Debt) => void })
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* IA */}
-      {aiEnabled && (
-        <div>
-          {iaLoading ? (
-            <Loader size={54} label="Analizando tu deuda…" />
-          ) : ia ? (
-            <div className="card p-3.5 flex gap-2.5" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 40%, var(--c-border))' }}>
-              <Sparkles size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--app-accent-soft)' }} />
-              <p className="text-[13px] text-ink leading-relaxed">{ia}</p>
-            </div>
-          ) : (
-            <button onClick={analizar} className="pressable btn-ghost w-full flex items-center justify-center gap-2">
-              <Sparkles size={15} style={{ color: 'var(--app-accent-soft)' }} /> Analizar con IA
-            </button>
-          )}
         </div>
       )}
 
