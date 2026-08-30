@@ -14,7 +14,7 @@ import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddExpenseSheet } from './AddExpenseSheet'
 import { ExpenseDetailSheet } from './ExpenseDetailSheet'
-import { HormigasCard, QuincenaCard } from './FundCards'
+import { HormigasCard } from './FundCards'
 import { realBalance } from '../../lib/fund'
 import { buildMonthCardBlob } from '../../lib/shareCard'
 import { downloadWorkbook } from '../../lib/excel'
@@ -215,9 +215,8 @@ export function MonthView() {
           </div>
         </div>
 
-        {/* Hormigas y quincenas */}
+        {/* Gastos hormiga */}
         <HormigasCard />
-        <QuincenaCard />
 
         {/* Selector de vista (punto 10) */}
         <Segmented value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />

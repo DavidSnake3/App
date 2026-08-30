@@ -1,10 +1,9 @@
-// Tarjetas del Mes: Gastos hormiga y Modo quincena/semanal
+// Tarjeta del Mes: Gastos hormiga
 // (el saldo real vive en la tarjeta de Balance; se configura en Ajustes)
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Coffee, Plus, X } from 'lucide-react'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import { hormigasTotal, quincenaSplit } from '../../lib/fund'
-import { buildPayables } from '../../lib/finance'
+import { hormigasTotal } from '../../lib/fund'
 import { formatMoney } from '../../lib/format'
 import { CurrencyInput } from '../ui/CurrencyInput'
 
@@ -86,93 +85,6 @@ export function HormigasCard() {
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-/* ─── Modo quincena / semanal: cómo se reparte tu mes ──────────────────────────
-   Se adapta al plan de pago configurado en Ajustes → Ingresos: quincenal o
-   mensual muestra las 2 quincenas; semanal muestra las semanas del mes. */
-
-interface Tramo { label: string; in: number; out: number }
-
-export function QuincenaCard() {
-  const monthId = useFinanceStore((s) => s.activeMonthId)
-  const month = useFinanceStore((s) => s.months[monthId])
-  const debts = useFinanceStore((s) => s.debts)
-  const settings = useFinanceStore((s) => s.settings)
-
-  const data = useMemo((): { title: string; tramos: Tramo[] } | null => {
-    if (!month) return null
-    const salary = month.income.salary
-    if (salary <= 0) return null
-    const items = buildPayables(month, debts)
-    const sch = settings.paySchedule
-
-    if (sch.frequency === 'weekly') {
-      // Semana 1: días 1-7 · S2: 8-14 · S3: 15-21 · S4: 22-fin
-      const { year, month: mm } = { year: month.year, month: month.month }
-      const last = new Date(year, mm, 0).getDate()
-      const ranges: [number, number][] = [[1, 7], [8, 14], [15, 21], [22, last]]
-      const targetJs = (sch.weekday + 1) % 7
-      const perWeek = (salary * 12) / 52
-      const tramos = ranges.map(([a, b], i): Tramo => {
-        let pagos = 0
-        for (let d = a; d <= b; d++) {
-          if (new Date(year, mm - 1, d).getDay() === targetJs) pagos++
-        }
-        const out = items
-          .filter((it) => {
-            const eff = it.dueDay ?? (it.period === 'q1' ? 8 : 22)
-            return eff >= a && eff <= b
-          })
-          .reduce((s, it) => s + it.amount, 0)
-        return { label: `Semana ${i + 1} (${a}–${b})`, in: pagos * perWeek, out }
-      })
-      return { title: 'Tu mes por semanas', tramos }
-    }
-
-    const llega = quincenaSplit(salary, settings)
-    const vence = {
-      q1: items.filter((i) => i.period === 'q1').reduce((s, i) => s + i.amount, 0),
-      q2: items.filter((i) => i.period === 'q2').reduce((s, i) => s + i.amount, 0),
-    }
-    return {
-      title: 'Tu mes por quincenas',
-      tramos: [
-        { label: '1ª quincena', in: llega.q1, out: vence.q1 },
-        { label: '2ª quincena', in: llega.q2, out: vence.q2 },
-      ],
-    }
-  }, [month, debts, settings])
-
-  if (!data) return null
-
-  return (
-    <div className="card p-4">
-      <p className="text-[11.5px] font-semibold text-muted mb-2.5">{data.title}</p>
-      <div className="grid grid-cols-2 gap-3">
-        {data.tramos.map((t) => {
-          const queda = t.in - t.out
-          return (
-            <div key={t.label} className="rounded-xl bg-elevated/60 border border-edge/60 p-3">
-              <p className="text-[11px] font-bold text-ink">{t.label}</p>
-              <p className="text-[11px] text-muted mt-1.5 flex justify-between">
-                <span>Te llega</span>
-                <span className="num font-semibold" style={{ color: 'var(--c-income)' }}>{formatMoney(Math.round(t.in))}</span>
-              </p>
-              <p className="text-[11px] text-muted mt-0.5 flex justify-between">
-                <span>Vence</span>
-                <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoney(Math.round(t.out))}</span>
-              </p>
-              <p className="text-[11.5px] mt-1 pt-1 border-t border-dashed flex justify-between" style={{ borderColor: 'var(--c-border)' }}>
-                <span className="font-semibold text-ink">Te queda</span>
-                <span className="num font-bold" style={{ color: queda >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>{formatMoney(Math.round(queda))}</span>
-              </p>
-            </div>
-          )
-        })}
-      </div>
     </div>
   )
 }

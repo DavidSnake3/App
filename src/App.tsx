@@ -6,6 +6,7 @@ import { useReminders } from './hooks/useReminders'
 import { TAB_ORDER, useSwipeTabs } from './hooks/useSwipeTabs'
 import { firebaseReady } from './lib/firebase'
 import { currentMonthId } from './lib/dates'
+import { recompressDataUrl } from './lib/themes'
 import { BottomNav } from './components/layout/BottomNav'
 import { HomeView } from './components/home/HomeView'
 import { MonthView } from './components/month/MonthView'
@@ -59,6 +60,16 @@ function App() {
   // Al abrir la app y al iniciar sesión, aterrizar SIEMPRE en Inicio (mejora 13)
   useEffect(() => {
     useFinanceStore.getState().setActiveTab('home')
+  }, [])
+
+  // Fondos guardados con la compresión vieja (muy pesados para la nube):
+  // reducirlos una vez para que sincronicen con la cuenta
+  useEffect(() => {
+    const bg = useFinanceStore.getState().settings.theme.background
+    if (bg.type !== 'image' || !bg.value || bg.value.length <= 400_000) return
+    void recompressDataUrl(bg.value, 720, 0.62)
+      .then((v) => useFinanceStore.getState().setTheme({ background: { type: 'image', value: v } }))
+      .catch(() => { /* imagen inválida: se queda como está */ })
   }, [])
   const userUid = auth.user?.uid ?? null
   useEffect(() => {

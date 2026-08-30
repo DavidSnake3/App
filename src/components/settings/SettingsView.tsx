@@ -116,7 +116,7 @@ function VersionFooter() {
   const debts = useFinanceStore((s) => s.debts)
   return (
     <p className="text-[11px] text-muted text-center">
-      SNBusiness v1.5.1 · {Object.keys(months).length} meses · {debts.length} deudas
+      SNBusiness v1.5.2 · {Object.keys(months).length} meses · {debts.length} deudas
     </p>
   )
 }
@@ -587,7 +587,8 @@ function AparienciaSection() {
   const pickImage = async (f: File | undefined) => {
     if (!f) return
     try {
-      const data = await compressImage(f)
+      // 720px/0.62: suficiente para fondo y cabe en la nube (se guarda por cuenta)
+      const data = await compressImage(f, 720, 0.62)
       setTheme({ background: { type: 'image', value: data } })
     } catch { /* imagen inválida */ }
   }

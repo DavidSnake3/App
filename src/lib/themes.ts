@@ -103,21 +103,14 @@ export function applyTheme(theme: ThemeSettings) {
   if (meta) meta.setAttribute('content', dark ? '#0b0d14' : '#f2f4fa')
 }
 
-/** Comprime una imagen de fondo a ~1080px JPEG para no llenar el storage */
-export async function compressImage(file: File): Promise<string> {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const r = new FileReader()
-    r.onload = () => resolve(String(r.result))
-    r.onerror = () => reject(new Error('No se pudo leer la imagen'))
-    r.readAsDataURL(file)
-  })
+/** Reduce un dataURL de imagen a JPEG del tamaño/calidad indicados */
+export async function recompressDataUrl(dataUrl: string, maxSide = 720, quality = 0.62): Promise<string> {
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const i = new Image()
     i.onload = () => resolve(i)
     i.onerror = () => reject(new Error('Imagen inválida'))
     i.src = dataUrl
   })
-  const maxSide = 1080
   const scale = Math.min(1, maxSide / Math.max(img.width, img.height))
   const canvas = document.createElement('canvas')
   canvas.width = Math.round(img.width * scale)
@@ -125,5 +118,16 @@ export async function compressImage(file: File): Promise<string> {
   const ctx = canvas.getContext('2d')
   if (!ctx) return dataUrl
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-  return canvas.toDataURL('image/jpeg', 0.78)
+  return canvas.toDataURL('image/jpeg', quality)
+}
+
+/** Comprime una imagen a JPEG (fondos: usar 720/0.62 para que quepan en la nube) */
+export async function compressImage(file: File, maxSide = 1080, quality = 0.78): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result))
+    r.onerror = () => reject(new Error('No se pudo leer la imagen'))
+    r.readAsDataURL(file)
+  })
+  return recompressDataUrl(dataUrl, maxSide, quality)
 }

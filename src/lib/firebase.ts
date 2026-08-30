@@ -166,20 +166,47 @@ export function authErrorMessage(e: unknown): string {
 
 // ─── Sincronización de datos ─────────────────────────────────────────────────
 
-/** Quita datos pesados que no deben ir a la nube (imagen de fondo) */
+/**
+ * La imagen de fondo viaja en su PROPIO campo (`bg`) del documento: así el
+ * JSON principal queda liviano y el fondo se conserva por cuenta en la nube.
+ */
 function stripForCloud(data: PersistedShape): PersistedShape {
   const clone: PersistedShape = JSON.parse(JSON.stringify(data))
   if (clone.settings?.theme?.background?.type === 'image') {
-    clone.settings.theme.background = { type: 'default', value: 'noche' }
+    clone.settings.theme.background = { type: 'image', value: '' }
   }
   return clone
+}
+
+// tope para no acercarnos al límite de 1 MiB del documento de Firestore
+const BG_MAX_CHARS = 650_000
+
+/** Reconstruye el estado desde el documento (reinyecta el fondo si viene) */
+function parseCloudDoc(raw: Record<string, unknown>): PersistedShape | null {
+  try {
+    const parsed = JSON.parse(raw.data as string) as PersistedShape
+    const bg = typeof raw.bg === 'string' ? raw.bg : ''
+    const theme = parsed?.settings?.theme
+    if (theme?.background?.type === 'image') {
+      theme.background = bg
+        ? { type: 'image', value: bg }
+        : { type: 'default', value: 'noche' }
+    }
+    return parsed
+  } catch {
+    return null
+  }
 }
 
 export async function saveCloud(uid: string, data: PersistedShape): Promise<void> {
   if (!(await ensureInit())) return
   const { doc, setDoc } = await import('firebase/firestore')
+  const bgRaw = data.settings?.theme?.background?.type === 'image'
+    ? data.settings.theme.background.value
+    : ''
   await setDoc(doc(db!, 'users', uid), {
     data: JSON.stringify(stripForCloud(data)),
+    bg: bgRaw.length <= BG_MAX_CHARS ? bgRaw : '',
     updatedAt: data.updatedAt,
     email: data.profile?.email ?? '',
   })
@@ -190,11 +217,7 @@ export async function loadCloud(uid: string): Promise<PersistedShape | null> {
   const { doc, getDoc } = await import('firebase/firestore')
   const snap = await getDoc(doc(db!, 'users', uid))
   if (!snap.exists()) return null
-  try {
-    return JSON.parse(snap.data().data as string) as PersistedShape
-  } catch {
-    return null
-  }
+  return parseCloudDoc(snap.data())
 }
 
 export async function watchCloud(
@@ -205,8 +228,7 @@ export async function watchCloud(
   const { doc, onSnapshot } = await import('firebase/firestore')
   return onSnapshot(doc(db!, 'users', uid), (snap) => {
     if (!snap.exists() || snap.metadata.hasPendingWrites) return
-    try {
-      cb(JSON.parse(snap.data().data as string) as PersistedShape)
-    } catch { /* documento corrupto */ }
+    const parsed = parseCloudDoc(snap.data())
+    if (parsed) cb(parsed)
   })
 }
