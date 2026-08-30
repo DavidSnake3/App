@@ -83,10 +83,10 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
             {formatMoneyExact(inView(bd, bd.net, p))}
           </span>
         </div>
-        {schedule.frequency === 'biweekly' && bd.monthlyAdvance > 0 && bd.monthlyAdvance < bd.monthlyNet && (
+        {schedule.frequency === 'biweekly' && bd.monthlyNet > 0 && (
           <p className="text-[11px] text-muted mt-0.5">
-            Te llega: <span className="num font-semibold text-ink">{formatMoney(Math.round(bd.monthlyAdvance))}</span> (adelanto, 1ª q)
-            {' + '}<span className="num font-semibold text-ink">{formatMoney(Math.round(bd.monthlySettlement))}</span> (2ª q)
+            Te llega: <span className="num font-semibold text-ink">{formatMoney(Math.round(bd.monthlyNet / 2))}</span> (1ª q)
+            {' + '}<span className="num font-semibold text-ink">{formatMoney(Math.round(bd.monthlyNet) - Math.round(bd.monthlyNet / 2))}</span> (2ª q)
           </p>
         )}
       </div>

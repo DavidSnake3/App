@@ -45,7 +45,7 @@ Formato: párrafos cortos; usa **negritas** para montos/nombres y listas con "- 
 CONOCES LA APP COMPLETA (guía para el usuario):
 - Pestañas: Inicio (widgets personalizables: mantener presionado ~1s para editar tamaño S/M/L, mover, quitar o agregar), Mes, Deudas, Año, Ajustes. Se puede deslizar entre pestañas.
 - Mes: pagos del mes en 5 vistas (tarjetas, lista, tabla, calendario, gantt). Botón + para agregar gasto/servicio/personal con ícono, recurrencia y recordatorio. Los pagos se ponen rojos al acercarse su fecha límite. Al entrar a un mes nuevo la app PREGUNTA si copiar los recurrentes (nunca copia sola); las deudas siguen solas. El salario NO se edita aquí: viene de Ajustes → Ingresos y planilla (los "Adicionales" del mes sí se editan en línea). Botón "Compartir" para generar una imagen-resumen del mes.
-- SALDO REAL: el usuario escribe cuánto tiene HOY en el banco (se configura en Ajustes → Ingresos, o al activarlo desde Mes) y desde entonces la app lo lleva en vivo: suma los pagos de salario al llegar y resta cada pago, gasto hormiga y aporte al ahorro. El sobrante del mes se arrastra solo al siguiente (NO es ahorro, es lo que sobró). El ahorro va aparte.
+- SALDO REAL: el usuario escribe cuánto tiene HOY en el banco (se configura en Ajustes → Ingresos) y desde entonces la app lo lleva en vivo: suma los pagos de salario al llegar y resta cada pago, gasto hormiga y aporte al ahorro. Se muestra junto al Balance en la tarjeta principal de Mes. El sobrante del mes se arrastra solo al siguiente (NO es ahorro, es lo que sobró). El ahorro va aparte.
 - GASTOS HORMIGA (en Mes): anotar al instante gastos pequeños (café, uber…); se restan del saldo real y se ve el total del mes y de la semana.
 - Mes por quincenas o por semanas (en Mes): tarjeta con cuánto le llega, cuánto vence y cuánto le queda en cada tramo; se adapta al plan de pago de Ajustes (semanal muestra las 4 semanas, quincenal/mensual las 2 quincenas).
 - Deudas: cada deuda tiene estado de cuenta estilo recibo (saldo anterior, aporte capital/intereses, nuevo saldo, cuotas pagadas/pendientes, próximo pago, monto al día), historial de abonos y registro de abono con desglose. Una deuda puede pagarse "por planilla" (se deduce del salario y no aparece en el mes). Arriba hay una gráfica "camino a cero deudas" con la fecha en que quedará libre.
@@ -55,7 +55,7 @@ CONOCES LA APP COMPLETA (guía para el usuario):
 - Ajustes: cuenta (correo/Google, sincronización en la nube), tema (claro/oscuro, paletas, fondo propio), animaciones y 3+3 sonidos a elegir con pruebas, notificaciones y alarmas (con pruebas), exportar Excel, respaldo JSON, borrar datos.
 
 REGLAS:
-1) Cuando el usuario pregunte "por qué aparece tal monto", usa los DATOS DEL USUARIO de abajo y muestra la cuenta exacta (ej.: 665000 − 72019.50 CCSS − 181014 préstamo = 411966.50). IMPORTANTÍSIMO: un ADELANTO jamás se resta al explicar el ingreso mensual (es parte del pago, solo define cuánto llega en la 1ª quincena); réstalo únicamente si explicas la liquidación de la 2ª quincena.
+1) Cuando el usuario pregunte "por qué aparece tal monto", usa los DATOS DEL USUARIO de abajo y muestra la cuenta exacta (ej.: 665000 − 72019.50 CCSS − 181014 préstamo = 411966.50). IMPORTANTÍSIMO: un ADELANTO jamás se resta al explicar el ingreso mensual (es parte del pago). Con pago QUINCENAL, cada quincena llega la MITAD del neto mensual (la CCSS y las deducciones se reparten mitad y mitad entre las dos quincenas).
 2) Para planes de cancelación de deudas o ahorro: usa su ingreso real, cuotas y fechas de pago; propone pasos concretos con montos y fechas, máximo 6 pasos, y una alternativa. Pregunta preferencias solo si faltan datos clave.
 3) Si el usuario adjunta una FACTURA/recibo (imagen o PDF) o te da los datos de una deuda para agregarla: extrae nombre del comercio/banco, saldo TOTAL pendiente, cuota mensual, número de cuotas pendientes, día de pago y cuenta/referencia si aparece. Termina tu respuesta con un bloque EXACTAMENTE así (una sola línea, sin comentar dentro):
 [[ACCION]]{"tipo":"agregar_deuda","deuda":{"name":"...","total":123,"monthlyPayment":123,"installments":12,"dueDay":22,"account":"..."}}[[/ACCION]]
@@ -209,18 +209,33 @@ export async function sendToFin(
   return { text: clean || 'Listo.', action }
 }
 
+/**
+ * Número seguro: la IA a veces devuelve montos como texto ("84,166.50") o
+ * NaN — que al guardarse se vuelve null y el monto aparece mal al reabrir.
+ */
+function num(v: unknown): number {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0
+  if (typeof v === 'string') {
+    const n = Number(v.replace(/[^\d.-]/g, ''))
+    return Number.isFinite(n) ? n : 0
+  }
+  return 0
+}
+
 /** Convierte la acción del chat en el payload del store */
 export function actionToDebt(a: ChatAction): Omit<Debt, 'id' | 'createdAt' | 'payments'> {
   const d = a.deuda
-  const installments = Math.max(1, Math.round(d.installments || (d.monthlyPayment ? Math.ceil(d.total / d.monthlyPayment) : 12)))
-  const monthlyPayment = Math.max(1, Math.round(d.monthlyPayment || d.total / installments))
+  const total = Math.max(1, Math.round(num(d.total)))
+  const rawPago = num(d.monthlyPayment)
+  const installments = Math.max(1, Math.round(num(d.installments) || (rawPago > 0 ? Math.ceil(total / rawPago) : 12)))
+  const monthlyPayment = Math.max(1, Math.round(rawPago || total / installments))
   return {
-    name: d.name.slice(0, 60),
-    total: Math.round(d.total),
+    name: String(d.name ?? 'Deuda').slice(0, 60),
+    total,
     monthlyPayment,
     installments,
     startMonthId: currentMonthId(),
-    dueDay: Math.max(1, Math.min(31, Math.round(d.dueDay || 15))),
-    account: d.account?.slice(0, 40),
+    dueDay: Math.max(1, Math.min(31, Math.round(num(d.dueDay) || 15))),
+    account: d.account ? String(d.account).slice(0, 40) : undefined,
   }
 }

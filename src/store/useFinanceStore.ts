@@ -190,6 +190,22 @@ function touch() {
   return { updatedAt: Date.now() }
 }
 
+/**
+ * Repara deudas con montos corruptos (p. ej. la IA devolvió un número como
+ * texto y al persistir quedó null): la cuota y el total siempre son números.
+ */
+function healDebts(debts: Debt[] | undefined): Debt[] {
+  return (debts ?? []).map((d) => {
+    const total = Number.isFinite(d.total) && d.total > 0 ? d.total : 0
+    const installments = Number.isFinite(d.installments) && d.installments >= 1 ? Math.round(d.installments) : 1
+    const monthlyPayment = Number.isFinite(d.monthlyPayment) && d.monthlyPayment > 0
+      ? d.monthlyPayment
+      : Math.max(1, Math.round(total / installments))
+    if (total === d.total && installments === d.installments && monthlyPayment === d.monthlyPayment) return d
+    return { ...d, total, installments, monthlyPayment }
+  })
+}
+
 function patchMonth(
   s: FinanceState,
   monthId: string,
@@ -516,7 +532,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       hydrateFrom: (data) =>
         set({
           months: data.months ?? {},
-          debts: data.debts ?? [],
+          debts: healDebts(data.debts),
           profile: { ...DEFAULT_PROFILE, ...data.profile },
           settings: {
             ...DEFAULT_SETTINGS,
@@ -555,6 +571,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         return {
           ...current,
           ...p,
+          debts: healDebts(p.debts),
           profile: { ...DEFAULT_PROFILE, ...p.profile },
           settings: {
             ...DEFAULT_SETTINGS,

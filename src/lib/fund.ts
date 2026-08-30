@@ -5,7 +5,6 @@
 import type { AppSettings, Debt, FundConfig, MonthData } from '../types/finance'
 import { currentMonthId, daysInMonth, parseMonthId } from './dates'
 import { getMonthSummary } from './finance'
-import { payrollBreakdown } from './payroll'
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100
@@ -41,13 +40,10 @@ export function receivedInMonth(m: MonthData, settings: AppSettings, today = new
     return round2(Math.min(salary * 1.3, count * perWeek) + m.income.additional)
   }
 
+  // Cada pago = parte igual del neto (quincenal: mitad y mitad, con las
+  // deducciones repartidas entre las dos quincenas)
   const paydays = (sch.paydays.length ? sch.paydays : [30]).slice().sort((a, b) => a - b)
-  const bd = payrollBreakdown(settings.payroll)
-  // Quincenal con adelanto: 1ª quincena = adelanto, 2ª = liquidación
-  const amounts =
-    sch.frequency === 'biweekly' && paydays.length >= 2 && bd.monthlyAdvance > 0 && bd.monthlyAdvance < salary
-      ? [bd.monthlyAdvance, salary - bd.monthlyAdvance]
-      : paydays.map(() => salary / paydays.length)
+  const amounts = paydays.map(() => salary / paydays.length)
 
   const max = daysInMonth(m.id)
   let received = 0
@@ -161,11 +157,7 @@ export function quincenaSplit(salary: number, settings: AppSettings): { q1: numb
   const sch = settings.paySchedule
   if (sch.frequency === 'weekly') return { q1: round2(salary / 2), q2: round2(salary / 2) }
   const paydays = (sch.paydays.length ? sch.paydays : [30]).slice().sort((a, b) => a - b)
-  const bd = payrollBreakdown(settings.payroll)
-  const amounts =
-    sch.frequency === 'biweekly' && paydays.length >= 2 && bd.monthlyAdvance > 0 && bd.monthlyAdvance < salary
-      ? [bd.monthlyAdvance, salary - bd.monthlyAdvance]
-      : paydays.map(() => salary / paydays.length)
+  const amounts = paydays.map(() => salary / paydays.length)
   let q1 = 0
   let q2 = 0
   paydays.forEach((pd, i) => {

@@ -113,15 +113,19 @@ export interface PaydayInfo {
 }
 
 /**
- * Montos por día de pago del mes (en colones mensuales). Si te pagan quincenal
- * y tienes un adelanto, la 1ª quincena = adelanto y la 2ª = liquidación.
+ * Montos por día de pago del mes (en colones mensuales). Quincenal: cada
+ * quincena recibe la MITAD del neto (la CCSS y las deducciones se reparten
+ * mitad y mitad entre las dos quincenas, como en las planillas reales).
  */
 export function paydayAmounts(schedule: PaySchedule, bd: PayrollBreakdown): { amount: number; label?: string }[] {
   const paydays = (schedule.paydays.length ? schedule.paydays : [30]).slice().sort((a, b) => a - b)
-  if (schedule.frequency === 'biweekly' && paydays.length >= 2 && bd.monthlyAdvance > 0 && bd.monthlyAdvance < bd.monthlyNet) {
+  if (schedule.frequency === 'biweekly' && paydays.length >= 2) {
+    const q1 = round2(bd.monthlyNet / 2)
+    const q2 = round2(bd.monthlyNet - q1)
+    const hasAdvance = bd.monthlyAdvance > 0
     return [
-      { amount: bd.monthlyAdvance, label: 'adelanto' },
-      { amount: bd.monthlySettlement, label: 'liquidación' },
+      { amount: q1, label: hasAdvance ? 'adelanto' : undefined },
+      { amount: q2, label: hasAdvance ? 'liquidación' : undefined },
     ]
   }
   const per = bd.monthlyNet / paydays.length

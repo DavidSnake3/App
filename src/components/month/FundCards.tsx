@@ -1,118 +1,12 @@
-// Tarjetas del Mes: Saldo real (control total), Gastos hormiga y Modo quincena
+// Tarjetas del Mes: Gastos hormiga y Modo quincena/semanal
+// (el saldo real vive en la tarjeta de Balance; se configura en Ajustes)
 import { useMemo, useState } from 'react'
-import { Coffee, Landmark, Pencil, Plus, X } from 'lucide-react'
+import { Coffee, Plus, X } from 'lucide-react'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import {
-  carryOver, depositsInMonth, hormigasTotal, quincenaSplit, realBalance, receivedInMonth,
-} from '../../lib/fund'
-import { buildPayables, getMonthSummary } from '../../lib/finance'
-import { currentMonthId } from '../../lib/dates'
+import { hormigasTotal, quincenaSplit } from '../../lib/fund'
+import { buildPayables } from '../../lib/finance'
 import { formatMoney } from '../../lib/format'
 import { CurrencyInput } from '../ui/CurrencyInput'
-
-/* ─── Saldo real: lo que tienes en el banco ahora mismo ────────────────────── */
-
-export function FundCard() {
-  const months = useFinanceStore((s) => s.months)
-  const debts = useFinanceStore((s) => s.debts)
-  const settings = useFinanceStore((s) => s.settings)
-  const setFundNow = useFinanceStore((s) => s.setFundNow)
-  const monthId = useFinanceStore((s) => s.activeMonthId)
-
-  const [editing, setEditing] = useState(false)
-  const [amount, setAmount] = useState(0)
-
-  const isCurrent = monthId === currentMonthId()
-  const month = months[monthId]
-  const saldo = useMemo(() => realBalance(months, debts, settings), [months, debts, settings])
-
-  if (!isCurrent || !month) return null
-
-  // guard: estados hidratados desde clientes viejos pueden no traer fund aún
-  const fund = settings.fund ?? { enabled: false, baseAmount: 0, anchorMonthId: '', snapshot: 0, setAtISO: '' }
-  const save = () => {
-    setFundNow(amount)
-    setEditing(false)
-  }
-
-  if (!fund.enabled || editing) {
-    return (
-      <div className="card p-4" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 45%, var(--c-border))' }}>
-        <p className="text-[13.5px] font-semibold text-ink flex items-center gap-1.5">
-          <Landmark size={14} style={{ color: 'var(--app-accent-soft)' }} /> Saldo real: tu banco en la app
-        </p>
-        <p className="text-[12px] text-muted mt-1 leading-relaxed">
-          Escribe cuánto tienes HOY en el banco. Desde ese momento la app suma tus quincenas
-          y resta cada pago, gasto hormiga y aporte al ahorro. El sobrante del mes se arrastra solo.
-        </p>
-        <div className="flex gap-2 mt-2.5">
-          <CurrencyInput value={amount} onChange={setAmount} className="flex-1" />
-          <button
-            onClick={save}
-            className="pressable rounded-2xl px-4 text-[13px] font-semibold text-white shrink-0"
-            style={{ background: 'var(--app-gradient)' }}
-          >
-            {fund.enabled ? 'Ajustar' : 'Activar'}
-          </button>
-          {editing && (
-            <button onClick={() => setEditing(false)} aria-label="Cancelar ajuste" className="pressable w-11 rounded-2xl bg-elevated border border-edge flex items-center justify-center text-muted shrink-0">
-              <X size={15} />
-            </button>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  const summ = getMonthSummary(month, debts)
-  const recibido = receivedInMonth(month, settings)
-  const hormigas = hormigasTotal(month)
-  const ahorroMes = depositsInMonth(settings, monthId)
-  const arrastre = carryOver(months, debts, settings)
-
-  return (
-    <div className="card p-4 relative overflow-hidden">
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, var(--c-income), var(--app-accent))' }} />
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-[11.5px] text-muted mb-0.5">Saldo real (lo que tienes en el banco)</p>
-          <p className="num text-[26px] font-bold leading-none" style={{ color: (saldo ?? 0) >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
-            {formatMoney(Math.round(saldo ?? 0))}
-          </p>
-        </div>
-        <button
-          onClick={() => { setAmount(Math.max(0, Math.round(saldo ?? 0))); setEditing(true) }}
-          aria-label="Ajustar saldo real"
-          className="pressable w-9 h-9 rounded-full bg-elevated border border-edge flex items-center justify-center text-muted shrink-0"
-        >
-          <Pencil size={13} />
-        </button>
-      </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-3 pt-2.5 border-t border-edge/60">
-        <FundRow label="Recibido este mes" value={recibido} sign="+" color="var(--c-income)" />
-        <FundRow label="Pagado" value={summ.paidAmount} sign="−" color="var(--c-danger)" />
-        <FundRow label="Gastos hormiga" value={hormigas} sign="−" color="var(--c-warning)" />
-        <FundRow label="Apartado al ahorro" value={ahorroMes} sign="−" color="var(--app-accent-soft)" />
-      </div>
-      {arrastre !== 0 && (
-        <p className="text-[11px] text-muted mt-1.5">
-          Incluye <span className="num font-semibold" style={{ color: arrastre >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>{formatMoney(Math.round(arrastre))}</span> de sobrante arrastrado de meses anteriores.
-        </p>
-      )}
-    </div>
-  )
-}
-
-function FundRow({ label, value, sign, color }: { label: string; value: number; sign: string; color: string }) {
-  return (
-    <p className="text-[11.5px] text-muted flex items-center justify-between gap-2">
-      <span className="truncate">{label}</span>
-      <span className="num font-semibold shrink-0" style={{ color: value > 0 ? color : 'var(--c-muted)' }}>
-        {value > 0 ? sign : ''}{formatMoney(Math.round(value))}
-      </span>
-    </p>
-  )
-}
 
 /* ─── Gastos hormiga: anota al instante lo pequeño ─────────────────────────── */
 
@@ -190,7 +84,6 @@ export function HormigasCard() {
               ))}
             </div>
           )}
-          <p className="text-[10.5px] text-muted">Se restan de tu saldo real al instante. Lo pequeño también cuenta.</p>
         </div>
       )}
     </div>
@@ -280,7 +173,6 @@ export function QuincenaCard() {
           )
         })}
       </div>
-      <p className="text-[10.5px] text-muted mt-2">Según tu plan de pago de Ajustes → Ingresos (semanal, quincenal o mensual).</p>
     </div>
   )
 }

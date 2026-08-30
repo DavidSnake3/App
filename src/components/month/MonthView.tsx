@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays, ChartGantt, ChevronLeft, ChevronRight, LayoutGrid,
-  List, Plus, Settings2, Share2, Table2, Trash2, TrendingDown, TrendingUp,
+  List, Pencil, Plus, Share2, Table2, Trash2,
 } from 'lucide-react'
 import type { Expense, ExpenseKind, PayableItem, ViewMode } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -14,7 +14,8 @@ import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddExpenseSheet } from './AddExpenseSheet'
 import { ExpenseDetailSheet } from './ExpenseDetailSheet'
-import { FundCard, HormigasCard, QuincenaCard } from './FundCards'
+import { HormigasCard, QuincenaCard } from './FundCards'
+import { realBalance } from '../../lib/fund'
 import { buildMonthCardBlob } from '../../lib/shareCard'
 import { downloadWorkbook } from '../../lib/excel'
 import { withLoading } from '../../store/useLoading'
@@ -73,6 +74,9 @@ export function MonthView() {
     () => (month ? getMonthSummary(month, debts) : null),
     [month, debts],
   )
+  const allMonths = useFinanceStore((s) => s.months)
+  const settings = useFinanceStore((s) => s.settings)
+  const saldoReal = useMemo(() => realBalance(allMonths, debts, settings), [allMonths, debts, settings])
 
   // Felicitación al completar todos los pagos (punto 22)
   useEffect(() => {
@@ -142,49 +146,52 @@ export function MonthView() {
           </button>
         </div>
 
-        {/* Resumen + progreso (punto 15) — el salario viene solo de Ajustes → Ingresos */}
+        {/* Balance + saldo real en una sola tarjeta limpia */}
         <div className="card p-4 relative overflow-hidden">
           <div
             className="absolute inset-x-0 top-0 h-1"
             style={{ background: 'var(--app-gradient)' }}
           />
-          <div className="flex justify-between items-end">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-[11.5px] text-muted mb-0.5">Balance del mes</p>
-              <p className="num text-[26px] font-bold leading-none" style={{ color: summary.savings >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
+              <p className="text-[11.5px] text-muted mb-1">Balance del mes</p>
+              <p className="num text-[23px] font-bold leading-none" style={{ color: summary.savings >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
                 {formatMoney(summary.savings)}
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-[11.5px] text-muted inline-flex items-center gap-1">
-                <TrendingUp size={11} style={{ color: 'var(--c-income)' }} /> {formatMoney(summary.totalIncome)}
-              </p>
-              <p className="text-[11.5px] text-muted inline-flex items-center gap-1 ml-3">
-                <TrendingDown size={11} style={{ color: 'var(--c-danger)' }} /> {formatMoney(summary.totalExpenses)}
-              </p>
-              <p className="text-[12px] mt-1.5 text-muted">
-                <span className="num font-semibold text-ink">{summary.countPaid}/{summary.countTotal}</span> pagados
-              </p>
-            </div>
+            {isCurrentMonth(monthId) && saldoReal != null ? (
+              <div className="text-right">
+                <p className="text-[11.5px] text-muted mb-1 inline-flex items-center gap-1.5">
+                  Saldo real
+                  <button
+                    onClick={() => setActiveTab('settings')}
+                    aria-label="Ajustar saldo real en Ajustes"
+                    className="pressable text-muted"
+                  >
+                    <Pencil size={10} />
+                  </button>
+                </p>
+                <p className="num text-[23px] font-bold leading-none" style={{ color: saldoReal >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
+                  {formatMoney(Math.round(saldoReal))}
+                </p>
+              </div>
+            ) : isCurrentMonth(monthId) ? (
+              <button onClick={() => setActiveTab('settings')} className="pressable text-right self-center">
+                <span className="block text-[11.5px] text-muted">Saldo real</span>
+                <span className="block text-[12px] font-semibold" style={{ color: 'var(--app-accent-soft)' }}>Activar en Ajustes →</span>
+              </button>
+            ) : null}
           </div>
-          <div className="h-2 rounded-full bg-elevated overflow-hidden mt-3">
+          <div className="h-2 rounded-full bg-elevated overflow-hidden mt-3.5">
             <div
               className="h-full rounded-full transition-all duration-700"
               style={{ width: `${Math.round(summary.progress * 100)}%`, background: 'var(--app-gradient)' }}
             />
           </div>
-
-          {/* El ingreso es configuración general (Ajustes → Ingresos y planilla) */}
-          <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-edge/60">
-            <button
-              onClick={() => setActiveTab('settings')}
-              className="pressable text-[11.5px] text-muted inline-flex items-center gap-1.5 min-w-0"
-            >
-              <Settings2 size={12} className="shrink-0" style={{ color: 'var(--app-accent-soft)' }} />
-              <span className="truncate">
-                Salario <span className="num font-semibold text-ink">{formatMoney(month.income.salary)}</span> · desde Ajustes
-              </span>
-            </button>
+          <div className="flex items-center justify-between gap-2 mt-2">
+            <p className="text-[11.5px] text-muted">
+              <span className="num font-semibold text-ink">{summary.countPaid}/{summary.countTotal}</span> pagados
+            </p>
             {editAdditional ? (
               <div className="flex items-center gap-1.5 shrink-0">
                 <CurrencyInput
@@ -208,8 +215,7 @@ export function MonthView() {
           </div>
         </div>
 
-        {/* Saldo real, hormigas y quincenas (nuevas funcionalidades) */}
-        <FundCard />
+        {/* Hormigas y quincenas */}
         <HormigasCard />
         <QuincenaCard />
 

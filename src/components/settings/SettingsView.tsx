@@ -116,7 +116,7 @@ function VersionFooter() {
   const debts = useFinanceStore((s) => s.debts)
   return (
     <p className="text-[11px] text-muted text-center">
-      SNBusiness v1.5 · {Object.keys(months).length} meses · {debts.length} deudas
+      SNBusiness v1.5.1 · {Object.keys(months).length} meses · {debts.length} deudas
     </p>
   )
 }
@@ -356,11 +356,11 @@ function IngresosSection() {
             {bd.period !== 'monthly' && (
               <Row2 label="Tu ingreso mensual" value={formatMoney(Math.round(bd.monthlyNet))} strong />
             )}
-            {sch.frequency === 'biweekly' && bd.monthlyAdvance > 0 && bd.monthlyAdvance < bd.monthlyNet && (
+            {sch.frequency === 'biweekly' && bd.monthlyNet > 0 && (
               <div className="mt-1.5 rounded-xl px-2.5 py-2" style={{ background: 'color-mix(in oklab, var(--c-income) 10%, transparent)' }}>
-                <p className="text-[11.5px] text-muted mb-1">Así te llega (el adelanto es parte de tu pago):</p>
-                <Row2 label="1ª quincena (adelanto)" value={formatMoney(Math.round(bd.monthlyAdvance))} />
-                <Row2 label="2ª quincena (liquidación)" value={formatMoney(Math.round(bd.monthlySettlement))} />
+                <p className="text-[11.5px] text-muted mb-1">Así te llega (deducciones repartidas mitad y mitad):</p>
+                <Row2 label="1ª quincena" value={formatMoney(Math.round(bd.monthlyNet / 2))} />
+                <Row2 label="2ª quincena" value={formatMoney(Math.round(bd.monthlyNet) - Math.round(bd.monthlyNet / 2))} />
               </div>
             )}
             <p className="text-[11px] text-muted mt-2">
