@@ -1,17 +1,21 @@
 import { useMemo, useState } from 'react'
-import { ArrowLeft, ArrowRight, Bell, CalendarRange, Check, FileUp, MessageCircle, Rocket, Wallet } from 'lucide-react'
+import {
+  ArrowLeft, ArrowRight, Bell, CalendarRange, Check, ChevronDown, FileUp,
+  MessageCircle, Palette, Rocket, Wallet,
+} from 'lucide-react'
 import type { AppUser } from '../../lib/firebase'
 import type { PayPeriod } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { currentMonthId } from '../../lib/dates'
 import { CURRENCIES, formatMoney, formatMoneyExact } from '../../lib/format'
-import { DEFAULT_CCSS_PCT, PERIOD_UNIT, payrollBreakdown } from '../../lib/payroll'
+import { COUNTRY_PRESETS, PERIOD_UNIT, countryPreset, payrollBreakdown } from '../../lib/payroll'
 import { PALETTES } from '../../lib/themes'
 import { celebrate } from '../../lib/fx'
 import { requestPermission } from '../../lib/notifications'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { Segmented } from '../ui/Segmented'
 import { AppLogo } from '../ui/AppLogo'
+import { AnimacionesSection, AparienciaSection } from '../settings/SettingsView'
 
 interface ServiceDraft { name: string; amount: number; on: boolean; dueDay: number }
 
@@ -66,7 +70,10 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   const [inputPeriod, setInputPeriod] = useState<PayPeriod>('monthly')
   const [gross, setGross] = useState(0)
   const [skipPayroll, setSkipPayroll] = useState(false)
-  const bdPreview = payrollBreakdown({ inputPeriod, gross, ccssPct: DEFAULT_CCSS_PCT, deductions: [], viewPeriod: 'monthly' })
+  // País: define el nombre y el % de la deducción de ley (app universal)
+  const [countryId, setCountryId] = useState('cr')
+  const preset = countryPreset(countryId) ?? COUNTRY_PRESETS[0]
+  const bdPreview = payrollBreakdown({ inputPeriod, gross, ccssPct: preset.pct, deductions: [], viewPeriod: 'monthly' })
 
   const [planMode, setPlanMode] = useState<'monthly' | 'annual'>('monthly')
   const [services, setServices] = useState(SUGGESTED_SERVICES)
@@ -74,6 +81,8 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   const [error, setError] = useState('')
   // último paso: cómo quiere arrancar su plan con Snake
   const [snakeChoice, setSnakeChoice] = useState<'plan' | 'comprobante' | null>(null)
+  // paso "Personaliza": desplegar tema/animaciones/sonidos completos
+  const [showMore, setShowMore] = useState(false)
 
   const canNext = useMemo(() => {
     if (step === 'datos') return name.trim().length >= 2
@@ -114,7 +123,13 @@ export function Onboarding({ user }: { user: AppUser | null }) {
     })
     // La planilla manda: configura salario del mes automáticamente (mejora general)
     if (!skipPayroll && gross > 0) {
-      setPayroll({ inputPeriod, gross, ccssPct: DEFAULT_CCSS_PCT })
+      setPayroll({
+        inputPeriod,
+        gross,
+        countryId: preset.id,
+        statutoryName: preset.label,
+        ccssPct: preset.pct,
+      })
       // El plan de pago arranca alineado al período del comprobante
       setPaySchedule(
         inputPeriod === 'weekly'
@@ -164,13 +179,15 @@ export function Onboarding({ user }: { user: AppUser | null }) {
               </p>
             )}
             <p className="text-[15px] text-muted mt-3 leading-relaxed max-w-[280px]">
-              Tus gastos, servicios y deudas bajo control. Con planes inteligentes para llegar tranquilo a fin de mes.
+              Tus ingresos, gastos, servicios y deudas bajo control, en tu moneda y con las
+              deducciones de tu país. Con planes inteligentes para llegar tranquilo a fin de mes.
             </p>
             <div className="mt-8 flex flex-col gap-2.5 w-full max-w-[300px]">
               {[
-                'Organiza el mes en segundos',
+                'Organiza tu mes en segundos',
+                'Semanal, quincenal o mensual: como te paguen',
                 'Recordatorios y alarmas de pago',
-                'Snake: tu asistente con IA',
+                'Snake: tu asistente financiero con IA',
               ].map((txt) => (
                 <div key={txt} className="flex items-center gap-2.5 card px-4 py-3">
                   <Check size={15} style={{ color: 'var(--c-income)' }} className="shrink-0" />
@@ -203,15 +220,31 @@ export function Onboarding({ user }: { user: AppUser | null }) {
         {step === 'ingresos' && (
           <StepShell
             title="Tu comprobante salarial"
-            subtitle="Como viene en tu planilla real: semanal, quincenal o mensual. La app calcula la CCSS y tu neto."
+            subtitle="Como viene en tu comprobante real: semanal, quincenal o mensual. La app calcula tu deducción de ley y tu neto."
           >
-            {user && (
-              <Field label="Tu moneda">
-                <select className="input-base" value={currency} onChange={(e) => setCurr(e.target.value)}>
-                  {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
-                </select>
-              </Field>
-            )}
+            <Field label="Tu país">
+              <select
+                className="input-base"
+                value={countryId}
+                onChange={(e) => {
+                  const c = countryPreset(e.target.value)
+                  if (!c) return
+                  setCountryId(c.id)
+                  if (c.currency) setCurr(c.currency)
+                }}
+              >
+                {COUNTRY_PRESETS.map((c) => <option key={c.id} value={c.id}>{c.country}</option>)}
+              </select>
+              <p className="text-[11px] text-muted mt-1">
+                Define tu moneda y tu deducción de ley: <span className="font-semibold text-ink">{preset.label}</span>
+                {preset.pct > 0 && <> ({preset.pct}%)</>}. Puedes ajustarlo cuando quieras.
+              </p>
+            </Field>
+            <Field label="Tu moneda">
+              <select className="input-base" value={currency} onChange={(e) => setCurr(e.target.value)}>
+                {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+              </select>
+            </Field>
             <Field label="¿Cada cuánto te pagan?">
               <Segmented
                 value={inputPeriod}
@@ -229,7 +262,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
             {gross > 0 && (
               <div className="card bg-elevated/60 p-3.5 anim-fade">
                 <p className="text-[12.5px] text-muted">
-                  Deducción de ley ({DEFAULT_CCSS_PCT}%): <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.ccss)}</span>
+                  {preset.label}{preset.pct > 0 ? ` (${preset.pct}%)` : ''}: <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.ccss)}</span>
                 </p>
                 <p className="text-[13px] text-ink mt-1">
                   Líquido {PERIOD_UNIT[inputPeriod]}: <span className="num font-bold" style={{ color: 'var(--c-income)' }}>{formatMoneyExact(bdPreview.net)}</span>
@@ -271,7 +304,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
         )}
 
         {step === 'servicios' && (
-          <StepShell title="Servicios obligatorios" subtitle="Márcalos y ponles monto: se repetirán cada mes (puedes editar luego).">
+          <StepShell title="Servicios del mes" subtitle="Marca los que pagas y ponles monto: se repetirán cada mes (puedes editar o agregar más luego).">
             <div className="flex flex-col gap-2">
               {services.map((s, i) => (
                 <div key={s.name} className={`card p-3 flex items-center gap-3 transition-opacity ${s.on ? '' : 'opacity-60'}`}>
@@ -287,7 +320,10 @@ export function Onboarding({ user }: { user: AppUser | null }) {
                   >
                     {s.on && <Check size={14} strokeWidth={3} />}
                   </button>
-                  <span className="text-[14.5px] font-medium text-ink flex-1">{s.name}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[14.5px] font-medium text-ink">{s.name}</span>
+                    <span className="block text-[10.5px] text-muted">(Más utilizados)</span>
+                  </span>
                   {s.on && (
                     <CurrencyInput
                       value={s.amount}
@@ -302,8 +338,12 @@ export function Onboarding({ user }: { user: AppUser | null }) {
         )}
 
         {step === 'final' && (
-          <StepShell title="Último toque" subtitle="Elige tu estilo y activa los recordatorios.">
-            <div>
+          <StepShell
+            title="Personaliza tu app"
+            subtitle="Tema, colores, fondo, animaciones, sonidos y recordatorios. Todo esto lo puedes cambiar después en Ajustes."
+          >
+            {/* Paleta rápida (se oculta al abrir el bloque completo) */}
+            <div className={showMore ? 'hidden' : ''}>
               <p className="text-[12px] text-muted mb-2">Paleta de color</p>
               <div className="grid grid-cols-3 gap-2">
                 {PALETTES.map((p) => (
@@ -319,6 +359,8 @@ export function Onboarding({ user }: { user: AppUser | null }) {
                 ))}
               </div>
             </div>
+
+            {/* Recordatorios */}
             <button
               onClick={async () => {
                 const ok = await requestPermission()
@@ -340,6 +382,34 @@ export function Onboarding({ user }: { user: AppUser | null }) {
               </span>
               {notifOn && <Check size={18} style={{ color: 'var(--c-income)' }} />}
             </button>
+
+            {/* Todo lo demás: se despliega para no saturar */}
+            <button
+              onClick={() => setShowMore(!showMore)}
+              className="pressable card p-3.5 flex items-center gap-3 text-left"
+            >
+              <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--app-accent) 16%, transparent)' }}>
+                <Palette size={17} style={{ color: 'var(--app-accent-soft)' }} />
+              </span>
+              <span className="flex-1">
+                <span className="block text-[13.5px] font-semibold text-ink">Tema, fondo, animaciones y sonidos</span>
+                <span className="block text-[11.5px] text-muted mt-0.5">
+                  {showMore ? 'Toca para ocultar' : 'Modo claro/oscuro, tu propia foto de fondo, confeti, vibración y sonidos'}
+                </span>
+              </span>
+              <ChevronDown
+                size={17}
+                className="text-muted shrink-0 transition-transform"
+                style={showMore ? { transform: 'rotate(180deg)' } : undefined}
+              />
+            </button>
+
+            {showMore && (
+              <div className="flex flex-col gap-4 anim-fade">
+                <AparienciaSection />
+                <AnimacionesSection />
+              </div>
+            )}
           </StepShell>
         )}
 
@@ -365,7 +435,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
               <ModeCard
                 icon={<FileUp size={20} />}
                 title="Subir mi comprobante salarial"
-                desc="Foto o PDF: Snake lee tu bruto, la CCSS y tus deducciones en segundos."
+                desc="Foto o PDF: Snake lee tu bruto, tu deducción de ley y tus créditos en segundos."
                 selected={snakeChoice === 'comprobante'}
                 onClick={() => { setSnakeChoice('comprobante'); setError('') }}
               />

@@ -5,7 +5,7 @@ import { useTheme } from './hooks/useTheme'
 import { useAuth } from './hooks/useAuth'
 import { useReminders } from './hooks/useReminders'
 import { TAB_ORDER, useSwipeTabs } from './hooks/useSwipeTabs'
-import { firebaseReady } from './lib/firebase'
+import { firebaseReady, logout } from './lib/firebase'
 import { currentMonthId } from './lib/dates'
 import { recompressDataUrl } from './lib/themes'
 import { BottomNav } from './components/layout/BottomNav'
@@ -58,6 +58,18 @@ function App() {
     const { activeMonthId, months } = useFinanceStore.getState()
     if (!months[activeMonthId]) setActiveMonth(nowId)
   }, [onboarded, ensureMonthExists, setActiveMonth])
+
+  // Si la app arranca con sesión abierta pero el onboarding quedó a medias,
+  // se cierra la sesión: el usuario vuelve a la pantalla de inicio de sesión
+  // en vez de caer directo en el onboarding a medio llenar.
+  const startupChecked = useRef(false)
+  useEffect(() => {
+    if (auth.loading || startupChecked.current) return
+    startupChecked.current = true
+    if (firebaseReady && auth.user && !useFinanceStore.getState().profile.onboarded) {
+      void logout()
+    }
+  }, [auth.loading, auth.user])
 
   // Al abrir la app y al iniciar sesión, aterrizar SIEMPRE en Inicio (mejora 13)
   useEffect(() => {

@@ -118,7 +118,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNBusiness v1.7</p>
+  return <p className="text-[11px] text-muted text-center">SNBusiness v1.7.1</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -589,7 +589,7 @@ function IngresosSection() {
 
 // ─── Apariencia ──────────────────────────────────────────────────────────────
 
-function AparienciaSection() {
+export function AparienciaSection() {
   const settings = useFinanceStore((s) => s.settings)
   const setTheme = useFinanceStore((s) => s.setTheme)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -693,7 +693,7 @@ function AparienciaSection() {
 
 // ─── Animaciones y sonidos (mejoras 11 y 25) ─────────────────────────────────
 
-function AnimacionesSection() {
+export function AnimacionesSection() {
   const a = useFinanceStore((s) => s.settings.animations)
   const setAnimations = useFinanceStore((s) => s.setAnimations)
 
@@ -947,7 +947,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNBusiness v1.7 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNBusiness v1.7.1 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 
