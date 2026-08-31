@@ -28,7 +28,7 @@ export const COUNTRY_PRESETS: CountryPreset[] = [
     country: 'Costa Rica',
     currency: 'CRC',
     locale: 'es-CR',
-    statutory: [{ name: 'CCSS (SEM + IVM)', pct: 10.83 }],
+    statutory: [{ name: 'CCSS', pct: 10.83 }],
     taxBrackets: [
       { upTo: 929000, pct: 0 },
       { upTo: 1363000, pct: 10 },
@@ -37,7 +37,7 @@ export const COUNTRY_PRESETS: CountryPreset[] = [
       { upTo: null, pct: 25 },
     ],
     extraPays: [{ name: 'Aguinaldo', month: 12, factor: 1 }],
-    note: 'CCSS 10.83% e impuesto al salario por tramos mensuales.',
+    note: 'CCSS 10.83% (salud y pensión) e impuesto al salario por tramos.',
   },
   {
     id: 'mx',

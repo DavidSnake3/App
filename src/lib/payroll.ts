@@ -35,6 +35,20 @@ function round2(v: number): number {
   return Math.round(v * 100) / 100
 }
 
+/** Etiquetas según cómo recibe su dinero el usuario */
+export const WORKER_LABEL: Record<string, string> = {
+  asalariado: 'Asalariado',
+  independiente: 'Independiente',
+  ambos: 'Asalariado + independiente',
+  pensionado: 'Pensionado',
+  sinIngreso: 'Sin ingreso fijo',
+}
+
+/** ¿La app debe calcular deducciones de planilla para este tipo? */
+export function hasPayrollDeductions(t?: string): boolean {
+  return t === 'asalariado' || t === 'ambos' || t === 'pensionado' || t === undefined
+}
+
 /** Nombre a mostrar de la deducción de ley principal (universal) */
 export function statutoryLabel(p: { statutoryName?: string; statutory?: StatutoryDeduction[] }): string {
   if (p.statutory?.length) {
@@ -95,9 +109,12 @@ export function progressiveTax(monthlyTaxable: number, brackets: TaxBracket[]): 
   return round2(tax)
 }
 
-/** Deducciones de ley efectivas (usa la lista nueva o el % legado) */
+/**
+ * Deducciones de ley efectivas. Una lista vacía A PROPÓSITO (independientes)
+ * se respeta; solo cuando el campo no existe se usa el % legado.
+ */
 export function statutoryList(p: PayrollConfig): StatutoryDeduction[] {
-  if (p.statutory && p.statutory.length) return p.statutory
+  if (p.statutory) return p.statutory
   return [{ id: 'legacy', name: statutoryLabel(p), pct: p.ccssPct ?? 0, cap: 0 }]
 }
 

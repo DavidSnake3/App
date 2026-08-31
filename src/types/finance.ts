@@ -146,8 +146,16 @@ export interface Urgency {
 
 // ─── Perfil y configuración ──────────────────────────────────────────────────
 
+/**
+ * Cómo recibe su dinero el usuario. Define si la app calcula deducciones de
+ * planilla o si es un control simple de lo que entra.
+ */
+export type WorkerType = 'asalariado' | 'independiente' | 'ambos' | 'pensionado' | 'sinIngreso'
+
 export interface UserProfile {
   name: string
+  /** asalariado, independiente, ambos, pensionado o sin ingreso fijo */
+  workerType?: WorkerType
   /** apellido (se muestra junto al nombre bajo la foto) */
   lastName?: string
   email: string

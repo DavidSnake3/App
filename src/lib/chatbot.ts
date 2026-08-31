@@ -6,7 +6,7 @@ import type { Debt } from '../types/finance'
 import { geminiChat, type GeminiTurn } from './ai'
 import { buildPayables, debtEndMonthId, debtPaidCount, debtRemaining, getMonthSummary } from './finance'
 import { carryOver, envelopeTotal, hormigasTotal, realBalance, savingsTotal } from './fund'
-import { PERIOD_LABEL, formatPayday, nextPaydays, payrollBreakdown, statutoryLabel } from './payroll'
+import { PERIOD_LABEL, WORKER_LABEL, formatPayday, nextPaydays, payrollBreakdown, statutoryLabel } from './payroll'
 import { addMonthsToId, currentMonthId, monthLabel, todayDay } from './dates'
 import { useFinanceStore } from '../store/useFinanceStore'
 
@@ -50,6 +50,7 @@ CONOCES LA APP COMPLETA (guía para el usuario):
 - Deudas: cada deuda tiene estado de cuenta estilo recibo (saldo anterior, aporte capital/intereses, nuevo saldo, cuotas pagadas/pendientes, próximo pago, monto al día), historial de abonos y registro de abono con desglose. Una deuda puede pagarse "por planilla" (se deduce del salario y no aparece en el mes). Arriba hay una gráfica "camino a cero deudas" con la fecha en que quedará libre.
 - Ahorro por SOBRES: el usuario crea varios ahorros (ej. Emergencias, Viaje), cada uno con su meta, con el dinero que ya tenía guardado y con aportes/retiros con fecha. El progreso usa el dinero real del sobre. Hay meta sugerida de FONDO DE EMERGENCIA = 3 meses de gastos promedio.
 - La app es UNIVERSAL: al elegir el país se cargan sus deducciones de ley (una o varias: seguro social, pensión, salud), con techo de cotización opcional, los tramos del impuesto sobre la renta y sus pagos extraordinarios (aguinaldo, 13.º, 14.º, primas). Todo es editable en Ajustes → Ingresos. Nunca asumas Costa Rica: usa los nombres, % y tramos de los datos del usuario. Hay formato de números por región y una segunda moneda opcional con tipo de cambio manual.
+- El usuario declara CÓMO recibe su dinero: asalariado, independiente, ambos, pensionado o sin ingreso fijo. Si NO es asalariado la app no resta deducciones de ley: lo que escribe es lo que recibe, y el control es más simple. Nunca le hables de planilla ni de deducciones si es independiente.
 - El comprobante puede ser diario, semanal, cada 14 días, quincenal o mensual; la vista del dinero (semanal/quincenal/mensual) se cambia en la tarjeta de Balance.
 - Ingresos y planilla (Ajustes): el usuario configura su comprobante REAL como semanal, quincenal o mensual: su país, salario bruto, nombre y % de la deducción de ley (se calcula automático), deducciones (créditos/embargos) y ADELANTOS (un adelanto es su pago de la 1ª quincena, NO es plata perdida). El neto mensual se usa automáticamente como salario del mes actual y futuros. También configura cuándo le pagan (días, ajuste si cae en fin de semana) y su plan de ahorro (% o monto fijo, con meta).
 - Año: calendario anual, proyección de ingresos/ahorro/gastos y gantt de deudas.
@@ -75,7 +76,7 @@ export function buildUserContext(): string {
   const lines: string[] = []
 
   lines.push(`Hoy: ${new Date().toLocaleDateString('es-CR')} (día ${todayDay()} del mes ${monthLabel(nowId)}).`)
-  lines.push(`Usuario: ${profile.name || 'sin nombre'} · moneda ${profile.currency}.`)
+  lines.push(`Usuario: ${profile.name || 'sin nombre'} · moneda ${profile.currency} · ${WORKER_LABEL[profile.workerType ?? 'asalariado']}.`)
 
   if (settings.payroll.gross > 0) {
     lines.push(

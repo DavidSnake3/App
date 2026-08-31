@@ -17,6 +17,7 @@ import { makeFundConfig } from '../lib/fund'
 export const DEFAULT_PROFILE: UserProfile = {
   name: '',
   lastName: '',
+  workerType: 'asalariado',
   locale: 'es-CR',
   email: '',
   phone: '',
@@ -235,7 +236,7 @@ function healDebts(debts: Debt[] | undefined): Debt[] {
  */
 function healPayroll(p: Partial<PayrollConfig> | undefined): PayrollConfig {
   const base = { ...DEFAULT_PAYROLL, ...p }
-  if (!base.statutory || base.statutory.length === 0) {
+  if (!base.statutory) {
     base.statutory = [{
       id: 'legacy',
       name: base.statutoryName?.trim() || DEFAULT_STATUTORY_NAME,

@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
 import {
   AlarmClock, ArrowLeft, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
-  Camera, Database, Download, FileText, HandCoins, Image as ImageIcon,
+  Briefcase, Camera, Database, Download, FileText, HandCoins, Image as ImageIcon,
   Landmark, LifeBuoy, LogOut, Mail, MessageCircleQuestion, Moon, Palette,
   PartyPopper, PiggyBank, Play, Plus, Sun, Trash2, Upload,
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
-import type { AlarmSoundId, Debt, PayPeriod, PaySoundId, PendingAlarm } from '../../types/finance'
+import type { AlarmSoundId, Debt, PayPeriod, PaySoundId, PendingAlarm, WorkerType } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { useChat } from '../../store/useChat'
 import { BG_PRESETS, PALETTES, compressImage } from '../../lib/themes'
@@ -15,9 +15,9 @@ import { requestPermission, sendTestNotification } from '../../lib/notifications
 import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm, playSuccess } from '../../lib/sound'
 import { firebaseReady, logout } from '../../lib/firebase'
 import {
-  COUNTRY_PRESETS, INPUT_PERIODS, PERIOD_LABEL, PERIOD_UNIT, convertPeriod, countryPreset,
-  formatPayday, nextPaydays, payrollBreakdown, presetExtraPays, presetLabel, presetPct,
-  presetStatutory,
+  COUNTRY_PRESETS, INPUT_PERIODS, PERIOD_LABEL, PERIOD_UNIT, WORKER_LABEL, convertPeriod,
+  countryPreset, formatPayday, hasPayrollDeductions, nextPaydays, payrollBreakdown,
+  presetExtraPays, presetLabel, presetPct, presetStatutory,
 } from '../../lib/payroll'
 import { realBalance } from '../../lib/fund'
 import { debtIsSettled, uid } from '../../lib/finance'
@@ -46,7 +46,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 
   const items: { id: SectionId; icon: React.ReactNode; title: string; desc: string }[] = [
     { id: 'cuenta', icon: <UserIcon size={17} />, title: 'Cuenta y perfil', desc: 'Sesión, nombre, moneda y foto' },
-    { id: 'ingresos', icon: <Wallet size={17} />, title: 'Ingresos y planilla', desc: 'Salario, deducciones de ley, plan de pago y saldo real' },
+    { id: 'ingresos', icon: <Wallet size={17} />, title: 'Ingresos y planilla', desc: 'Cómo recibes tu dinero, deducciones, plan de pago y saldo real' },
     { id: 'ahorros', icon: <PiggyBank size={17} />, title: 'Ahorros', desc: 'Sobres de ahorro, metas y aportes' },
     { id: 'apariencia', icon: <Palette size={17} />, title: 'Tema y apariencia', desc: 'Claro/oscuro, paletas, acento y fondo' },
     { id: 'animaciones', icon: <PartyPopper size={17} />, title: 'Animaciones y sonidos', desc: 'Confeti, sonidos de pago y de alarma, pruebas' },
@@ -120,7 +120,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNBusiness v1.8</p>
+  return <p className="text-[11px] text-muted text-center">SNBusiness v1.8.1</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -328,6 +328,7 @@ function IngresosSection() {
   const linkableDebts = debts.filter((d) => !debtIsSettled(d) && !d.viaPlanilla && !p.deductions.some((x) => x.debtId === d.id))
 
   const inputPeriod = p.inputPeriod ?? 'monthly'
+  const salaried = hasPayrollDeductions(profile.workerType)
 
   const addManualDed = () => {
     if (!newDedName.trim() || newDedAmount <= 0) return
@@ -369,9 +370,27 @@ function IngresosSection() {
 
   return (
     <>
+      {/* Cómo recibe su dinero (define si hay deducciones de planilla) */}
+      <Card title="¿Cómo recibes tu dinero?" icon={<Briefcase size={14} />}>
+        <select
+          className="input-base"
+          value={profile.workerType ?? 'asalariado'}
+          onChange={(e) => setProfile({ workerType: e.target.value as WorkerType })}
+        >
+          {(['asalariado', 'independiente', 'ambos', 'pensionado', 'sinIngreso'] as const).map((t) => (
+            <option key={t} value={t}>{WORKER_LABEL[t]}</option>
+          ))}
+        </select>
+        <p className="text-[11px] text-muted">
+          {salaried
+            ? 'Con planilla: la app calcula tus deducciones de ley y tu impuesto.'
+            : 'Sin planilla: lo que escribas es lo que recibes, sin deducciones.'}
+        </p>
+      </Card>
+
       {/* Comprobante (mejoras 2, 8 y 9: semanal, quincenal o mensual) */}
-      <Card title="Comprobante salarial" icon={<FileText size={14} />}>
-        <Field label="¿Cada cuánto recibes tu comprobante?">
+      <Card title={salaried ? 'Comprobante salarial' : 'Tus ingresos'} icon={<FileText size={14} />}>
+        <Field label="¿Cada cuánto recibes tu dinero?">
           <select
             className="input-base"
             value={inputPeriod}
@@ -385,11 +404,13 @@ function IngresosSection() {
             Escribe los montos tal como vienen en tu comprobante ({PERIOD_UNIT[p.inputPeriod ?? 'monthly']}).
           </p>
         </Field>
-        <Field label={`Salario base BRUTO (${PERIOD_UNIT[p.inputPeriod ?? 'monthly']})`}>
+        <Field label={salaried
+          ? `Salario base BRUTO (${PERIOD_UNIT[inputPeriod]})`
+          : `¿Cuánto recibes (${PERIOD_UNIT[inputPeriod]})?`}>
           <CurrencyInput value={p.gross} onChange={(v) => setPayroll({ gross: v })} />
         </Field>
         {/* Deducción de ley universal: cualquier país (mejora 10) */}
-        <Field label="Tu país (define la deducción de ley)">
+        <Field label="Tu país (define moneda, deducciones y formato)">
           <select
             className="input-base"
             value={p.countryId ?? 'cr'}
@@ -412,8 +433,17 @@ function IngresosSection() {
             {COUNTRY_PRESETS.map((c) => <option key={c.id} value={c.id}>{c.country}</option>)}
           </select>
         </Field>
-        <StatutoryEditor />
-        <TaxEditor />
+        {salaried ? (
+          <>
+            <StatutoryEditor />
+            <TaxEditor />
+          </>
+        ) : (
+          <p className="text-[11.5px] text-muted">
+            Como no trabajas con planilla, la app no resta deducciones de ley:
+            el monto que escribiste es tu ingreso real.
+          </p>
+        )}
 
         <div>
           <p className="text-[12px] text-muted mb-1.5">Otras deducciones (créditos, adelantos, embargos…)</p>
@@ -979,7 +1009,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNBusiness v1.8 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNBusiness v1.8.1 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

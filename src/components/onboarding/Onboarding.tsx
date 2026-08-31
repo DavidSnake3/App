@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import {
-  ArrowLeft, ArrowRight, Bell, CalendarRange, Check, ChevronDown, FileUp,
-  MessageCircle, Palette, Rocket, Wallet,
+  ArrowLeft, ArrowRight, Bell, Briefcase, CalendarRange, Check, ChevronDown, FileUp,
+  Landmark, MessageCircle, Palette, PiggyBank, Rocket, Sprout, Wallet,
 } from 'lucide-react'
 import type { AppUser } from '../../lib/firebase'
-import type { PayPeriod } from '../../types/finance'
+import type { PayPeriod, WorkerType } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { currentMonthId } from '../../lib/dates'
 import { CURRENCIES, formatMoney, formatMoneyExact } from '../../lib/format'
@@ -31,6 +31,40 @@ const SUGGESTED_SERVICES: ServiceDraft[] = [
 ]
 
 type StepId = 'bienvenida' | 'datos' | 'ingresos' | 'modo' | 'servicios' | 'final' | 'snake'
+
+/** Cómo recibe su dinero el usuario (define si hay deducciones de planilla) */
+const WORKER_OPTIONS: { id: WorkerType; title: string; desc: string; icon: React.ReactNode }[] = [
+  {
+    id: 'asalariado',
+    title: 'Asalariado',
+    desc: 'Trabajo con planilla: me rebajan seguro social e impuestos.',
+    icon: <Briefcase size={19} />,
+  },
+  {
+    id: 'independiente',
+    title: 'Independiente o por cuenta propia',
+    desc: 'Cobro por mi trabajo sin planilla: sin deducciones, control simple.',
+    icon: <Sprout size={19} />,
+  },
+  {
+    id: 'ambos',
+    title: 'Las dos cosas',
+    desc: 'Tengo salario con planilla y además ingresos por mi cuenta.',
+    icon: <Wallet size={19} />,
+  },
+  {
+    id: 'pensionado',
+    title: 'Pensionado o jubilado',
+    desc: 'Recibo pensión; puede traer alguna deducción de salud.',
+    icon: <Landmark size={19} />,
+  },
+  {
+    id: 'sinIngreso',
+    title: 'Sin ingreso fijo por ahora',
+    desc: 'Solo quiero controlar mis gastos, servicios y deudas.',
+    icon: <PiggyBank size={19} />,
+  },
+]
 
 /** Lo que Snake necesita para armar el plan (se muestra en el último paso) */
 const SNAKE_NEEDS = [
@@ -72,6 +106,10 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   const [inputPeriod, setInputPeriod] = useState<PayPeriod>('monthly')
   const [gross, setGross] = useState(0)
   const [skipPayroll, setSkipPayroll] = useState(false)
+  // Cómo recibe su dinero: define si hay deducciones de planilla o no
+  const [workerType, setWorkerType] = useState<WorkerType>('asalariado')
+  const salaried = workerType === 'asalariado' || workerType === 'ambos' || workerType === 'pensionado'
+  const sinIngreso = workerType === 'sinIngreso'
   // País: define el nombre y el % de la deducción de ley (app universal)
   const [countryId, setCountryId] = useState('cr')
   const preset = countryPreset(countryId) ?? COUNTRY_PRESETS[0]
@@ -80,9 +118,11 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   const bdPreview = payrollBreakdown({
     inputPeriod,
     gross,
-    ccssPct: presetTotalPct,
-    statutory: preset.statutory.map((d, i) => ({ id: `p${i}`, name: d.name, pct: d.pct, cap: d.cap ?? 0 })),
-    taxEnabled: true,
+    ccssPct: salaried ? presetTotalPct : 0,
+    statutory: salaried
+      ? preset.statutory.map((d, i) => ({ id: `p${i}`, name: d.name, pct: d.pct, cap: d.cap ?? 0 }))
+      : [],
+    taxEnabled: salaried,
     taxBrackets: preset.taxBrackets,
     deductions: [],
     viewPeriod: 'monthly',
@@ -99,13 +139,13 @@ export function Onboarding({ user }: { user: AppUser | null }) {
 
   const canNext = useMemo(() => {
     if (step === 'datos') return name.trim().length >= 2
-    if (step === 'ingresos') return skipPayroll || gross > 0
+    if (step === 'ingresos') return skipPayroll || sinIngreso || gross > 0
     return true
-  }, [step, name, gross, skipPayroll])
+  }, [step, name, gross, skipPayroll, sinIngreso])
 
   const next = () => {
     if (!canNext) {
-      setError(step === 'datos' ? 'Tu nombre es obligatorio.' : 'Escribe tu salario bruto o elige configurarlo después.')
+      setError(step === 'datos' ? 'Tu nombre es obligatorio.' : 'Escribe cuánto recibes o elige configurarlo después.')
       return
     }
     // Si vuelve y escribe su salario, ya no cuenta como "configurar después"
@@ -128,6 +168,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
       phone: phone.trim(),
       photoUrl: user?.photo ?? '',
       currency,
+      workerType,
       locale: preset.locale || undefined,
       payday: 30,
       payFrequency: inputPeriod === 'weekly' ? 'monthly' : inputPeriod === 'biweekly' ? 'biweekly' : 'monthly',
@@ -135,19 +176,32 @@ export function Onboarding({ user }: { user: AppUser | null }) {
       onboarded: true,
       snakeIntro,
     })
-    // La planilla manda: configura salario del mes automáticamente (mejora general)
-    if (!skipPayroll && gross > 0) {
-      setPayroll({
-        inputPeriod,
-        gross,
-        countryId: preset.id,
-        statutoryName: presetName,
-        ccssPct: presetTotalPct,
-        statutory: presetStatutory(preset),
-        taxEnabled: preset.taxBrackets.some((b) => b.pct > 0),
-        taxBrackets: preset.taxBrackets,
-        extraPays: presetExtraPays(preset),
-      })
+    // La planilla manda: configura el ingreso del mes automáticamente.
+    // Si NO es asalariado no hay deducciones: lo que escribe es lo que recibe.
+    if (!skipPayroll && !sinIngreso && gross > 0) {
+      setPayroll(salaried
+        ? {
+            inputPeriod,
+            gross,
+            countryId: preset.id,
+            statutoryName: presetName,
+            ccssPct: presetTotalPct,
+            statutory: presetStatutory(preset),
+            taxEnabled: preset.taxBrackets.some((b) => b.pct > 0),
+            taxBrackets: preset.taxBrackets,
+            extraPays: presetExtraPays(preset),
+          }
+        : {
+            inputPeriod,
+            gross,
+            countryId: preset.id,
+            statutoryName: '',
+            ccssPct: 0,
+            statutory: [],
+            taxEnabled: false,
+            taxBrackets: preset.taxBrackets,
+            extraPays: [],
+          })
       // El plan de pago arranca alineado al período del comprobante
       setPaySchedule(
         inputPeriod === 'weekly' || inputPeriod === 'daily'
@@ -230,7 +284,11 @@ export function Onboarding({ user }: { user: AppUser | null }) {
               <input className="input-base" type="tel" placeholder="8888-8888" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </Field>
             <Field label="Tu moneda">
-              <select className="input-base" value={currency} onChange={(e) => setCurr(e.target.value)}>
+              <select
+                className="input-base"
+                value={currency}
+                onChange={(e) => { setCurr(e.target.value); setProfile({ currency: e.target.value }) }}
+              >
                 {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
               </select>
             </Field>
@@ -239,9 +297,39 @@ export function Onboarding({ user }: { user: AppUser | null }) {
 
         {step === 'ingresos' && (
           <StepShell
-            title="Tu comprobante salarial"
-            subtitle="Como viene en tu comprobante real: semanal, quincenal o mensual. La app calcula tu deducción de ley y tu neto."
+            title="¿Cómo recibes tu dinero?"
+            subtitle="Con esto la app sabe si debe calcular deducciones de planilla o solo llevarte el control de lo que entra."
           >
+            {/* Tipo de trabajador */}
+            <div className="flex flex-col gap-2">
+              {WORKER_OPTIONS.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => { setWorkerType(o.id); setError('') }}
+                  className="pressable card p-3.5 flex items-center gap-3 text-left"
+                  style={workerType === o.id
+                    ? { borderColor: 'var(--app-accent)', background: 'color-mix(in oklab, var(--app-accent) 8%, var(--c-card))' }
+                    : undefined}
+                >
+                  <span
+                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                    style={{
+                      background: workerType === o.id ? 'var(--app-gradient)' : 'var(--c-elevated)',
+                      color: workerType === o.id ? '#fff' : 'var(--c-muted)',
+                    }}
+                  >
+                    {o.icon}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[14px] font-semibold text-ink">{o.title}</span>
+                    <span className="block text-[11.5px] text-muted mt-0.5 leading-snug">{o.desc}</span>
+                  </span>
+                  {workerType === o.id && <Check size={17} className="shrink-0" style={{ color: 'var(--app-accent-soft)' }} />}
+                </button>
+              ))}
+            </div>
+
+            {/* País y moneda: siempre (definen moneda y formato) */}
             <Field label="Tu país">
               <select
                 className="input-base"
@@ -250,54 +338,107 @@ export function Onboarding({ user }: { user: AppUser | null }) {
                   const c = countryPreset(e.target.value)
                   if (!c) return
                   setCountryId(c.id)
-                  if (c.currency) setCurr(c.currency)
+                  // aplicar moneda y formato YA, para que el desglose no salga
+                  // en la moneda anterior
+                  if (c.currency) {
+                    setCurr(c.currency)
+                    setProfile({ currency: c.currency, locale: c.locale || undefined })
+                  }
                 }}
               >
                 {COUNTRY_PRESETS.map((c) => <option key={c.id} value={c.id}>{c.country}</option>)}
               </select>
               <p className="text-[11px] text-muted mt-1">
-                Define tu moneda, tus deducciones de ley (<span className="font-semibold text-ink">{presetName}</span>
-                {presetTotalPct > 0 ? ` ${presetTotalPct}%` : ''}) y los tramos de impuesto. Todo editable después.
+                {salaried ? (
+                  <>
+                    Define tu moneda y tus deducciones de ley (
+                    <span className="font-semibold text-ink">{presetName}</span>
+                    {presetTotalPct > 0 ? ` ${presetTotalPct}%` : ''}). Todo editable después.
+                  </>
+                ) : (
+                  <>Define tu moneda y el formato de números. Sin deducciones de planilla.</>
+                )}
               </p>
             </Field>
             <Field label="Tu moneda">
-              <select className="input-base" value={currency} onChange={(e) => setCurr(e.target.value)}>
+              <select
+                className="input-base"
+                value={currency}
+                onChange={(e) => { setCurr(e.target.value); setProfile({ currency: e.target.value }) }}
+              >
                 {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
               </select>
             </Field>
-            <Field label="¿Cada cuánto te pagan?">
-              <select className="input-base" value={inputPeriod} onChange={(e) => setInputPeriod(e.target.value as PayPeriod)}>
-                {INPUT_PERIODS.map((per) => (
-                  <option key={per} value={per}>{PERIOD_LABEL[per]}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label={`Salario BRUTO ${PERIOD_UNIT[inputPeriod]}`}>
-              <CurrencyInput value={gross} onChange={(v) => { setGross(v); if (v > 0) setSkipPayroll(false) }} />
-            </Field>
-            {gross > 0 && (
-              <div className="card bg-elevated/60 p-3.5 anim-fade">
-                <p className="text-[12.5px] text-muted">
-                  {presetName}{presetTotalPct > 0 ? ` (${presetTotalPct}%)` : ''}: <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.ccss)}</span>
-                  {bdPreview.tax > 0 && (
-                    <> · Impuesto: <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.tax)}</span></>
+
+            {!sinIngreso && (
+              <>
+                <Field label={salaried ? '¿Cada cuánto te pagan?' : '¿Cada cuánto recibes tu dinero?'}>
+                  <select className="input-base" value={inputPeriod} onChange={(e) => setInputPeriod(e.target.value as PayPeriod)}>
+                    {INPUT_PERIODS.map((per) => (
+                      <option key={per} value={per}>{PERIOD_LABEL[per]}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field
+                  label={salaried
+                    ? `Salario BRUTO ${PERIOD_UNIT[inputPeriod]}`
+                    : `¿Cuánto recibes ${PERIOD_UNIT[inputPeriod]}?`}
+                >
+                  <CurrencyInput value={gross} onChange={(v) => { setGross(v); if (v > 0) setSkipPayroll(false) }} />
+                  {!salaried && (
+                    <p className="text-[11px] text-muted mt-1">
+                      Lo que de verdad te queda en la mano. Si tu ingreso varía, escribe un promedio:
+                      lo cambias cuando quieras.
+                    </p>
                   )}
+                </Field>
+              </>
+            )}
+
+            {sinIngreso && (
+              <div className="card p-3.5" style={{ background: 'color-mix(in oklab, var(--app-accent) 6%, var(--c-card))' }}>
+                <p className="text-[12.5px] text-ink font-semibold">Control simple, sin salario</p>
+                <p className="text-[11.5px] text-muted mt-1 leading-relaxed">
+                  Vas a llevar tus gastos, servicios y deudas sin ingreso fijo. Cuando empieces a
+                  recibir dinero lo agregas en Ajustes → Ingresos, o como "Ingresos adicionales" del mes.
                 </p>
-                <p className="text-[13px] text-ink mt-1">
-                  Líquido {PERIOD_UNIT[inputPeriod]}: <span className="num font-bold" style={{ color: 'var(--c-income)' }}>{formatMoneyExact(bdPreview.net)}</span>
-                  {inputPeriod !== 'monthly' && (
-                    <> · al mes: <span className="num font-bold">{formatMoney(Math.round(bdPreview.monthlyNet))}</span></>
-                  )}
-                </p>
-                <p className="text-[11px] text-muted mt-1.5">Tu país, el nombre y el % de la deducción se ajustan después en Ajustes → Ingresos.</p>
               </div>
             )}
-            <button
-              onClick={() => { setSkipPayroll(true); setError(''); setIdx((i) => Math.min(steps.length - 1, i + 1)) }}
-              className="pressable text-[13px] text-muted underline decoration-dotted self-start"
-            >
-              Prefiero configurarlo después
-            </button>
+
+            {!sinIngreso && gross > 0 && (
+              <div className="card bg-elevated/60 p-3.5 anim-fade">
+                {salaried ? (
+                  <p className="text-[12.5px] text-muted">
+                    {presetName}{presetTotalPct > 0 ? ` (${presetTotalPct}%)` : ''}: <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.ccss, currency)}</span>
+                    {bdPreview.tax > 0 && (
+                      <> · Impuesto: <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.tax, currency)}</span></>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-[12.5px] text-muted">Sin deducciones: lo que escribiste es lo que recibes.</p>
+                )}
+                <p className="text-[13px] text-ink mt-1">
+                  {salaried ? 'Líquido' : 'Recibes'} {PERIOD_UNIT[inputPeriod]}: <span className="num font-bold" style={{ color: 'var(--c-income)' }}>{formatMoneyExact(bdPreview.net, currency)}</span>
+                  {inputPeriod !== 'monthly' && (
+                    <> · al mes: <span className="num font-bold">{formatMoney(Math.round(bdPreview.monthlyNet), currency)}</span></>
+                  )}
+                </p>
+                {salaried && (
+                  <p className="text-[11px] text-muted mt-1.5">
+                    Tu país, los nombres, los % y los tramos se ajustan después en Ajustes → Ingresos.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!sinIngreso && (
+              <button
+                onClick={() => { setSkipPayroll(true); setError(''); setIdx((i) => Math.min(steps.length - 1, i + 1)) }}
+                className="pressable text-[13px] text-muted underline decoration-dotted self-start"
+              >
+                Prefiero configurarlo después
+              </button>
+            )}
           </StepShell>
         )}
 

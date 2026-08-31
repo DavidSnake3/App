@@ -4,7 +4,7 @@ import { ArrowRight, FileText, PiggyBank } from 'lucide-react'
 import type { WidgetSize } from '../../types/finance'
 import type { WidgetCtx } from './widgetMeta'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import { PERIOD_LABEL, formatPayday, inView, nextPaydays, payrollBreakdown, statutoryLabel } from '../../lib/payroll'
+import { PERIOD_LABEL, formatPayday, hasPayrollDeductions, inView, nextPaydays, payrollBreakdown } from '../../lib/payroll'
 import { currentMonthId } from '../../lib/dates'
 import { depositsInMonth, savingsTotal } from '../../lib/fund'
 import { formatMoney, formatMoneyExact } from '../../lib/format'
@@ -13,7 +13,9 @@ import { ProgressRing } from '../ui/ProgressRing'
 export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }) {
   const payroll = useFinanceStore((s) => s.settings.payroll)
   const schedule = useFinanceStore((s) => s.settings.paySchedule)
+  const workerType = useFinanceStore((s) => s.profile.workerType)
   const setPayroll = useFinanceStore((s) => s.setPayroll)
+  const salaried = hasPayrollDeductions(workerType)
   const bd = payrollBreakdown(payroll)
   const p = payroll.viewPeriod
   const next = nextPaydays(schedule, bd, 2)
@@ -25,8 +27,10 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
           <FileText size={18} />
         </span>
         <span className="flex-1">
-          <span className="block text-[14px] font-semibold text-ink">Configura tu comprobante</span>
-          <span className="block text-[12px] text-muted mt-0.5">Semanal, quincenal o mensual, en Ajustes → Ingresos</span>
+          <span className="block text-[14px] font-semibold text-ink">
+            {salaried ? 'Configura tu comprobante' : 'Configura tu ingreso'}
+          </span>
+          <span className="block text-[12px] text-muted mt-0.5">Diario, semanal, quincenal o mensual, en Ajustes → Ingresos</span>
         </span>
         <ArrowRight size={15} className="text-muted shrink-0" />
       </button>
@@ -34,8 +38,11 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
   }
 
   const rows: { label: string; value: number; neg?: boolean }[] = [
-    { label: 'Salario bruto', value: inView(bd, bd.gross, p) },
-    { label: `${statutoryLabel(payroll)} (${payroll.ccssPct}%)`, value: inView(bd, bd.ccss, p), neg: true },
+    { label: salaried ? 'Salario bruto' : 'Ingreso', value: inView(bd, bd.gross, p) },
+    ...bd.statutoryRows
+      .filter((r) => r.amount > 0)
+      .map((r) => ({ label: `${r.name} (${r.pct}%)`, value: inView(bd, r.amount, p), neg: true })),
+    ...(bd.tax > 0 ? [{ label: 'Impuesto sobre la renta', value: inView(bd, bd.tax, p), neg: true }] : []),
     ...bd.deductions.map((d) => ({ label: d.name, value: inView(bd, d.amount, p), neg: true })),
   ]
 
@@ -43,7 +50,7 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
     <div className="card p-4 h-full relative overflow-hidden">
       <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'var(--app-gradient)' }} />
       <h3 className="text-[12px] font-bold uppercase tracking-wider text-muted flex items-center gap-1.5">
-        <FileText size={13} /> Comprobante salarial
+        <FileText size={13} /> {salaried ? 'Comprobante salarial' : 'Mis ingresos'}
       </h3>
 
       {/* Vista del período: segmentado a lo ancho para que nunca se corte */}
