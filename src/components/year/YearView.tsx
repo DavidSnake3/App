@@ -5,6 +5,7 @@ import { buildAnnualProjection, buildMonthFlow, debtEndMonthId, debtIsSettled, d
 import { MONTH_SHORT, currentMonthId, monthDiff, monthIdOf, monthLabel, parseMonthId } from '../../lib/dates'
 import { formatMoney, formatMoneyShort } from '../../lib/format'
 import { LineChart } from './LineChart'
+import { FinancialReport, YearCharts } from './YearInsights'
 
 /** Vista Año: calendario anual (punto 2), proyecciones P/G (punto 13) y Gantt de deudas */
 export function YearView() {
@@ -99,6 +100,12 @@ export function YearView() {
             )
           })}
         </div>
+
+        {/* Reporte financiero por período (mejora 16) */}
+        <FinancialReport year={year} />
+
+        {/* Dashboards del año: dona, barras y comparación (mejora 15) */}
+        <YearCharts year={year} />
 
         {/* Proyección anual con líneas de P/G (punto 13) */}
         <section className="card p-4">

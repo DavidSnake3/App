@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Eye, EyeOff, Lock, Mail, User as UserIcon } from 'lucide-react'
 import { authErrorMessage, getLastEmail, loginEmail, loginGoogle, registerEmail, rememberEmail, resetPassword } from '../../lib/firebase'
 import { withLoading } from '../../store/useLoading'
@@ -7,7 +7,7 @@ import { AppLogo } from '../ui/AppLogo'
 type Mode = 'login' | 'register' | 'reset'
 
 /** Inicio de sesión con correo y Google (autenticación Firebase) */
-export function AuthScreen({ onSkip }: { onSkip: () => void }) {
+export function AuthScreen() {
   const [mode, setMode] = useState<Mode>('login')
   const [name, setName] = useState('')
   // recuerda el último correo usado para no volver a escribirlo
@@ -17,6 +17,20 @@ export function AuthScreen({ onSkip }: { onSkip: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
+
+  // Fondo neutro mientras no hay sesión: la foto de la cuenta anterior
+  // no debe verse al cerrar sesión (mejora 2)
+  useEffect(() => {
+    const root = document.documentElement
+    const prevBg = document.body.style.background
+    const prevDim = root.style.getPropertyValue('--bg-dim')
+    document.body.style.background = 'radial-gradient(1200px 800px at 85% -10%, color-mix(in oklab, var(--app-accent) 22%, transparent), transparent 60%), var(--c-bg-base)'
+    root.style.setProperty('--bg-dim', '0')
+    return () => {
+      document.body.style.background = prevBg
+      root.style.setProperty('--bg-dim', prevDim)
+    }
+  }, [])
 
   const submit = async () => {
     setError(''); setInfo('')
@@ -138,9 +152,6 @@ export function AuthScreen({ onSkip }: { onSkip: () => void }) {
               Ya tengo cuenta: entrar
             </button>
           )}
-          <button onClick={onSkip} className="pressable text-[12.5px] text-muted mt-3">
-            Continuar sin cuenta (solo en este dispositivo)
-          </button>
         </div>
       </div>
     </div>

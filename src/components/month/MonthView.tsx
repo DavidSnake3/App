@@ -1,21 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays, ChartGantt, ChevronLeft, ChevronRight, LayoutGrid,
-  List, Pencil, Plus, Share2, Table2, Trash2,
+  List, Plus, Share2, Table2, Trash2,
 } from 'lucide-react'
 import type { Expense, ExpenseKind, PayableItem, ViewMode } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { buildPayables, getMonthSummary, recurringCandidates } from '../../lib/finance'
 import { addMonthsToId, isCurrentMonth, monthLabel } from '../../lib/dates'
-import { formatMoney } from '../../lib/format'
 import { celebrate } from '../../lib/fx'
-import { CurrencyInput } from '../ui/CurrencyInput'
 import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddExpenseSheet } from './AddExpenseSheet'
 import { ExpenseDetailSheet } from './ExpenseDetailSheet'
 import { HormigasCard } from './FundCards'
-import { realBalance } from '../../lib/fund'
+import { BalanceCard } from './BalanceCard'
 import { buildMonthCardBlob } from '../../lib/shareCard'
 import { downloadWorkbook } from '../../lib/excel'
 import { withLoading } from '../../store/useLoading'
@@ -42,10 +40,8 @@ export function MonthView() {
   const setActiveMonth = useFinanceStore((s) => s.setActiveMonth)
   const ensureMonthExists = useFinanceStore((s) => s.ensureMonthExists)
   const deleteMonth = useFinanceStore((s) => s.deleteMonth)
-  const updateIncome = useFinanceStore((s) => s.updateIncome)
   const markCelebrated = useFinanceStore((s) => s.markCelebrated)
   const animPrefs = useFinanceStore((s) => s.settings.animations)
-  const setActiveTab = useFinanceStore((s) => s.setActiveTab)
   const importRecurring = useFinanceStore((s) => s.importRecurring)
   const markCarryAsked = useFinanceStore((s) => s.markCarryAsked)
   const prevMonth = useFinanceStore((s) => s.months[addMonthsToId(s.activeMonthId, -1)])
@@ -56,7 +52,6 @@ export function MonthView() {
   const [detail, setDetail] = useState<PayableItem | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showCongrats, setShowCongrats] = useState(false)
-  const [editAdditional, setEditAdditional] = useState(false)
 
   useEffect(() => { ensureMonthExists(monthId) }, [monthId, ensureMonthExists])
 
@@ -74,9 +69,6 @@ export function MonthView() {
     () => (month ? getMonthSummary(month, debts) : null),
     [month, debts],
   )
-  const allMonths = useFinanceStore((s) => s.months)
-  const settings = useFinanceStore((s) => s.settings)
-  const saldoReal = useMemo(() => realBalance(allMonths, debts, settings), [allMonths, debts, settings])
 
   // Felicitación al completar todos los pagos (punto 22)
   useEffect(() => {
@@ -146,74 +138,7 @@ export function MonthView() {
           </button>
         </div>
 
-        {/* Balance + saldo real en una sola tarjeta limpia */}
-        <div className="card p-4 relative overflow-hidden">
-          <div
-            className="absolute inset-x-0 top-0 h-1"
-            style={{ background: 'var(--app-gradient)' }}
-          />
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-[11.5px] text-muted mb-1">Balance del mes</p>
-              <p className="num text-[23px] font-bold leading-none" style={{ color: summary.savings >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
-                {formatMoney(summary.savings)}
-              </p>
-            </div>
-            {isCurrentMonth(monthId) && saldoReal != null ? (
-              <div className="text-right">
-                <p className="text-[11.5px] text-muted mb-1 inline-flex items-center gap-1.5">
-                  Saldo real
-                  <button
-                    onClick={() => setActiveTab('settings')}
-                    aria-label="Ajustar saldo real en Ajustes"
-                    className="pressable text-muted"
-                  >
-                    <Pencil size={10} />
-                  </button>
-                </p>
-                <p className="num text-[23px] font-bold leading-none" style={{ color: saldoReal >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
-                  {formatMoney(Math.round(saldoReal))}
-                </p>
-              </div>
-            ) : isCurrentMonth(monthId) ? (
-              <button onClick={() => setActiveTab('settings')} className="pressable text-right self-center">
-                <span className="block text-[11.5px] text-muted">Saldo real</span>
-                <span className="block text-[12px] font-semibold" style={{ color: 'var(--app-accent-soft)' }}>Activar en Ajustes →</span>
-              </button>
-            ) : null}
-          </div>
-          <div className="h-2 rounded-full bg-elevated overflow-hidden mt-3.5">
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{ width: `${Math.round(summary.progress * 100)}%`, background: 'var(--app-gradient)' }}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-2 mt-2">
-            <p className="text-[11.5px] text-muted">
-              <span className="num font-semibold text-ink">{summary.countPaid}/{summary.countTotal}</span> pagados
-            </p>
-            {editAdditional ? (
-              <div className="flex items-center gap-1.5 shrink-0">
-                <CurrencyInput
-                  value={month.income.additional}
-                  onChange={(v) => updateIncome(monthId, { additional: v })}
-                  className="w-32 [&_input]:!py-1.5 [&_input]:!text-[13px]"
-                  autoFocus
-                />
-                <button onClick={() => setEditAdditional(false)} className="pressable text-[11.5px] font-semibold" style={{ color: 'var(--app-accent-soft)' }}>
-                  Listo
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setEditAdditional(true)}
-                className="pressable text-[11.5px] text-muted shrink-0"
-              >
-                Adicionales: <span className="num font-semibold text-ink">{formatMoney(month.income.additional)}</span>
-              </button>
-            )}
-          </div>
-        </div>
+        <BalanceCard />
 
         {/* Gastos hormiga */}
         <HormigasCard />

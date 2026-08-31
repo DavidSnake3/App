@@ -103,7 +103,7 @@ function App() {
   } else if (firebaseReady && !auth.user && !auth.skipped) {
     content = (
       <div className="h-full flex flex-col overflow-hidden">
-        <AuthScreen onSkip={auth.skip} />
+        <AuthScreen />
       </div>
     )
   } else if (!onboarded) {

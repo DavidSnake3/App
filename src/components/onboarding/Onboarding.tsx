@@ -29,7 +29,7 @@ type StepId = 'bienvenida' | 'datos' | 'ingresos' | 'modo' | 'servicios' | 'fina
 /** Lo que Snake necesita para armar el plan (se muestra en el último paso) */
 const SNAKE_NEEDS = [
   'Tu salario bruto y cada cuánto te pagan',
-  'Tus deducciones: CCSS, créditos o adelantos',
+  "Tus deducciones de ley, créditos o adelantos",
   'Tus gastos fijos y servicios del mes',
   'Tus deudas: saldo, cuota y día de pago',
 ]
@@ -229,7 +229,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
             {gross > 0 && (
               <div className="card bg-elevated/60 p-3.5 anim-fade">
                 <p className="text-[12.5px] text-muted">
-                  CCSS ({DEFAULT_CCSS_PCT}%): <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.ccss)}</span>
+                  Deducción de ley ({DEFAULT_CCSS_PCT}%): <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.ccss)}</span>
                 </p>
                 <p className="text-[13px] text-ink mt-1">
                   Líquido {PERIOD_UNIT[inputPeriod]}: <span className="num font-bold" style={{ color: 'var(--c-income)' }}>{formatMoneyExact(bdPreview.net)}</span>
@@ -237,7 +237,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
                     <> · al mes: <span className="num font-bold">{formatMoney(Math.round(bdPreview.monthlyNet))}</span></>
                   )}
                 </p>
-                <p className="text-[11px] text-muted mt-1.5">Los créditos y adelantos los agregas después en Ajustes → Ingresos.</p>
+                <p className="text-[11px] text-muted mt-1.5">Tu país, el nombre y el % de la deducción se ajustan después en Ajustes → Ingresos.</p>
               </div>
             )}
             <button

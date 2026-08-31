@@ -6,6 +6,48 @@ import type { PayPeriod, PayrollConfig, PaySchedule } from '../types/finance'
 import { daysInMonth } from './dates'
 
 export const DEFAULT_CCSS_PCT = 10.83 // CCSS empleado (Costa Rica)
+export const DEFAULT_STATUTORY_NAME = 'CCSS'
+
+/**
+ * Deducción de ley del empleado por país (referencia editable, mejora 10).
+ * Son porcentajes orientativos del aporte del EMPLEADO: cada usuario puede
+ * corregir el nombre y el % en Ajustes, así la app sirve en cualquier país.
+ */
+export interface CountryPreset {
+  id: string
+  country: string
+  label: string
+  pct: number
+  currency: string
+}
+
+export const COUNTRY_PRESETS: CountryPreset[] = [
+  { id: 'cr', country: 'Costa Rica', label: 'CCSS', pct: 10.83, currency: 'CRC' },
+  { id: 'mx', country: 'México', label: 'IMSS', pct: 2.78, currency: 'MXN' },
+  { id: 'gt', country: 'Guatemala', label: 'IGSS', pct: 4.83, currency: 'GTQ' },
+  { id: 'sv', country: 'El Salvador', label: 'ISSS + AFP', pct: 10.25, currency: 'USD' },
+  { id: 'hn', country: 'Honduras', label: 'IHSS + RAP', pct: 5.5, currency: 'HNL' },
+  { id: 'ni', country: 'Nicaragua', label: 'INSS', pct: 7, currency: 'NIO' },
+  { id: 'pa', country: 'Panamá', label: 'Seguro Social', pct: 9.75, currency: 'PAB' },
+  { id: 'do', country: 'Rep. Dominicana', label: 'TSS (SFS + AFP)', pct: 5.91, currency: 'DOP' },
+  { id: 'co', country: 'Colombia', label: 'Salud + Pensión', pct: 8, currency: 'COP' },
+  { id: 'pe', country: 'Perú', label: 'ONP / AFP', pct: 13, currency: 'PEN' },
+  { id: 'ec', country: 'Ecuador', label: 'IESS', pct: 9.45, currency: 'USD' },
+  { id: 'cl', country: 'Chile', label: 'AFP + Salud', pct: 17, currency: 'CLP' },
+  { id: 'ar', country: 'Argentina', label: 'Jubilación + Obra social', pct: 17, currency: 'ARS' },
+  { id: 'es', country: 'España', label: 'Seguridad Social', pct: 6.47, currency: 'EUR' },
+  { id: 'us', country: 'Estados Unidos', label: 'FICA', pct: 7.65, currency: 'USD' },
+  { id: 'other', country: 'Otro país', label: 'Deducción de ley', pct: 0, currency: '' },
+]
+
+export function countryPreset(id?: string): CountryPreset | undefined {
+  return COUNTRY_PRESETS.find((c) => c.id === id)
+}
+
+/** Nombre a mostrar de la deducción de ley (universal) */
+export function statutoryLabel(p: { statutoryName?: string; countryId?: string }): string {
+  return p.statutoryName?.trim() || countryPreset(p.countryId)?.label || DEFAULT_STATUTORY_NAME
+}
 
 /** Factor período → mensual (semanal usa 52 semanas / 12 meses) */
 export function periodToMonthlyFactor(p: PayPeriod): number {

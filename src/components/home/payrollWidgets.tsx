@@ -4,8 +4,9 @@ import { ArrowRight, FileText, PiggyBank } from 'lucide-react'
 import type { WidgetSize } from '../../types/finance'
 import type { WidgetCtx } from './widgetMeta'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import { PERIOD_LABEL, formatPayday, inView, nextPaydays, payrollBreakdown } from '../../lib/payroll'
+import { PERIOD_LABEL, formatPayday, inView, nextPaydays, payrollBreakdown, statutoryLabel } from '../../lib/payroll'
 import { currentMonthId } from '../../lib/dates'
+import { depositsInMonth, savingsTotal } from '../../lib/fund'
 import { formatMoney, formatMoneyExact } from '../../lib/format'
 import { ProgressRing } from '../ui/ProgressRing'
 
@@ -34,7 +35,7 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
 
   const rows: { label: string; value: number; neg?: boolean }[] = [
     { label: 'Salario bruto', value: inView(bd, bd.gross, p) },
-    { label: `CCSS (${payroll.ccssPct}%)`, value: inView(bd, bd.ccss, p), neg: true },
+    { label: `${statutoryLabel(payroll)} (${payroll.ccssPct}%)`, value: inView(bd, bd.ccss, p), neg: true },
     ...bd.deductions.map((d) => ({ label: d.name, value: inView(bd, d.amount, p), neg: true })),
   ]
 
@@ -72,7 +73,7 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
         ))}
         {bd.advances.map((a, i) => (
           <div key={`a${i}`} className="flex items-center justify-between text-[12.5px]">
-            <span className="text-muted truncate pr-2">{a.name} <span className="text-[10.5px]">(es tu pago)</span></span>
+            <span className="text-muted truncate pr-2">{a.name}</span>
             <span className="num font-semibold shrink-0" style={{ color: 'var(--c-income)' }}>
               {formatMoneyExact(inView(bd, a.amount, p))}
             </span>
@@ -88,11 +89,6 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
             {formatMoneyExact(inView(bd, bd.net, p))}
           </span>
         </div>
-        {schedule.frequency === 'biweekly' && bd.monthlyNet > 0 && (
-          <p className="text-[11px] text-muted mt-1">
-            <span className="num font-semibold text-ink">{formatMoney(Math.round(bd.monthlyNet / 2))}</span> por quincena
-          </p>
-        )}
       </div>
 
       {size !== 'sm' && next.length > 0 && (
@@ -110,63 +106,67 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
 }
 
 export function AhorroWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }) {
-  const savings = useFinanceStore((s) => s.settings.savings)
-  const payroll = useFinanceStore((s) => s.settings.payroll)
-  const defaultSalary = useFinanceStore((s) => s.settings.defaultSalary)
-  const addSavingsDeposit = useFinanceStore((s) => s.addSavingsDeposit)
+  const settings = useFinanceStore((st) => st.settings)
+  const addSavingsDeposit = useFinanceStore((st) => st.addSavingsDeposit)
 
-  const base = payrollBreakdown(payroll).monthlyNet || defaultSalary
+  const savings = settings.savings
+  const envelopes = useMemo(() => savings.envelopes ?? [], [savings.envelopes])
+  const base = payrollBreakdown(settings.payroll).monthlyNet || settings.defaultSalary
   const planMensual = savings.mode === 'percent'
     ? Math.round(Math.max(0, base) * savings.value / 100)
     : savings.value
 
-  // ahorro REAL: la suma de tus aportes (se registran con el botón Aportar)
-  const acumulado = useMemo(() => savings.deposits.reduce((s, d) => s + d.amount, 0), [savings.deposits])
+  // ahorro real de TODOS los sobres (lo que ya tenías + aportes − retiros)
+  const acumulado = useMemo(() => savingsTotal(settings), [settings])
+  const metaTotal = useMemo(() => envelopes.reduce((t, e) => t + Math.max(0, e.goal), 0), [envelopes])
   const nowId = currentMonthId()
-  const aportadoEsteMes = useMemo(
-    () => savings.deposits.filter((d) => d.dateISO.slice(0, 7) === nowId).reduce((s, d) => s + d.amount, 0),
-    [savings.deposits, nowId],
-  )
+  const aportadoEsteMes = useMemo(() => depositsInMonth(settings, nowId), [settings, nowId])
 
-  if (!savings.enabled) {
+  if (!savings.enabled && envelopes.length === 0) {
     return (
       <button onClick={() => ctx.setActiveTab('settings')} className="pressable card p-4 h-full w-full text-left flex items-center gap-3">
         <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--c-income) 16%, transparent)', color: 'var(--c-income)' }}>
           <PiggyBank size={18} />
         </span>
         <span className="flex-1">
-          <span className="block text-[14px] font-semibold text-ink">Activa tu plan de ahorro</span>
-          <span className="block text-[12px] text-muted mt-0.5">Define % o monto fijo en Ajustes → Ingresos</span>
+          <span className="block text-[14px] font-semibold text-ink">Crea tu primer sobre de ahorro</span>
+          <span className="block text-[12px] text-muted mt-0.5">En Ajustes → Ahorros: metas, aportes y retiros</span>
         </span>
         <ArrowRight size={15} className="text-muted shrink-0" />
       </button>
     )
   }
 
-  const progreso = savings.goal > 0 ? Math.min(1, acumulado / savings.goal) : 0
+  const progreso = metaTotal > 0 ? Math.min(1, acumulado / metaTotal) : 0
 
   return (
     <div className="card p-4 h-full relative overflow-hidden">
       <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, var(--c-income), var(--app-accent))' }} />
       <h3 className="text-[12px] font-bold uppercase tracking-wider text-muted flex items-center gap-1.5 mb-2.5">
-        <PiggyBank size={13} /> Ahorro{savings.goalName ? ` · ${savings.goalName}` : ''}
+        <PiggyBank size={13} /> Ahorros
       </h3>
       <div className="flex items-center gap-4">
-        {savings.goal > 0 && (
+        {metaTotal > 0 && (
           <ProgressRing progress={progreso} size={size === 'sm' ? 56 : 72} stroke={7} color="var(--c-income)">
             <span className="num text-[12px] font-bold text-ink">{Math.round(progreso * 100)}%</span>
           </ProgressRing>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] text-muted">Plan mensual ({savings.mode === 'percent' ? `${savings.value}% del neto` : 'monto fijo'})</p>
-          <p className="num text-[18px] font-bold leading-tight" style={{ color: 'var(--c-income)' }}>{formatMoney(planMensual)}</p>
-          <p className="text-[11px] text-muted mt-1.5">Ahorrado real (tus aportes)</p>
-          <p className="num text-[14px] font-bold text-ink leading-tight">{formatMoney(Math.round(acumulado))}</p>
-          {savings.goal > 0 && size !== 'sm' && (
-            <p className="text-[11px] text-muted mt-1">
-              Meta: <span className="num font-semibold text-ink">{formatMoney(savings.goal)}</span>
+          <p className="text-[11px] text-muted">Ahorro total</p>
+          <p className="num text-[19px] font-bold leading-tight" style={{ color: 'var(--c-income)' }}>
+            {formatMoney(Math.round(acumulado))}
+          </p>
+          {envelopes.length > 0 && size !== 'sm' && (
+            <p className="text-[11px] text-muted mt-1 truncate">
+              {envelopes.slice(0, 3).map((e) => e.name).join(' · ')}
+              {envelopes.length > 3 && ` +${envelopes.length - 3}`}
+            </p>
+          )}
+          {metaTotal > 0 && size !== 'sm' && (
+            <p className="text-[11px] text-muted mt-0.5">
+              Meta: <span className="num font-semibold text-ink">{formatMoney(metaTotal)}</span>
               {planMensual > 0 && progreso < 1 && (
-                <> · ~<span className="num font-semibold text-ink">{Math.ceil(Math.max(0, savings.goal - acumulado) / planMensual)}</span> meses para llegar</>
+                <> · ~<span className="num font-semibold text-ink">{Math.ceil(Math.max(0, metaTotal - acumulado) / planMensual)}</span> meses</>
               )}
             </p>
           )}
@@ -175,7 +175,7 @@ export function AhorroWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }
       {planMensual > 0 && (
         aportadoEsteMes >= planMensual ? (
           <p className="text-[11.5px] font-semibold mt-2.5 flex items-center gap-1" style={{ color: 'var(--c-income)' }}>
-            ✓ Este mes ya apartaste {formatMoney(Math.round(aportadoEsteMes))}
+            Este mes ya apartaste {formatMoney(Math.round(aportadoEsteMes))}
           </p>
         ) : (
           <button

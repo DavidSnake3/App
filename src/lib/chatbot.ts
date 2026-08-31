@@ -5,8 +5,8 @@
 import type { Debt } from '../types/finance'
 import { geminiChat, type GeminiTurn } from './ai'
 import { buildPayables, debtEndMonthId, debtPaidCount, debtRemaining, getMonthSummary } from './finance'
-import { carryOver, hormigasTotal, realBalance } from './fund'
-import { PERIOD_LABEL, formatPayday, nextPaydays, payrollBreakdown } from './payroll'
+import { carryOver, envelopeTotal, hormigasTotal, realBalance, savingsTotal } from './fund'
+import { PERIOD_LABEL, formatPayday, nextPaydays, payrollBreakdown, statutoryLabel } from './payroll'
 import { addMonthsToId, currentMonthId, monthLabel, todayDay } from './dates'
 import { useFinanceStore } from '../store/useFinanceStore'
 
@@ -48,7 +48,8 @@ CONOCES LA APP COMPLETA (guía para el usuario):
 - SALDO REAL: el usuario escribe cuánto tiene HOY en el banco (se configura en Ajustes → Ingresos) y desde entonces la app lo lleva en vivo: suma los pagos de salario al llegar y resta cada pago, gasto hormiga y aporte al ahorro. Se muestra junto al Balance en la tarjeta principal de Mes. El sobrante del mes se arrastra solo al siguiente (NO es ahorro, es lo que sobró). El ahorro va aparte.
 - GASTOS HORMIGA (en Mes): anotar al instante gastos pequeños (café, uber…); se restan del saldo real y se ve el total del mes y de la semana.
 - Deudas: cada deuda tiene estado de cuenta estilo recibo (saldo anterior, aporte capital/intereses, nuevo saldo, cuotas pagadas/pendientes, próximo pago, monto al día), historial de abonos y registro de abono con desglose. Una deuda puede pagarse "por planilla" (se deduce del salario y no aparece en el mes). Arriba hay una gráfica "camino a cero deudas" con la fecha en que quedará libre.
-- Ahorro: plan mensual (% o fijo) + APORTES REALES con fecha (botón Apartar en el widget o en Ajustes). El progreso a la meta usa los aportes reales. Hay meta sugerida de FONDO DE EMERGENCIA = 3 meses de gastos promedio.
+- Ahorro por SOBRES: el usuario crea varios ahorros (ej. Emergencias, Viaje), cada uno con su meta, con el dinero que ya tenía guardado y con aportes/retiros con fecha. El progreso usa el dinero real del sobre. Hay meta sugerida de FONDO DE EMERGENCIA = 3 meses de gastos promedio.
+- La app es UNIVERSAL: la deducción de ley (CCSS en Costa Rica, IMSS, AFP, Seguridad Social…) se elige por país y su nombre y % son editables en Ajustes. Nunca asumas Costa Rica: usa el nombre y % que aparecen en los datos del usuario.
 - Ingresos y planilla (Ajustes): el usuario configura su comprobante REAL como semanal, quincenal o mensual: salario bruto, % CCSS (10.83 por defecto en Costa Rica, calculado automático), deducciones (créditos/embargos) y ADELANTOS (un adelanto es su pago de la 1ª quincena, NO es plata perdida). El neto mensual se usa automáticamente como salario del mes actual y futuros. También configura cuándo le pagan (días, ajuste si cae en fin de semana) y su plan de ahorro (% o monto fijo, con meta).
 - Año: calendario anual, proyección de ingresos/ahorro/gastos y gantt de deudas.
 - Ajustes: cuenta (correo/Google, sincronización en la nube), tema (claro/oscuro, paletas, fondo propio), animaciones y 3+3 sonidos a elegir con pruebas, notificaciones y alarmas (con pruebas), exportar Excel, respaldo JSON, borrar datos.
@@ -77,7 +78,7 @@ export function buildUserContext(): string {
 
   if (settings.payroll.gross > 0) {
     lines.push(
-      `Planilla (${PERIOD_LABEL[settings.payroll.inputPeriod ?? 'monthly']}): bruto ${bd.gross}, CCSS ${settings.payroll.ccssPct}% = ${bd.ccss}, ` +
+      `Planilla (${PERIOD_LABEL[settings.payroll.inputPeriod ?? 'monthly']}): bruto ${bd.gross}, ${statutoryLabel(settings.payroll)} ${settings.payroll.ccssPct}% = ${bd.ccss}, ` +
       `deducciones reales: ${bd.deductions.map((d) => `${d.name} ${d.amount}`).join(', ') || 'ninguna'}; ` +
       `adelantos (1ª quincena): ${bd.advances.map((d) => `${d.name} ${d.amount}`).join(', ') || 'ninguno'}. ` +
       `Líquido del comprobante: ${bd.net}. Ingreso mensual real: ${bd.monthlyNet}.`,
@@ -89,8 +90,12 @@ export function buildUserContext(): string {
   }
 
   if (settings.savings.enabled) {
-    const ahorrado = settings.savings.deposits.reduce((t, d) => t + d.amount, 0)
-    lines.push(`Plan de ahorro: ${settings.savings.mode === 'percent' ? settings.savings.value + '% del neto' : settings.savings.value + ' fijo'} al mes${settings.savings.goal ? `, meta ${settings.savings.goal} (${settings.savings.goalName || 'sin nombre'})` : ''}. Ahorrado real (aportes): ${Math.round(ahorrado)}.`)
+    const env = settings.savings.envelopes ?? []
+    lines.push(
+      `Plan de ahorro: ${settings.savings.mode === 'percent' ? settings.savings.value + '% del neto' : settings.savings.value + ' fijo'} al mes. ` +
+      `Ahorrado total real: ${Math.round(savingsTotal(settings))}.` +
+      (env.length ? ` Sobres: ${env.map((e) => `${e.name} ${Math.round(envelopeTotal(e))}${e.goal > 0 ? `/${e.goal}` : ''}`).join(', ')}.` : ''),
+    )
   }
 
   // Saldo real y gastos hormiga (control total del dinero)

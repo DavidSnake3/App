@@ -135,3 +135,93 @@ export async function buildMonthCardBlob(
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('png'))), 'image/png')
   })
 }
+
+/* ─── Reporte financiero como imagen (mejora 16) ───────────────────────────── */
+
+export interface StatementSection {
+  title: string
+  rows: [string, number][]
+  total: [string, number]
+  /** las filas son porcentajes, no dinero */
+  percentRows?: boolean
+}
+
+export async function buildStatementBlob(opts: {
+  title: string
+  subtitle: string
+  owner?: string
+  sections: StatementSection[]
+}): Promise<Blob> {
+  const canvas = document.createElement('canvas')
+  const width = 1080
+  const rowsCount = opts.sections.reduce((n, s) => n + s.rows.filter(([, v]) => v !== 0).length + 2, 0)
+  const height = Math.max(1000, 320 + rowsCount * 56 + opts.sections.length * 40)
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('canvas')
+
+  ctx.fillStyle = '#0b0f1a'
+  ctx.fillRect(0, 0, width, height)
+  const grad = ctx.createLinearGradient(0, 0, width, 0)
+  grad.addColorStop(0, SN_GRADIENT[0])
+  grad.addColorStop(1, SN_GRADIENT[1])
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, width, 14)
+
+  ctx.textBaseline = 'top'
+  ctx.fillStyle = '#8b93a7'
+  ctx.font = '600 32px system-ui, sans-serif'
+  ctx.fillText('SNBusiness', 72, 76)
+  ctx.fillStyle = '#f4f6fb'
+  ctx.font = '800 62px system-ui, sans-serif'
+  ctx.fillText(opts.title, 72, 118)
+  ctx.fillStyle = '#8b93a7'
+  ctx.font = '500 32px system-ui, sans-serif'
+  ctx.fillText(opts.subtitle, 72, 196)
+  if (opts.owner) ctx.fillText(opts.owner, 72, 238)
+
+  let y = opts.owner ? 310 : 275
+  for (const sec of opts.sections) {
+    ctx.fillStyle = SN_GRADIENT[1]
+    ctx.font = '800 30px system-ui, sans-serif'
+    ctx.fillText(sec.title, 72, y)
+    y += 52
+    for (const [label, value] of sec.rows) {
+      if (value === 0) continue
+      ctx.fillStyle = '#8b93a7'
+      ctx.font = '500 34px system-ui, sans-serif'
+      ctx.fillText(label, 96, y)
+      const txt = sec.percentRows ? `${Math.round(value)}%` : formatMoney(Math.round(Math.abs(value)))
+      const sign = !sec.percentRows && value < 0 ? '-' : ''
+      ctx.fillStyle = value < 0 && !sec.percentRows ? '#f4587a' : '#e8eaf2'
+      ctx.font = '600 34px system-ui, sans-serif'
+      const w = ctx.measureText(sign + txt).width
+      ctx.fillText(sign + txt, width - 72 - w, y)
+      y += 52
+    }
+    // total de la sección
+    ctx.strokeStyle = 'rgba(139,147,167,0.3)'
+    ctx.beginPath()
+    ctx.moveTo(96, y + 4)
+    ctx.lineTo(width - 72, y + 4)
+    ctx.stroke()
+    y += 20
+    ctx.fillStyle = '#f4f6fb'
+    ctx.font = '800 36px system-ui, sans-serif'
+    ctx.fillText(sec.total[0], 96, y)
+    const tv = formatMoney(Math.round(sec.total[1]))
+    ctx.fillStyle = sec.total[1] >= 0 ? '#3fc3ae' : '#f4587a'
+    const tw = ctx.measureText(tv).width
+    ctx.fillText(tv, width - 72 - tw, y)
+    y += 74
+  }
+
+  ctx.fillStyle = '#8b93a7'
+  ctx.font = '500 26px system-ui, sans-serif'
+  ctx.fillText('Estado de flujo de efectivo personal y balance de patrimonio · SNBusiness', 72, height - 70)
+
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('png'))), 'image/png')
+  })
+}

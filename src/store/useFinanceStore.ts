@@ -2,18 +2,19 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
   AnimationPrefs, AppSettings, Debt, DebtPayment, Expense, FundConfig, MonthData,
-  NotificationPrefs, PayrollConfig, PaySchedule, SavingsConfig, SubItem,
-  TabId, ThemeSettings, UserProfile, ViewMode, WidgetConf,
+  NotificationPrefs, PayrollConfig, PaySchedule, SavingsConfig, SavingsEnvelope,
+  SubItem, TabId, ThemeSettings, UserProfile, ViewMode, WidgetConf,
 } from '../types/finance'
 import { currentMonthId, todayISO } from '../lib/dates'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
-import { DEFAULT_CCSS_PCT, payrollBreakdown } from '../lib/payroll'
+import { DEFAULT_CCSS_PCT, DEFAULT_STATUTORY_NAME, convertPeriod, payrollBreakdown } from '../lib/payroll'
 import { makeFundConfig } from '../lib/fund'
 
 // ─── Valores por defecto ─────────────────────────────────────────────────────
 
 export const DEFAULT_PROFILE: UserProfile = {
   name: '',
+  lastName: '',
   email: '',
   phone: '',
   photoUrl: '',
@@ -58,6 +59,8 @@ export const DEFAULT_ANIMATIONS: AnimationPrefs = {
 
 export const DEFAULT_PAYROLL: PayrollConfig = {
   inputPeriod: 'monthly',
+  countryId: 'cr',
+  statutoryName: DEFAULT_STATUTORY_NAME,
   gross: 0,
   ccssPct: DEFAULT_CCSS_PCT,
   deductions: [],
@@ -78,6 +81,7 @@ export const DEFAULT_SAVINGS: SavingsConfig = {
   goal: 0,
   goalName: '',
   deposits: [],
+  envelopes: [],
 }
 
 export const DEFAULT_FUND: FundConfig = {
@@ -159,9 +163,17 @@ interface FinanceActions {
   setPayroll(patch: Partial<PayrollConfig>): void
   setPaySchedule(patch: Partial<PaySchedule>): void
   setSavings(patch: Partial<SavingsConfig>): void
-  /** aporta (o retira, con monto negativo) al ahorro con fecha de hoy */
+  /** aporta (o retira, con monto negativo) al sobre principal */
   addSavingsDeposit(amount: number, note?: string): void
   deleteSavingsDeposit(id: string): void
+
+  /** sobres de ahorro: varios ahorros a la vez (mejora 5) */
+  addEnvelope(e: { name: string; goal: number; initial: number }): void
+  updateEnvelope(id: string, patch: Partial<Omit<SavingsEnvelope, 'id' | 'deposits'>>): void
+  deleteEnvelope(id: string): void
+  /** aporte (+) o retiro (−) a un sobre concreto */
+  addEnvelopeDeposit(envelopeId: string, amount: number, note?: string): void
+  deleteEnvelopeDeposit(envelopeId: string, depositId: string): void
 
   /** activa/ajusta el saldo real: "hoy tengo X en el banco" */
   setFundNow(baseAmount: number): void
@@ -379,13 +391,36 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         })),
 
       updateDebt: (id, patch) =>
-        set((s) => ({
-          debts: s.debts.map((d) => (d.id === id ? { ...d, ...patch } : d)),
-          ...touch(),
-        })),
+        set((s) => {
+          const debts = s.debts.map((d) => (d.id === id ? { ...d, ...patch } : d))
+          // La deducción de planilla vinculada sigue la cuota real (mejora 6)
+          let settings = s.settings
+          if (patch.monthlyPayment !== undefined) {
+            const per = settings.payroll.inputPeriod ?? 'monthly'
+            const amount = convertPeriod(patch.monthlyPayment, 'monthly', per)
+            const deductions = settings.payroll.deductions.map((x) =>
+              x.debtId === id ? { ...x, amount } : x)
+            settings = { ...settings, payroll: { ...settings.payroll, deductions } }
+          }
+          if (patch.viaPlanilla === false) {
+            settings = {
+              ...settings,
+              payroll: { ...settings.payroll, deductions: settings.payroll.deductions.filter((x) => x.debtId !== id) },
+            }
+          }
+          return { debts, settings, ...touch() }
+        }),
 
       deleteDebt: (id) =>
-        set((s) => ({ debts: s.debts.filter((d) => d.id !== id), ...touch() })),
+        set((s) => ({
+          debts: s.debts.filter((d) => d.id !== id),
+          // si se pagaba por planilla, su deducción también desaparece (mejora 6)
+          settings: {
+            ...s.settings,
+            payroll: { ...s.settings.payroll, deductions: s.settings.payroll.deductions.filter((x) => x.debtId !== id) },
+          },
+          ...touch(),
+        })),
 
       toggleDebtPaid: (debtId, monthId) =>
         set((s) => ({
@@ -461,15 +496,19 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           const payroll = { ...s.settings.payroll, ...patch }
           const settings = { ...s.settings, payroll }
           const affectsMoney = 'gross' in patch || 'ccssPct' in patch || 'deductions' in patch || 'inputPeriod' in patch
-          if (affectsMoney && payroll.gross > 0) {
-            const net = Math.round(payrollBreakdown(payroll).monthlyNet)
+          if (affectsMoney) {
+            // con planilla manda el neto; sin planilla vuelve al salario manual
+            const net = payroll.gross > 0
+              ? Math.round(payrollBreakdown(payroll).monthlyNet)
+              : settings.defaultSalary
             const nowId = currentMonthId()
             const months = Object.fromEntries(
               Object.entries(s.months).map(([id, m]) =>
                 id >= nowId ? [id, { ...m, income: { ...m.income, salary: net } }] : [id, m],
               ),
             )
-            return { settings: { ...settings, defaultSalary: net }, months, ...touch() }
+            const defaultSalary = payroll.gross > 0 ? net : settings.defaultSalary
+            return { settings: { ...settings, defaultSalary }, months, ...touch() }
           }
           return { settings, ...touch() }
         }),
@@ -477,22 +516,100 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set((s) => ({ settings: { ...s.settings, paySchedule: { ...s.settings.paySchedule, ...patch } }, ...touch() })),
       setSavings: (patch) =>
         set((s) => ({ settings: { ...s.settings, savings: { ...s.settings.savings, ...patch } }, ...touch() })),
+      // El aporte "rápido" va al primer sobre; si no hay, crea "Mi ahorro"
       addSavingsDeposit: (amount, note) =>
+        set((s) => {
+          const sav = s.settings.savings
+          const dep = { id: uid(), amount, dateISO: todayISO().slice(0, 10), note }
+          const envelopes = sav.envelopes.length
+            ? sav.envelopes.map((e, i) => (i === 0 ? { ...e, deposits: [...e.deposits, dep] } : e))
+            : [{
+                id: uid(),
+                name: sav.goalName || 'Mi ahorro',
+                goal: sav.goal,
+                initial: 0,
+                deposits: [dep],
+                createdAt: todayISO(),
+              }]
+          return { settings: { ...s.settings, savings: { ...sav, envelopes } }, ...touch() }
+        }),
+      deleteSavingsDeposit: (id) =>
         set((s) => ({
           settings: {
             ...s.settings,
             savings: {
               ...s.settings.savings,
-              deposits: [...s.settings.savings.deposits, { id: uid(), amount, dateISO: todayISO().slice(0, 10), note }],
+              deposits: s.settings.savings.deposits.filter((d) => d.id !== id),
+              envelopes: s.settings.savings.envelopes.map((e) => ({
+                ...e,
+                deposits: e.deposits.filter((d) => d.id !== id),
+              })),
             },
           },
           ...touch(),
         })),
-      deleteSavingsDeposit: (id) =>
+
+      addEnvelope: (e) =>
         set((s) => ({
           settings: {
             ...s.settings,
-            savings: { ...s.settings.savings, deposits: s.settings.savings.deposits.filter((d) => d.id !== id) },
+            savings: {
+              ...s.settings.savings,
+              enabled: true,
+              envelopes: [...s.settings.savings.envelopes, {
+                id: uid(),
+                name: e.name.trim() || 'Ahorro',
+                goal: Math.max(0, e.goal),
+                initial: Math.max(0, e.initial),
+                deposits: [],
+                createdAt: todayISO(),
+              }],
+            },
+          },
+          ...touch(),
+        })),
+      updateEnvelope: (id, patch) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            savings: {
+              ...s.settings.savings,
+              envelopes: s.settings.savings.envelopes.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+            },
+          },
+          ...touch(),
+        })),
+      deleteEnvelope: (id) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            savings: { ...s.settings.savings, envelopes: s.settings.savings.envelopes.filter((e) => e.id !== id) },
+          },
+          ...touch(),
+        })),
+      addEnvelopeDeposit: (envelopeId, amount, note) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            savings: {
+              ...s.settings.savings,
+              envelopes: s.settings.savings.envelopes.map((e) => e.id === envelopeId
+                ? { ...e, deposits: [...e.deposits, { id: uid(), amount, dateISO: todayISO().slice(0, 10), note }] }
+                : e),
+            },
+          },
+          ...touch(),
+        })),
+      deleteEnvelopeDeposit: (envelopeId, depositId) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            savings: {
+              ...s.settings.savings,
+              envelopes: s.settings.savings.envelopes.map((e) => e.id === envelopeId
+                ? { ...e, deposits: e.deposits.filter((d) => d.id !== depositId) }
+                : e),
+            },
           },
           ...touch(),
         })),
@@ -544,7 +661,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             notifications: { ...DEFAULT_NOTIFICATIONS, ...data.settings?.notifications },
             payroll: { ...DEFAULT_PAYROLL, ...data.settings?.payroll },
             paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...data.settings?.paySchedule },
-            savings: { ...DEFAULT_SAVINGS, ...data.settings?.savings },
+            savings: { ...DEFAULT_SAVINGS, ...data.settings?.savings, envelopes: data.settings?.savings?.envelopes ?? [] },
             fund: { ...DEFAULT_FUND, ...data.settings?.fund },
             homeWidgets: data.settings?.homeWidgets ?? DEFAULT_WIDGETS,
           },
@@ -565,7 +682,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
     }),
     {
       name: 'finance-app-state',
-      version: 5,
+      version: 6,
       // Merge profundo de settings: cualquier estado guardado sin los campos
       // nuevos (clientes viejos, nube) recibe los defaults sin romper nada
       merge: (persisted, current) => {
@@ -583,7 +700,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             notifications: { ...DEFAULT_NOTIFICATIONS, ...p.settings?.notifications },
             payroll: { ...DEFAULT_PAYROLL, ...p.settings?.payroll },
             paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...p.settings?.paySchedule },
-            savings: { ...DEFAULT_SAVINGS, ...p.settings?.savings },
+            savings: { ...DEFAULT_SAVINGS, ...p.settings?.savings, envelopes: p.settings?.savings?.envelopes ?? [] },
             fund: { ...DEFAULT_FUND, ...p.settings?.fund },
           },
         }
@@ -621,6 +738,34 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
               paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...(s.settings as Partial<AppSettings>)?.paySchedule },
               savings: { ...DEFAULT_SAVINGS, ...(s.settings as Partial<AppSettings>)?.savings },
               homeWidgets: s.settings?.homeWidgets ?? DEFAULT_WIDGETS,
+            },
+          } as FinanceState & FinanceActions
+        }
+        if (version < 6) {
+          // v5 → v6: los aportes sueltos pasan a ser un sobre de ahorro
+          const s = persisted as FinanceState
+          const sav = { ...DEFAULT_SAVINGS, ...(s.settings as Partial<AppSettings>)?.savings }
+          const envelopes = sav.envelopes?.length
+            ? sav.envelopes
+            : (sav.deposits?.length || sav.goal > 0
+              ? [{
+                  id: uid(),
+                  name: sav.goalName || 'Mi ahorro',
+                  goal: sav.goal ?? 0,
+                  initial: 0,
+                  deposits: sav.deposits ?? [],
+                  createdAt: todayISO(),
+                }]
+              : [])
+          return {
+            ...s,
+            profile: { ...DEFAULT_PROFILE, ...s.profile },
+            settings: {
+              ...DEFAULT_SETTINGS,
+              ...s.settings,
+              payroll: { ...DEFAULT_PAYROLL, ...(s.settings as Partial<AppSettings>)?.payroll },
+              savings: { ...sav, envelopes },
+              fund: { ...DEFAULT_FUND, ...(s.settings as Partial<AppSettings>)?.fund },
             },
           } as FinanceState & FinanceActions
         }

@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
 import {
   AlarmClock, ArrowLeft, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
-  Database, Download, FileText, HandCoins, Image as ImageIcon, KeyRound,
+  Camera, Database, Download, FileText, HandCoins, Image as ImageIcon,
   Landmark, LifeBuoy, LogOut, Mail, MessageCircleQuestion, Moon, Palette,
-  PartyPopper, PiggyBank, Play, Plus, ShieldCheck, Sparkles, Sun, Trash2, Upload,
+  PartyPopper, PiggyBank, Play, Plus, Sun, Trash2, Upload,
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
 import type { AlarmSoundId, Debt, PayPeriod, PaySoundId, PendingAlarm } from '../../types/finance'
@@ -13,10 +13,12 @@ import { BG_PRESETS, PALETTES, compressImage } from '../../lib/themes'
 import { CURRENCIES, formatMoney, formatMoneyExact } from '../../lib/format'
 import { requestPermission, sendTestNotification } from '../../lib/notifications'
 import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm, playSuccess } from '../../lib/sound'
-import { aiAvailable } from '../../lib/ai'
-import { firebaseReady, isAdmin, logout } from '../../lib/firebase'
-import { PERIOD_LABEL, PERIOD_UNIT, convertPeriod, formatPayday, nextPaydays, payrollBreakdown, periodToMonthlyFactor } from '../../lib/payroll'
-import { realBalance, suggestedEmergencyGoal } from '../../lib/fund'
+import { firebaseReady, logout } from '../../lib/firebase'
+import {
+  COUNTRY_PRESETS, PERIOD_LABEL, PERIOD_UNIT, convertPeriod, countryPreset, formatPayday,
+  nextPaydays, payrollBreakdown, periodToMonthlyFactor, statutoryLabel,
+} from '../../lib/payroll'
+import { realBalance } from '../../lib/fund'
 import { debtIsSettled, uid } from '../../lib/finance'
 import { celebrate, payBurst } from '../../lib/fx'
 import { applyBackup, exportBackup, readBackup } from '../../lib/backup'
@@ -28,10 +30,11 @@ import { Toggle } from '../ui/Toggle'
 import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AlarmOverlay } from '../overlays/AlarmOverlay'
+import { SavingsSection } from './SavingsSection'
 
 const ACCENT_CHOICES = ['#7c5cff', '#10b981', '#0ea5e9', '#f43f5e', '#d97706', '#ec4899', '#14b8a6', '#8b5cf6']
 
-type SectionId = 'cuenta' | 'ingresos' | 'apariencia' | 'animaciones' | 'notificaciones' | 'ia' | 'datos' | 'ayuda'
+type SectionId = 'cuenta' | 'ingresos' | 'ahorros' | 'apariencia' | 'animaciones' | 'notificaciones' | 'datos' | 'ayuda'
 
 const SUPPORT_EMAIL = 'davidjosuevillegassalas@gmail.com'
 
@@ -39,17 +42,16 @@ const SUPPORT_EMAIL = 'davidjosuevillegassalas@gmail.com'
 export function SettingsView({ auth }: { auth: AuthState }) {
   const [section, setSection] = useState<SectionId | null>(null)
 
-  const items: { id: SectionId; icon: React.ReactNode; title: string; desc: string; adminOnly?: boolean }[] = [
+  const items: { id: SectionId; icon: React.ReactNode; title: string; desc: string }[] = [
     { id: 'cuenta', icon: <UserIcon size={17} />, title: 'Cuenta y perfil', desc: 'Sesión, nombre, moneda y foto' },
-    { id: 'ingresos', icon: <Wallet size={17} />, title: 'Ingresos y planilla', desc: 'Salario bruto, CCSS, deducciones, plan de pago y ahorro' },
+    { id: 'ingresos', icon: <Wallet size={17} />, title: 'Ingresos y planilla', desc: 'Salario, deducciones de ley, plan de pago y saldo real' },
+    { id: 'ahorros', icon: <PiggyBank size={17} />, title: 'Ahorros', desc: 'Sobres de ahorro, metas y aportes' },
     { id: 'apariencia', icon: <Palette size={17} />, title: 'Tema y apariencia', desc: 'Claro/oscuro, paletas, acento y fondo' },
     { id: 'animaciones', icon: <PartyPopper size={17} />, title: 'Animaciones y sonidos', desc: 'Confeti, sonidos de pago y de alarma, pruebas' },
     { id: 'notificaciones', icon: <Bell size={17} />, title: 'Notificaciones y alarmas', desc: 'Recordatorios, modo alarma y pruebas' },
-    { id: 'ia', icon: <Sparkles size={17} />, title: 'Inteligencia artificial', desc: 'Funciones con Gemini y clave', adminOnly: true },
     { id: 'datos', icon: <Database size={17} />, title: 'Datos y respaldo', desc: 'Excel, exportar/importar respaldo, borrar todo' },
     { id: 'ayuda', icon: <LifeBuoy size={17} />, title: 'Ayuda y soporte', desc: '¿Necesitas ayuda? Reporta un error o contáctanos' },
   ]
-  const visible = items.filter((i) => !i.adminOnly || isAdmin(auth.user))
 
   if (section) {
     const meta = items.find((i) => i.id === section)
@@ -71,10 +73,10 @@ export function SettingsView({ auth }: { auth: AuthState }) {
           </header>
           {section === 'cuenta' && <CuentaSection auth={auth} />}
           {section === 'ingresos' && <IngresosSection />}
+          {section === 'ahorros' && <SavingsSection />}
           {section === 'apariencia' && <AparienciaSection />}
           {section === 'animaciones' && <AnimacionesSection />}
           {section === 'notificaciones' && <NotificacionesSection />}
-          {section === 'ia' && <IASection />}
           {section === 'datos' && <DatosSection />}
           {section === 'ayuda' && <AyudaSection />}
         </div>
@@ -90,17 +92,21 @@ export function SettingsView({ auth }: { auth: AuthState }) {
           <p className="text-[13px] text-muted mt-0.5">Personaliza SNBusiness a tu manera</p>
         </header>
 
-        <div className="card overflow-hidden divide-y divide-[var(--c-border)]">
-          {visible.map((i) => (
-            <button key={i.id} onClick={() => setSection(i.id)} className="pressable w-full flex items-center gap-3.5 px-4 py-3.5 text-left">
-              <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--app-accent) 14%, transparent)', color: 'var(--app-accent-soft)' }}>
+        {/* Menu en cuadros: icono + titulo (mejora 20) */}
+        <div className="grid grid-cols-2 gap-3">
+          {items.map((i) => (
+            <button
+              key={i.id}
+              onClick={() => setSection(i.id)}
+              className="pressable card px-3 py-4 flex flex-col items-center justify-center gap-2 text-center min-h-[104px]"
+            >
+              <span
+                className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+                style={{ background: 'color-mix(in oklab, var(--app-accent) 14%, transparent)', color: 'var(--app-accent-soft)' }}
+              >
                 {i.icon}
               </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-[14.5px] font-semibold text-ink">{i.title}</span>
-                <span className="block text-[12px] text-muted mt-0.5 truncate">{i.desc}</span>
-              </span>
-              <ChevronRight size={16} className="text-muted shrink-0" />
+              <span className="text-[12.5px] font-semibold text-ink leading-tight">{i.title}</span>
             </button>
           ))}
         </div>
@@ -112,13 +118,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  const months = useFinanceStore((s) => s.months)
-  const debts = useFinanceStore((s) => s.debts)
-  return (
-    <p className="text-[11px] text-muted text-center">
-      SNBusiness v1.6 · {Object.keys(months).length} meses · {debts.length} deudas
-    </p>
-  )
+  return <p className="text-[11px] text-muted text-center">SNBusiness v1.7</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -126,30 +126,121 @@ function VersionFooter() {
 function CuentaSection({ auth }: { auth: AuthState }) {
   const profile = useFinanceStore((s) => s.profile)
   const setProfile = useFinanceStore((s) => s.setProfile)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [confirmOut, setConfirmOut] = useState(false)
+
+  const photo = profile.photoUrl || auth.user?.photo || ''
+  const fullName = [profile.name, profile.lastName].filter(Boolean).join(' ').trim()
+  const initial = (profile.name || auth.user?.name || 'S').charAt(0).toUpperCase()
+
+  const pickPhoto = async (f: File | undefined) => {
+    if (!f) return
+    try {
+      const data = await withLoading('Preparando tu foto…', () => compressImage(f, 480, 0.8))
+      setProfile({ photoUrl: data })
+    } catch { /* imagen inválida */ }
+  }
 
   return (
     <>
+      {/* Perfil grande y centrado (mejora 13) */}
+      <div className="card p-5 flex flex-col items-center text-center relative overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'var(--app-gradient)' }} />
+        <div className="relative">
+          <div
+            className="w-28 h-28 rounded-full p-[3px]"
+            style={{ background: 'var(--app-gradient)' }}
+          >
+            {photo ? (
+              <img
+                src={photo}
+                alt="Foto de perfil"
+                referrerPolicy="no-referrer"
+                className="w-full h-full rounded-full object-cover border-2"
+                style={{ borderColor: 'var(--c-card)' }}
+              />
+            ) : (
+              <span
+                className="w-full h-full rounded-full flex items-center justify-center font-display text-[38px] font-bold text-white"
+                style={{ background: 'var(--app-gradient)' }}
+              >
+                {initial}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => fileRef.current?.click()}
+            aria-label="Cambiar foto de perfil"
+            className="pressable absolute -bottom-1 -right-1 w-9 h-9 rounded-full flex items-center justify-center text-white border-2"
+            style={{ background: 'var(--app-accent)', borderColor: 'var(--c-card)' }}
+          >
+            <Camera size={15} />
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => void pickPhoto(e.target.files?.[0])}
+          />
+        </div>
+
+        <h3 className="font-display text-[21px] font-bold text-ink mt-3.5 leading-tight">
+          {fullName || 'Tu nombre'}
+        </h3>
+        {(profile.email || auth.user?.email) && (
+          <p className="text-[12.5px] text-muted mt-1 flex items-center gap-1.5">
+            {firebaseReady && auth.user
+              ? <Cloud size={12} style={{ color: 'var(--c-income)' }} />
+              : <CloudOff size={12} />}
+            {profile.email || auth.user?.email}
+          </p>
+        )}
+        {firebaseReady && auth.user && (
+          <p className="text-[11px] mt-0.5" style={{ color: 'var(--c-income)' }}>Sincronizado en la nube</p>
+        )}
+        {photo && profile.photoUrl && (
+          <button
+            onClick={() => setProfile({ photoUrl: '' })}
+            className="pressable text-[11.5px] text-muted underline decoration-dotted mt-2"
+          >
+            Quitar mi foto
+          </button>
+        )}
+      </div>
+
+      <Card title="Tus datos">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Nombre">
+            <input className="input-base" value={profile.name} onChange={(e) => setProfile({ name: e.target.value })} />
+          </Field>
+          <Field label="Apellido">
+            <input className="input-base" value={profile.lastName ?? ''} onChange={(e) => setProfile({ lastName: e.target.value })} />
+          </Field>
+        </div>
+        <Field label="Correo">
+          <input className="input-base" type="email" value={profile.email} onChange={(e) => setProfile({ email: e.target.value })} />
+        </Field>
+        <Field label="Teléfono (opcional)">
+          <input className="input-base" type="tel" placeholder="8888-8888" value={profile.phone} onChange={(e) => setProfile({ phone: e.target.value })} />
+        </Field>
+        <Field label="Moneda">
+          <select className="input-base" value={profile.currency} onChange={(e) => setProfile({ currency: e.target.value })}>
+            {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+          </select>
+        </Field>
+      </Card>
+
       <Card title="Sesión">
         {firebaseReady ? (
           auth.user ? (
-            <div className="flex items-center gap-3">
-              {auth.user.photo ? (
-                <img src={auth.user.photo} alt="Foto de perfil" referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover shrink-0 border border-edge" />
-              ) : (
-                <span className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ background: 'var(--app-gradient)' }}>
-                  {auth.user.name.charAt(0).toUpperCase()}
-                </span>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-semibold text-ink truncate">{auth.user.name}</p>
-                <p className="text-[12px] text-muted truncate flex items-center gap-1">
-                  <Cloud size={11} style={{ color: 'var(--c-income)' }} /> {auth.user.email} · sincronizado
-                </p>
-              </div>
-              <button onClick={() => { void logout() }} className="pressable btn-ghost !py-2 !px-3 text-[12.5px] flex items-center gap-1.5">
-                <LogOut size={13} /> Salir
-              </button>
-            </div>
+            <button
+              onClick={() => setConfirmOut(true)}
+              className="pressable btn-ghost w-full flex items-center justify-center gap-2 text-[13.5px]"
+              style={{ color: 'var(--c-danger)' }}
+            >
+              <LogOut size={15} /> Cerrar sesión
+            </button>
           ) : (
             <button onClick={auth.unskip} className="pressable btn-primary w-full !py-3 text-[14px]">
               Iniciar sesión / crear cuenta
@@ -162,16 +253,14 @@ function CuentaSection({ auth }: { auth: AuthState }) {
         )}
       </Card>
 
-      <Card title="Perfil">
-        <Field label="Nombre">
-          <input className="input-base" value={profile.name} onChange={(e) => setProfile({ name: e.target.value })} />
-        </Field>
-        <Field label="Moneda">
-          <select className="input-base" value={profile.currency} onChange={(e) => setProfile({ currency: e.target.value })}>
-            {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
-          </select>
-        </Field>
-      </Card>
+      <ConfirmDialog
+        open={confirmOut}
+        title="¿Cerrar sesión?"
+        message="Tus datos quedan guardados en la nube y vuelven cuando inicies sesión otra vez."
+        confirmLabel="Cerrar sesión"
+        onConfirm={() => { setConfirmOut(false); void logout() }}
+        onCancel={() => setConfirmOut(false)}
+      />
     </>
   )
 }
@@ -184,9 +273,6 @@ function IngresosSection() {
   const debts = useFinanceStore((s) => s.debts)
   const setPayroll = useFinanceStore((s) => s.setPayroll)
   const setPaySchedule = useFinanceStore((s) => s.setPaySchedule)
-  const setSavings = useFinanceStore((s) => s.setSavings)
-  const addSavingsDeposit = useFinanceStore((s) => s.addSavingsDeposit)
-  const deleteSavingsDeposit = useFinanceStore((s) => s.deleteSavingsDeposit)
   const setFundNow = useFinanceStore((s) => s.setFundNow)
   const disableFund = useFinanceStore((s) => s.disableFund)
   const months = useFinanceStore((s) => s.months)
@@ -196,19 +282,17 @@ function IngresosSection() {
 
   const p = settings.payroll
   const sch = settings.paySchedule
-  const sav = settings.savings
   const bd = payrollBreakdown(p)
   const [newDedName, setNewDedName] = useState('')
   const [newDedAmount, setNewDedAmount] = useState(0)
   const [newDedAdvance, setNewDedAdvance] = useState(false)
-  const [newDeposit, setNewDeposit] = useState(0)
   const [fundAmount, setFundAmount] = useState(0)
-  const emergencyGoal = suggestedEmergencyGoal(months, debts)
   const saldoReal = realBalance(months, debts, settings)
 
   const linkableDebts = debts.filter((d) => !debtIsSettled(d) && !d.viaPlanilla && !p.deductions.some((x) => x.debtId === d.id))
 
   const inputPeriod = p.inputPeriod ?? 'monthly'
+  const statutory = statutoryLabel(p)
 
   const addManualDed = () => {
     if (!newDedName.trim() || newDedAmount <= 0) return
@@ -269,20 +353,45 @@ function IngresosSection() {
         <Field label={`Salario base BRUTO (${PERIOD_UNIT[p.inputPeriod ?? 'monthly']})`}>
           <CurrencyInput value={p.gross} onChange={(v) => setPayroll({ gross: v })} />
         </Field>
-        <Field label="Deducción CCSS del empleado (%)">
-          <input
-            type="number" min={0} max={30} step="0.01" inputMode="decimal" className="input-base num"
-            value={p.ccssPct}
-            onChange={(e) => setPayroll({ ccssPct: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
-          />
-          <p className="text-[11px] text-muted mt-1">
-            Costa Rica: 10.83% por defecto.
-            {p.gross > 0 && (
-              <> La CCSS te quita <span className="num font-bold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bd.ccss)}</span> {PERIOD_UNIT[bd.period]} (automático)
-              {bd.period !== 'monthly' && <> ≈ <span className="num">−{formatMoney(Math.round(bd.ccss * periodToMonthlyFactor(bd.period)))}</span> al mes</>}.</>
-            )}
-          </p>
+        {/* Deducción de ley universal: cualquier país (mejora 10) */}
+        <Field label="Tu país (define la deducción de ley)">
+          <select
+            className="input-base"
+            value={p.countryId ?? 'cr'}
+            onChange={(e) => {
+              const c = countryPreset(e.target.value)
+              if (!c) return
+              setPayroll({ countryId: c.id, statutoryName: c.label, ccssPct: c.pct })
+              if (c.currency) setProfile({ currency: c.currency })
+            }}
+          >
+            {COUNTRY_PRESETS.map((c) => <option key={c.id} value={c.id}>{c.country}</option>)}
+          </select>
         </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Nombre de la deducción">
+            <input
+              className="input-base"
+              placeholder="CCSS, IMSS, AFP…"
+              value={p.statutoryName ?? ''}
+              onChange={(e) => setPayroll({ statutoryName: e.target.value })}
+            />
+          </Field>
+          <Field label="Porcentaje (%)">
+            <input
+              type="number" min={0} max={60} step="0.01" inputMode="decimal" className="input-base num"
+              value={p.ccssPct}
+              onChange={(e) => setPayroll({ ccssPct: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })}
+            />
+          </Field>
+        </div>
+        <p className="text-[11px] text-muted -mt-1">
+          Los porcentajes por país son una referencia: ajústalos a tu comprobante real.
+          {p.gross > 0 && (
+            <> {statutory} te quita <span className="num font-bold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bd.ccss)}</span> {PERIOD_UNIT[bd.period]}
+            {bd.period !== 'monthly' && <> ≈ <span className="num">−{formatMoney(Math.round(bd.ccss * periodToMonthlyFactor(bd.period)))}</span> al mes</>}.</>
+          )}
+        </p>
 
         <div>
           <p className="text-[12px] text-muted mb-1.5">Otras deducciones (créditos, adelantos, embargos…)</p>
@@ -299,7 +408,7 @@ function IngresosSection() {
                         onClick={() => toggleAdvance(d.id)}
                         className={`pressable chip !py-0 !px-1.5 !text-[9.5px] mt-0.5 ${d.isAdvance ? 'chip-active' : ''}`}
                       >
-                        {d.isAdvance ? 'Adelanto: es tu 1ª quincena' : '¿Es adelanto de quincena?'}
+                        {d.isAdvance ? 'Es un adelanto de mi salario' : '¿Es un adelanto de mi salario?'}
                       </button>
                     )}
                   </span>
@@ -328,7 +437,7 @@ function IngresosSection() {
                 onChange={(e) => setNewDedAdvance(e.target.checked)}
                 className="w-4 h-4 accent-[var(--app-accent)]"
               />
-              Es un ADELANTO de salario (mi pago de la 1ª quincena — no es plata perdida)
+              Es un adelanto de mi salario
             </label>
           )}
           {linkableDebts.length > 0 && (
@@ -348,20 +457,13 @@ function IngresosSection() {
         {p.gross > 0 ? (
           <div className="card bg-elevated/60 p-3.5">
             <Row2 label={`Salario bruto (${PERIOD_UNIT[bd.period]})`} value={formatMoneyExact(bd.gross)} />
-            <Row2 label={`CCSS (${p.ccssPct}%) automático`} value={`−${formatMoneyExact(bd.ccss)}`} danger />
+            <Row2 label={`${statutory} (${p.ccssPct}%)`} value={`−${formatMoneyExact(bd.ccss)}`} danger />
             {bd.deductions.map((d, i) => <Row2 key={i} label={d.name} value={`−${formatMoneyExact(d.amount)}`} danger />)}
-            {bd.advances.map((a, i) => <Row2 key={`a${i}`} label={`${a.name} (adelanto: es tu pago)`} value={formatMoneyExact(a.amount)} />)}
+            {bd.advances.map((a, i) => <Row2 key={`a${i}`} label={a.name} value={formatMoneyExact(a.amount)} />)}
             <div className="border-t border-dashed my-1.5" style={{ borderColor: 'var(--c-border)' }} />
             <Row2 label={`LÍQUIDO ${PERIOD_LABEL[bd.period].toUpperCase()}`} value={formatMoneyExact(bd.net)} strong />
             {bd.period !== 'monthly' && (
               <Row2 label="Tu ingreso mensual" value={formatMoney(Math.round(bd.monthlyNet))} strong />
-            )}
-            {sch.frequency === 'biweekly' && bd.monthlyNet > 0 && (
-              <div className="mt-1.5 rounded-xl px-2.5 py-2" style={{ background: 'color-mix(in oklab, var(--c-income) 10%, transparent)' }}>
-                <p className="text-[11.5px] text-muted mb-1">Así te llega (deducciones repartidas mitad y mitad):</p>
-                <Row2 label="1ª quincena" value={formatMoney(Math.round(bd.monthlyNet / 2))} />
-                <Row2 label="2ª quincena" value={formatMoney(Math.round(bd.monthlyNet) - Math.round(bd.monthlyNet / 2))} />
-              </div>
             )}
             <p className="text-[11px] text-muted mt-2">
               Tu ingreso mensual se aplica automáticamente al mes actual y los siguientes.
@@ -481,97 +583,6 @@ function IngresosSection() {
         )}
       </Card>
 
-      {/* Ahorro (mejora 15) */}
-      <Card title="Plan de ahorro" icon={<PiggyBank size={14} />}>
-        <RowToggle title="Activar ahorro" desc="Apartar algo cada mes, visible en tu inicio">
-          <Toggle checked={sav.enabled} onChange={(v) => setSavings({ enabled: v })} label="Ahorro" />
-        </RowToggle>
-        {sav.enabled && (
-          <div className="anim-fade flex flex-col gap-3">
-            <Segmented
-              value={sav.mode}
-              onChange={(m) => setSavings({ mode: m })}
-              options={[
-                { value: 'percent', label: '% del neto' },
-                { value: 'fixed', label: 'Monto fijo' },
-              ]}
-            />
-            {sav.mode === 'percent' ? (
-              <Field label={`Porcentaje: ${sav.value}%`}>
-                <input
-                  type="range" min={1} max={50} value={sav.value}
-                  onChange={(e) => setSavings({ value: Number(e.target.value) })}
-                  className="w-full accent-[var(--app-accent)]"
-                />
-              </Field>
-            ) : (
-              <Field label="Monto por mes">
-                <CurrencyInput value={sav.value} onChange={(v) => setSavings({ value: v })} />
-              </Field>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Meta (opcional)">
-                <CurrencyInput value={sav.goal} onChange={(v) => setSavings({ goal: v })} />
-              </Field>
-              <Field label="Nombre de la meta">
-                <input className="input-base" placeholder="Ej. Viaje, carro…" value={sav.goalName} onChange={(e) => setSavings({ goalName: e.target.value })} />
-              </Field>
-            </div>
-
-            {/* Fondo de emergencia sugerido (nueva funcionalidad 1) */}
-            {emergencyGoal > 0 && sav.goal !== emergencyGoal && (
-              <button
-                onClick={() => setSavings({ goal: emergencyGoal, goalName: sav.goalName || 'Fondo de emergencia' })}
-                className="pressable card p-3 flex items-center gap-2.5 text-left"
-                style={{ borderColor: 'color-mix(in oklab, var(--c-income) 40%, var(--c-border))' }}
-              >
-                <ShieldCheck size={16} className="shrink-0" style={{ color: 'var(--c-income)' }} />
-                <span className="flex-1">
-                  <span className="block text-[12.5px] font-semibold text-ink">Usar meta sugerida: fondo de emergencia</span>
-                  <span className="block text-[11px] text-muted mt-0.5">
-                    {formatMoney(emergencyGoal)} = 3 meses de tus gastos promedio. Es el colchón que te protege de imprevistos.
-                  </span>
-                </span>
-              </button>
-            )}
-
-            {/* Aporte manual + historial de aportes reales */}
-            <div>
-              <p className="text-[12px] text-muted mb-1.5">Aportar al ahorro ahora (sale de tu saldo real)</p>
-              <div className="flex gap-2">
-                <CurrencyInput value={newDeposit} onChange={setNewDeposit} className="flex-1" />
-                <button
-                  onClick={() => { if (newDeposit > 0) { addSavingsDeposit(newDeposit); setNewDeposit(0) } }}
-                  aria-label="Aportar al ahorro"
-                  className="pressable w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-white"
-                  style={{ background: 'var(--c-income)' }}
-                >
-                  <Plus size={18} />
-                </button>
-              </div>
-              {sav.deposits.length > 0 && (
-                <div className="card overflow-hidden divide-y divide-[var(--c-border)] mt-2">
-                  {sav.deposits.slice(-4).reverse().map((d) => (
-                    <div key={d.id} className="flex items-center gap-2 px-3 py-2">
-                      <span className="text-[12.5px] text-ink flex-1 truncate">{d.note || 'Aporte'}</span>
-                      <span className="text-[10.5px] text-muted num">{d.dateISO.slice(8, 10)}/{d.dateISO.slice(5, 7)}</span>
-                      <span className="num text-[12.5px] font-semibold" style={{ color: 'var(--c-income)' }}>+{formatMoney(d.amount)}</span>
-                      <button onClick={() => deleteSavingsDeposit(d.id)} aria-label="Eliminar aporte" className="pressable w-6 h-6 rounded-full flex items-center justify-center text-muted">
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="text-[11px] text-muted mt-1.5">
-                Ahorrado real: <span className="num font-semibold text-ink">{formatMoney(Math.round(sav.deposits.reduce((s, d) => s + d.amount, 0)))}</span>
-                {' · '}el progreso de la meta y los planes de Snake usan este número.
-              </p>
-            </div>
-            <p className="text-[11.5px] text-muted">Agrega el widget «Ahorro» en tu inicio para verlo como dashboard.</p>
-          </div>
-        )}
-      </Card>
     </>
   )
 }
@@ -841,34 +852,6 @@ function NotificacionesSection() {
 
 // ─── IA (solo administrador) ─────────────────────────────────────────────────
 
-function IASection() {
-  const settings = useFinanceStore((s) => s.settings)
-  const setSettings = useFinanceStore((s) => s.setSettings)
-  return (
-    <Card title="Gemini">
-      <RowToggle title="Funciones con IA" desc="Consejos, planes de pago y análisis">
-        <Toggle checked={settings.aiEnabled} onChange={(v) => setSettings({ aiEnabled: v })} label="IA" />
-      </RowToggle>
-      {settings.aiEnabled && (
-        <div className="anim-fade">
-          <Field label={aiAvailable() ? 'Clave de Gemini (configurada)' : 'Clave de Gemini'}>
-            <div className="relative">
-              <KeyRound size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-              <input
-                className="input-base !pl-9" type="password"
-                placeholder={aiAvailable() ? '••••••••••••  (integrada)' : 'AIza…'}
-                value={settings.geminiKey}
-                onChange={(e) => setSettings({ geminiKey: e.target.value.trim() })}
-              />
-            </div>
-          </Field>
-          <p className="text-[11.5px] text-muted mt-1.5">Gratis en aistudio.google.com. Se guarda solo en tu dispositivo.</p>
-        </div>
-      )}
-    </Card>
-  )
-}
-
 // ─── Datos y respaldo (mejora 14) ────────────────────────────────────────────
 
 function DatosSection() {
@@ -964,7 +947,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNBusiness v1.6 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNBusiness v1.7 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

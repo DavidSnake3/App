@@ -2,9 +2,9 @@
 // Refleja lo que hay EN EL BANCO: base que el usuario escribe + lo que llega
 // por quincenas − lo pagado − gastos hormiga − aportes al ahorro. El sobrante
 // de cada mes se arrastra solo al siguiente (no es ahorro: es lo que sobró).
-import type { AppSettings, Debt, FundConfig, MonthData } from '../types/finance'
+import type { AppSettings, Debt, FundConfig, MonthData, SavingsDeposit, SavingsEnvelope } from '../types/finance'
 import { currentMonthId, daysInMonth, parseMonthId } from './dates'
-import { getMonthSummary } from './finance'
+import { buildPayables, getMonthSummary } from './finance'
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100
@@ -58,16 +58,32 @@ export function hormigasTotal(m: MonthData): number {
   return round2((m.hormigas ?? []).reduce((s, h) => s + h.amount, 0))
 }
 
+/** Todos los aportes de ahorro (sobres + legado) */
+export function allDeposits(settings: AppSettings): SavingsDeposit[] {
+  const env = settings.savings.envelopes ?? []
+  return [...env.flatMap((e) => e.deposits), ...(env.length ? [] : settings.savings.deposits ?? [])]
+}
+
 /** Aportes al ahorro hechos dentro de un mes concreto */
 export function depositsInMonth(settings: AppSettings, monthId: string): number {
-  return round2(settings.savings.deposits
+  return round2(allDeposits(settings)
     .filter((d) => monthOfISO(d.dateISO) === monthId)
     .reduce((s, d) => s + d.amount, 0))
 }
 
-/** Total ahorrado real (todos los aportes menos retiros) */
+/**
+ * Total ahorrado real: lo que ya tenía guardado en cada sobre (initial) más
+ * los aportes hechos desde la app, menos los retiros.
+ */
 export function savingsTotal(settings: AppSettings): number {
-  return round2(settings.savings.deposits.reduce((s, d) => s + d.amount, 0))
+  const env = settings.savings.envelopes ?? []
+  const initial = env.reduce((s, e) => s + Math.max(0, e.initial), 0)
+  return round2(initial + allDeposits(settings).reduce((s, d) => s + d.amount, 0))
+}
+
+/** Total de un sobre (lo que ya tenía + aportes − retiros) */
+export function envelopeTotal(e: SavingsEnvelope): number {
+  return round2(Math.max(0, e.initial) + e.deposits.reduce((s, d) => s + d.amount, 0))
 }
 
 /** Flujo neto de un mes: recibido − pagado − hormigas − aportes al ahorro */
@@ -98,7 +114,7 @@ export function fundFlow(
     flow += monthFlow(m, debts, settings, today)
   }
   // aportes en meses sin registro (no quedaron cubiertos arriba)
-  for (const d of settings.savings.deposits) {
+  for (const d of allDeposits(settings)) {
     const mid = monthOfISO(d.dateISO)
     if (mid >= anchorMonthId && mid <= nowId && !covered.has(mid)) flow -= d.amount
   }
@@ -173,4 +189,50 @@ export function suggestedEmergencyGoal(months: Record<string, MonthData>, debts:
   if (!withData.length) return 0
   const avg = withData.reduce((s, m) => s + getMonthSummary(m, debts).totalExpenses, 0) / withData.length
   return Math.round(avg * 3)
+}
+
+/** Lo que sobró en el mes anterior a `monthId` (ingresos − pagos − hormigas − ahorro) */
+export function prevMonthLeftover(
+  months: Record<string, MonthData>,
+  debts: Debt[],
+  settings: AppSettings,
+  monthId: string,
+): number {
+  const ids = Object.keys(months).filter((id) => id < monthId).sort()
+  const prevId = ids[ids.length - 1]
+  const prev = prevId ? months[prevId] : undefined
+  if (!prev) return 0
+  return monthFlow(prev, debts, settings)
+}
+
+/** Desglose por tipo de pago con subtotales (mejora 17) */
+export interface KindTotal {
+  kind: 'servicio' | 'gasto' | 'personal' | 'deuda'
+  label: string
+  total: number
+  paid: number
+  pending: number
+  count: number
+  countPaid: number
+}
+
+export function kindTotals(m: MonthData, debts: Debt[]): KindTotal[] {
+  const items = buildPayables(m, debts)
+  const defs: { kind: KindTotal['kind']; label: string }[] = [
+    { kind: 'servicio', label: 'Servicios' },
+    { kind: 'gasto', label: 'Gastos' },
+    { kind: 'personal', label: 'Personales' },
+    { kind: 'deuda', label: 'Deudas' },
+  ]
+  return defs.map(({ kind, label }) => {
+    const list = items.filter((i) => i.kind === kind)
+    const total = round2(list.reduce((s, i) => s + i.amount, 0))
+    const paid = round2(list.filter((i) => i.paid).reduce((s, i) => s + i.amount, 0))
+    return {
+      kind, label, total, paid,
+      pending: round2(total - paid),
+      count: list.length,
+      countPaid: list.filter((i) => i.paid).length,
+    }
+  })
 }

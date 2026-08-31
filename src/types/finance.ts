@@ -148,6 +148,8 @@ export interface Urgency {
 
 export interface UserProfile {
   name: string
+  /** apellido (se muestra junto al nombre bajo la foto) */
+  lastName?: string
   email: string
   phone: string
   photoUrl: string               // foto de la cuenta (Google)
@@ -235,6 +237,10 @@ export interface PayrollDeduction {
 export type PayPeriod = 'weekly' | 'biweekly' | 'monthly'
 
 export interface PayrollConfig {
+  /** país elegido (define el nombre y % de la deducción de ley por defecto) */
+  countryId?: string
+  /** nombre de la deducción de ley: CCSS, IMSS, AFP, Seguridad Social… */
+  statutoryName?: string
   /**
    * Período del comprobante REAL del usuario (mejora 9): los montos de
    * `gross` y `deductions` están expresados en este período.
@@ -242,7 +248,7 @@ export interface PayrollConfig {
   inputPeriod: PayPeriod
   /** salario base bruto (por inputPeriod) */
   gross: number
-  /** % de CCSS del empleado (Costa Rica: 10.83 por defecto) */
+  /** % de la deducción de ley del empleado (Costa Rica CCSS: 10.83) */
   ccssPct: number
   /** deducciones por inputPeriod */
   deductions: PayrollDeduction[]
@@ -271,6 +277,19 @@ export interface SavingsDeposit {
   note?: string
 }
 
+/** Sobre de ahorro: una meta con su propio dinero y sus aportes */
+export interface SavingsEnvelope {
+  id: string
+  name: string
+  /** meta del sobre (0 = sin meta) */
+  goal: number
+  /** dinero que YA tenía guardado antes de usar la app */
+  initial: number
+  /** aportes y retiros hechos desde la app */
+  deposits: SavingsDeposit[]
+  createdAt: string
+}
+
 export interface SavingsConfig {
   enabled: boolean
   mode: 'percent' | 'fixed'
@@ -279,8 +298,10 @@ export interface SavingsConfig {
   /** meta total opcional */
   goal: number
   goalName: string
-  /** aportes reales con fecha (el progreso se calcula con esto) */
+  /** aportes reales con fecha (legado: sobre único) */
   deposits: SavingsDeposit[]
+  /** sobres de ahorro (cada uno con su meta y su dinero) */
+  envelopes: SavingsEnvelope[]
 }
 
 // ─── Saldo real (control total del dinero, mejora del usuario) ───────────────

@@ -298,17 +298,36 @@ function CalendarioWidget({ ctx }: { ctx: WidgetCtx }) {
   const days = daysInMonth(monthId)
   const offset = firstWeekday(monthId)
   const today = isCurrentMonth(monthId) ? todayDay() : -1
-  const byDay = new Map<number, { paid: boolean; t: number }>()
+
+  // Qué se paga cada día (mejora 9): monto, cuántos y si ya está pagado
+  const byDay = new Map<number, { paid: boolean; t: number; amount: number; count: number }>()
   for (const it of items) {
     if (!it.dueDay) continue
     const d = Math.min(it.dueDay, days)
     const u = getUrgency(monthId, it.dueDay, it.paid)
     const prev = byDay.get(d)
-    byDay.set(d, { paid: (prev?.paid ?? true) && it.paid, t: Math.max(prev?.t ?? 0, u.t) })
+    byDay.set(d, {
+      paid: (prev?.paid ?? true) && it.paid,
+      t: Math.max(prev?.t ?? 0, u.t),
+      amount: (prev?.amount ?? 0) + it.amount,
+      count: (prev?.count ?? 0) + 1,
+    })
   }
+
+  // próximo día con pagos pendientes
+  const pendientes = [...byDay.entries()].filter(([, v]) => !v.paid).sort((a, b) => a[0] - b[0])
+  const proximo = pendientes.find(([d]) => today < 0 || d >= today) ?? pendientes[0]
+  const hoyInfo = today > 0 ? byDay.get(today) : undefined
+
   return (
     <button onClick={() => ctx.setActiveTab('month')} className="pressable card p-3 h-full w-full text-left">
-      <span className="block text-[12px] font-bold uppercase tracking-wider text-muted mb-1.5">{monthLabel(monthId, true)}</span>
+      <span className="flex items-center justify-between mb-1.5">
+        <span className="block text-[12px] font-bold uppercase tracking-wider text-muted">{monthLabel(monthId, true)}</span>
+        <span className="flex items-center gap-2 text-[8.5px] text-muted">
+          <span className="flex items-center gap-1"><i className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--c-danger)' }} /> pendiente</span>
+          <span className="flex items-center gap-1"><i className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--c-income)' }} /> pagado</span>
+        </span>
+      </span>
       <span className="grid grid-cols-7 gap-[3px]">
         {WEEKDAY_SHORT.map((d, i) => (
           <span key={`h${i}`} className="text-center text-[8px] font-semibold text-muted">{d}</span>
@@ -320,22 +339,47 @@ function CalendarioWidget({ ctx }: { ctx: WidgetCtx }) {
           return (
             <span
               key={day}
-              className="aspect-square rounded-[4px] flex items-center justify-center text-[8px] num"
+              className="relative aspect-square rounded-[4px] flex items-center justify-center text-[8px] num"
               style={{
                 background: info
                   ? info.paid ? 'color-mix(in oklab, var(--c-income) 30%, transparent)' : `color-mix(in oklab, var(--c-danger) ${20 + info.t * 45}%, transparent)`
                   : 'var(--c-elevated)',
-                color: day === today ? 'var(--app-accent-soft)' : 'var(--c-muted)',
-                fontWeight: day === today ? 800 : 500,
+                color: day === today ? 'var(--app-accent-soft)' : info ? 'var(--c-text)' : 'var(--c-muted)',
+                fontWeight: day === today || info ? 800 : 500,
                 outline: day === today ? '1px solid var(--app-accent)' : undefined,
               }}
             >
               {day}
+              {info && (
+                <i
+                  className="absolute bottom-[1px] left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
+                  style={{ background: info.paid ? 'var(--c-income)' : 'var(--c-danger)' }}
+                />
+              )}
             </span>
           )
         })}
       </span>
+      {/* Qué toca pagar (mejora 9) */}
+      <span className="block mt-2 pt-1.5 border-t border-edge/60 text-[10.5px] text-muted">
+        {hoyInfo && !hoyInfo.paid ? (
+          <>
+            <span className="font-bold" style={{ color: 'var(--c-danger)' }}>Hoy pagas</span>
+            {' '}<span className="num font-semibold text-ink">{formatMoney(Math.round(hoyInfo.amount))}</span>
+            {hoyInfo.count > 1 && <> · {hoyInfo.count} pagos</>}
+          </>
+        ) : proximo ? (
+          <>
+            Próximo pago: <span className="num font-semibold text-ink">día {proximo[0]}</span>
+            {' · '}<span className="num font-semibold" style={{ color: 'var(--c-warning)' }}>{formatMoney(Math.round(proximo[1].amount))}</span>
+            {proximo[1].count > 1 && <> ({proximo[1].count})</>}
+          </>
+        ) : (
+          <>Todo pagado este mes. Excelente.</>
+        )}
+      </span>
     </button>
   )
 }
+
 
