@@ -71,7 +71,7 @@ export function AuthScreen() {
     <div className="flex-1 overflow-y-auto">
       <div className="px-6 pt-14 pb-10 flex flex-col items-center anim-page">
         <AppLogo size={76} />
-        <h1 className="font-display text-[26px] font-bold text-ink mt-4">SNBusiness</h1>
+        <h1 className="font-display text-[26px] font-bold text-ink mt-4">SNFinance</h1>
         <p className="text-[13.5px] text-muted mt-1 text-center">
           {mode === 'login' && 'Entra para sincronizar tus finanzas'}
           {mode === 'register' && 'Crea tu cuenta en segundos'}

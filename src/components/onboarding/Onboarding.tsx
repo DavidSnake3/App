@@ -175,6 +175,8 @@ export function Onboarding({ user }: { user: AppUser | null }) {
       planMode,
       onboarded: true,
       snakeIntro,
+      // al salir del chat de Snake se explica cómo personalizar el inicio
+      widgetsTip: false,
     })
     // La planilla manda: configura el ingreso del mes automáticamente.
     // Si NO es asalariado no hay deducciones: lo que escribe es lo que recibe.
@@ -246,7 +248,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
         {step === 'bienvenida' && (
           <div className="flex flex-col items-center text-center pt-10">
             <AppLogo size={92} />
-            <h1 className="font-display text-[30px] font-bold text-ink mt-6 leading-tight">SNBusiness</h1>
+            <h1 className="font-display text-[30px] font-bold text-ink mt-6 leading-tight">SNFinance</h1>
             {user && (
               <p className="text-[14px] font-semibold mt-2" style={{ color: 'var(--app-accent-soft)' }}>
                 ¡Hola, {user.name.split(' ')[0]}!
@@ -633,7 +635,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
           </button>
         ) : (
           <button onClick={() => finish()} className="pressable btn-primary flex-1 flex items-center justify-center gap-2">
-            <Rocket size={16} /> {snakeChoice ? 'Entrar y hablar con Snake' : 'Entrar a SNBusiness'}
+            <Rocket size={16} /> {snakeChoice ? 'Entrar y hablar con Snake' : 'Entrar a SNFinance'}
           </button>
         )}
       </div>

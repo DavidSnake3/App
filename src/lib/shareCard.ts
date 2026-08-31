@@ -52,7 +52,7 @@ export async function buildMonthCardBlob(
   ctx.textBaseline = 'top'
   ctx.fillStyle = '#8b93a7'
   ctx.font = '600 34px system-ui, sans-serif'
-  ctx.fillText('SNBusiness · Resumen del mes', 72, 84)
+  ctx.fillText('SNFinance · Resumen del mes', 72, 84)
 
   ctx.fillStyle = '#f4f6fb'
   ctx.font = '800 84px system-ui, sans-serif'
@@ -129,7 +129,7 @@ export async function buildMonthCardBlob(
   ctx.fillText('SN', 72, H - 110)
   ctx.fillStyle = '#8b93a7'
   ctx.font = '500 30px system-ui, sans-serif'
-  ctx.fillText('Hecho con SNBusiness · mis finanzas bajo control', 150, H - 102)
+  ctx.fillText('Hecho con SNFinance · mis finanzas bajo control', 150, H - 102)
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('png'))), 'image/png')
@@ -172,7 +172,7 @@ export async function buildStatementBlob(opts: {
   ctx.textBaseline = 'top'
   ctx.fillStyle = '#8b93a7'
   ctx.font = '600 32px system-ui, sans-serif'
-  ctx.fillText('SNBusiness', 72, 76)
+  ctx.fillText('SNFinance', 72, 76)
   ctx.fillStyle = '#f4f6fb'
   ctx.font = '800 62px system-ui, sans-serif'
   ctx.fillText(opts.title, 72, 118)
@@ -219,7 +219,7 @@ export async function buildStatementBlob(opts: {
 
   ctx.fillStyle = '#8b93a7'
   ctx.font = '500 26px system-ui, sans-serif'
-  ctx.fillText('Estado de flujo de efectivo personal y balance de patrimonio · SNBusiness', 72, height - 70)
+  ctx.fillText('Estado de flujo de efectivo personal y balance de patrimonio · SNFinance', 72, height - 70)
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('png'))), 'image/png')

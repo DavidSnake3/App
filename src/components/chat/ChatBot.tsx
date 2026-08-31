@@ -4,13 +4,13 @@ import type { AuthState } from '../../hooks/useAuth'
 import { useChat } from '../../store/useChat'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import {
-  actionToDebt, clearChat, loadChat, saveChat, sendToFin, welcomeMessage,
+  clearChat, loadChat, saveChat, sendToFin, welcomeMessage,
   type ChatAttachment, type ChatMsg,
 } from '../../lib/chatbot'
+import { actionSpec } from '../../lib/chatActions'
 import { aiAvailable } from '../../lib/ai'
 import { withLoading } from '../../store/useLoading'
 import { uid as newId } from '../../lib/finance'
-import { formatMoney } from '../../lib/format'
 import { compressImage } from '../../lib/themes'
 import { AppLogo } from '../ui/AppLogo'
 import { LoaderDots } from '../ui/Loader'
@@ -63,7 +63,6 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
   const prefill = useChat((s) => s.prefill)
   const intent = useChat((s) => s.intent)
   const closeChat = useChat((s) => s.closeChat)
-  const addDebt = useFinanceStore((s) => s.addDebt)
   const profileName = useFinanceStore((s) => s.profile.name)
 
   // la intención solo importa al abrir (bienvenida del onboarding)
@@ -160,9 +159,12 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
     }
   }
 
-  const confirmDebt = (m: ChatMsg) => {
+  /** Ejecuta la acción propuesta por Snake (solo si el usuario confirma) */
+  const confirmAction = (m: ChatMsg) => {
     if (!m.action) return
-    addDebt(actionToDebt(m.action))
+    const spec = actionSpec(m.action.tipo)
+    if (!spec) return
+    spec.run(m.action.datos)
     persist(msgs.map((x) => x.id === m.id ? { ...x, actionDone: true } : x))
   }
 
@@ -207,8 +209,8 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
             </span>
             <h3 className="font-display text-[19px] font-bold text-ink mt-3">¡Hola! Soy Snake</h3>
             <p className="text-[13px] text-muted mt-1.5 max-w-[280px] leading-relaxed">
-              Conozco toda tu app y tus números. Pregúntame lo que sea, pídeme planes
-              o adjúntame una factura para registrar una deuda.
+              Pregúntame lo que sea, pídeme un plan o adjúntame una factura
+              para registrar una deuda.
             </p>
             <div className="flex flex-col gap-2 w-full mt-5">
               {SUGERENCIAS.map((s) => (
@@ -235,31 +237,34 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
                 </p>
               )}
               <RichText text={m.text} />
-              {m.action && (
-                <div className="mt-2.5 rounded-xl border border-edge bg-elevated/60 p-3">
-                  <p className="text-[12px] font-bold text-ink mb-1">Nueva deuda detectada</p>
-                  <p className="text-[12px] text-muted">
-                    <span className="font-semibold text-ink">{m.action.deuda.name}</span>
-                    {' · total '}<span className="num font-semibold text-ink">{formatMoney(m.action.deuda.total)}</span>
-                    {m.action.deuda.monthlyPayment ? <> · cuota <span className="num">{formatMoney(m.action.deuda.monthlyPayment)}</span></> : null}
-                    {m.action.deuda.installments ? ` · ${m.action.deuda.installments} cuotas` : ''}
-                    {m.action.deuda.dueDay ? ` · vence d${m.action.deuda.dueDay}` : ''}
-                  </p>
-                  {m.actionDone ? (
-                    <p className="text-[12px] font-semibold mt-2 flex items-center gap-1" style={{ color: 'var(--c-income)' }}>
-                      <Check size={13} /> Deuda agregada: la ves en la pestaña Deudas
-                    </p>
-                  ) : (
-                    <button
-                      onClick={() => confirmDebt(m)}
-                      className="pressable mt-2 w-full rounded-xl py-2 text-[13px] font-semibold text-white"
-                      style={{ background: 'var(--app-accent)' }}
-                    >
-                      Agregar esta deuda
-                    </button>
-                  )}
-                </div>
-              )}
+              {m.action && (() => {
+                const spec = actionSpec(m.action.tipo)
+                if (!spec) return null
+                return (
+                  <div className="mt-2.5 rounded-xl border border-edge bg-elevated/60 p-3">
+                    <p className="text-[12px] font-bold text-ink mb-1">{spec.title}</p>
+                    <p className="text-[12px] text-muted">{spec.summary(m.action.datos)}</p>
+                    {m.actionDone ? (
+                      <p className="text-[12px] font-semibold mt-2 flex items-center gap-1" style={{ color: 'var(--c-income)' }}>
+                        <Check size={13} /> {spec.done}
+                      </p>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => confirmAction(m)}
+                          className="pressable mt-2 w-full rounded-xl py-2 text-[13px] font-semibold text-white"
+                          style={{ background: 'var(--app-accent)' }}
+                        >
+                          {spec.cta}
+                        </button>
+                        <p className="text-[10.5px] text-muted text-center mt-1.5">
+                          Nada se guarda hasta que confirmes
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           </div>
         ))}

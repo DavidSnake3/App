@@ -92,7 +92,7 @@ export function buildReminderTasks(
       tasks.push({
         id: `${key}-${d}`,
         title: d === 0 ? `Hoy vence: ${name}` : `${name} vence en ${d} día${d === 1 ? '' : 's'}`,
-        body: `Monto: ${formatMoney(amount)}. Toca para abrir SNBusiness.`,
+        body: `Monto: ${formatMoney(amount)}. Toca para abrir SNFinance.`,
         fireAt,
         alarm,
         itemName: name,

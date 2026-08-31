@@ -43,7 +43,7 @@ export function SplashIntro({ onDone }: { onDone: () => void }) {
 
       {/* logo que se dibuja (solo la animación, sin textos ni destellos) */}
       <div className="relative" style={{ animation: 'splashFloat 2.6s ease-in-out infinite' }}>
-        <svg width="256" height="147" viewBox="0 0 400 230" aria-label="SNBusiness">
+        <svg width="256" height="147" viewBox="0 0 400 230" aria-label="SNFinance">
           <defs>
             <linearGradient id="splash-g" x1="50" y1="120" x2="392" y2="110" gradientUnits="userSpaceOnUse">
               <stop offset="0%" stopColor={SN_GRADIENT[0]} />

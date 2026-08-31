@@ -37,7 +37,7 @@ function addTitle(ws: Sheet, text: string, span: number) {
 
 function monthSheet(ws: Sheet, month: MonthData, debts: Debt[], profile: UserProfile) {
   const fmt = moneyFmt(profile.currency)
-  addTitle(ws, `SNBusiness — ${monthLabel(month.id)}`, 6)
+  addTitle(ws, `SNFinance — ${monthLabel(month.id)}`, 6)
 
   const s = getMonthSummary(month, debts)
   ws.addRow([])
@@ -86,13 +86,13 @@ export async function buildWorkbook(
 ): Promise<Blob> {
   const ExcelJS = await import('exceljs')
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'SNBusiness'
+  wb.creator = 'SNFinance'
   wb.created = new Date()
   const fmt = moneyFmt(profile.currency)
 
   // ── Hoja resumen anual ──
   const res = wb.addWorksheet('Resumen')
-  addTitle(res, `SNBusiness — Resumen de ${profile.name || 'usuario'}`, 5)
+  addTitle(res, `SNFinance — Resumen de ${profile.name || 'usuario'}`, 5)
   res.addRow([])
   const rh = res.addRow(['Mes', 'Ingresos', 'Gastos', 'Balance', 'Pagado'])
   styleHeader(rh, HEADER_FILL_2)

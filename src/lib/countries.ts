@@ -358,4 +358,4 @@ export function presetExtraPays(p: CountryPreset): ExtraPay[] {
 export const LEGAL_NOTICE =
   'Los porcentajes, techos y tramos son una referencia editable para estimar tu ' +
   'neto. Las leyes cambian y cada persona tiene su situación: manda siempre tu ' +
-  'comprobante real. SNBusiness te ayuda a organizarte, no sustituye asesoría fiscal.'
+  'comprobante real. SNFinance te ayuda a organizarte, no sustituye asesoría fiscal.'

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Modelo de datos — SNBusiness
+// Modelo de datos — SNFinance
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type TabId = 'home' | 'month' | 'debts' | 'year' | 'settings'
@@ -180,6 +180,8 @@ export interface UserProfile {
    * 'done' = ya se mostró, 'skipped' = el usuario prefirió configurarlo después.
    */
   snakeIntro: 'plan' | 'comprobante' | 'done' | 'skipped'
+  /** ya vio el aviso de que el inicio se personaliza con widgets */
+  widgetsTip?: boolean
 }
 
 // ─── Widgets del inicio (personalizables) ────────────────────────────────────
@@ -199,6 +201,7 @@ export type WidgetId =
   | 'dona'        // dona: distribución de gastos por tipo
   | 'pilares'     // pilares: ingresos vs gastos por mes
   | 'saldo'       // saldo real: lo que tienes en el banco ahora
+  | 'divisas'     // tipo de cambio del dólar, euro y otras monedas
 
 export type WidgetSize = 'sm' | 'lg' | 'xl'
 

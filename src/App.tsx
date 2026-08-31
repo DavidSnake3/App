@@ -17,6 +17,7 @@ import { SettingsView } from './components/settings/SettingsView'
 import { Onboarding } from './components/onboarding/Onboarding'
 import { AuthScreen } from './components/auth/AuthScreen'
 import { AlarmOverlay } from './components/overlays/AlarmOverlay'
+import { WidgetsTip } from './components/overlays/WidgetsTip'
 import { SplashIntro } from './components/overlays/SplashIntro'
 import { ChatBot } from './components/chat/ChatBot'
 import { ChatLauncher } from './components/chat/ChatLauncher'
@@ -31,12 +32,18 @@ function App() {
 
   const onboarded = useFinanceStore((s) => s.profile.onboarded)
   const snakeIntro = useFinanceStore((s) => s.profile.snakeIntro)
+  const widgetsTip = useFinanceStore((s) => s.profile.widgetsTip)
+  const chatOpen = useChat((s) => s.open)
   const activeTab = useFinanceStore((s) => s.activeTab)
   const ensureMonthExists = useFinanceStore((s) => s.ensureMonthExists)
   const setActiveMonth = useFinanceStore((s) => s.setActiveMonth)
 
   // Splash de arranque premium
   const [showSplash, setShowSplash] = useState(true)
+
+  // Al salir del chat de bienvenida: explicar que el inicio se personaliza
+  const [showTip, setShowTip] = useState(false)
+  const chatWasOpen = useRef(false)
 
   // Dirección de la transición entre pestañas (para el deslizamiento)
   const prevTab = useRef(activeTab)
@@ -89,6 +96,23 @@ function App() {
     return () => clearTimeout(t)
   }, [onboarded, snakeIntro, showSplash])
 
+  // Si prefirió configurarlo después (sin chat), el aviso de widgets se
+  // muestra igual al entrar al inicio por primera vez
+  useEffect(() => {
+    if (!onboarded || showSplash || chatOpen) return
+    if (snakeIntro !== 'skipped' || widgetsTip !== false) return
+    const t = setTimeout(() => setShowTip(true), 900)
+    return () => clearTimeout(t)
+  }, [onboarded, showSplash, chatOpen, snakeIntro, widgetsTip])
+
+  useEffect(() => {
+    if (chatOpen) { chatWasOpen.current = true; return }
+    if (!chatWasOpen.current || widgetsTip !== false || !onboarded) return
+    chatWasOpen.current = false
+    const t = setTimeout(() => setShowTip(true), 500)
+    return () => clearTimeout(t)
+  }, [chatOpen, widgetsTip, onboarded])
+
   // Fondos guardados con la compresión vieja (muy pesados para la nube):
   // reducirlos una vez para que sincronicen con la cuenta
   useEffect(() => {
@@ -116,6 +140,13 @@ function App() {
     content = (
       <div className="h-full flex flex-col overflow-hidden">
         <AuthScreen />
+      </div>
+    )
+  } else if (auth.user && !auth.hydrated) {
+    // esperando los datos de la nube: no mostrar el onboarding por error
+    content = (
+      <div className="h-full flex flex-col items-center justify-center gap-3">
+        <Loader size={64} label="Cargando tus finanzas…" />
       </div>
     )
   } else if (!onboarded) {
@@ -147,6 +178,14 @@ function App() {
 
         {alarm && <AlarmOverlay alarm={alarm} onDismiss={dismissAlarm} />}
         <ChatBot auth={auth} />
+        {showTip && (
+          <WidgetsTip
+            onClose={() => {
+              setShowTip(false)
+              useFinanceStore.getState().setProfile({ widgetsTip: true })
+            }}
+          />
+        )}
       </div>
     )
   }

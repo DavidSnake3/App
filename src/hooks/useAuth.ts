@@ -9,6 +9,8 @@ const LAST_UID_KEY = 'snb-last-uid'
 export interface AuthState {
   user: AppUser | null
   loading: boolean
+  /** false mientras se leen los datos de la nube de esta cuenta */
+  hydrated: boolean
   skipped: boolean
   skip(): void
   unskip(): void
@@ -21,6 +23,9 @@ export interface AuthState {
  */
 export function useAuth(): AuthState {
   const [user, setUser] = useState<AppUser | null>(null)
+  // hasta que la nube responde no sabemos si el usuario ya tiene datos:
+  // sin esto se veía el onboarding un instante y luego saltaba al inicio
+  const [hydrated, setHydrated] = useState(false)
   const [loading, setLoading] = useState(firebaseReady)
   const [skipped, setSkipped] = useState(() => {
     try { return localStorage.getItem(SKIP_KEY) === '1' } catch { return false }
@@ -49,6 +54,7 @@ export function useAuth(): AuthState {
 
     const run = async () => {
       cloudReady.current = false
+      setHydrated(false)
       // Aislamiento por cuenta (mejora 10): si entra un uid DISTINTO al último,
       // los datos locales del anterior se descartan (viven en SU nube) y esta
       // cuenta arranca desde su propia nube o desde cero. Nunca se mezclan.
@@ -93,6 +99,8 @@ export function useAuth(): AuthState {
         await saveCloud(user.uid, local).catch(() => {})
       }
 
+      setHydrated(true)
+
       // Completar datos del perfil con la cuenta (y recordar el último acceso)
       rememberEmail(user.email)
       const p = useFinanceStore.getState().profile
@@ -114,7 +122,7 @@ export function useAuth(): AuthState {
       })
       if (cancelled) unsub()
     }
-    void run()
+    void run().catch(() => setHydrated(true))
     return () => { cancelled = true; unsub?.() }
   }, [user])
 
@@ -136,6 +144,7 @@ export function useAuth(): AuthState {
   return {
     user,
     loading,
+    hydrated: user ? hydrated : true,
     skipped,
     skip: () => {
       setSkipped(true)

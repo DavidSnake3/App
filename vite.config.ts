@@ -18,8 +18,8 @@ export default defineConfig({
       },
       includeAssets: ['favicon.svg', 'icons/*.png', 'icons/*.svg'],
       manifest: {
-        name: 'SNBusiness — Finanzas personales',
-        short_name: 'SNBusiness',
+        name: 'SNFinance — Finanzas personales',
+        short_name: 'SNFinance',
         description: 'Tus gastos, servicios y deudas bajo control, con planes de pago inteligentes.',
         theme_color: '#0b0d14',
         background_color: '#0b0d14',

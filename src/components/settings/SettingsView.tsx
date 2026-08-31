@@ -91,7 +91,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
       <div className="px-4 pb-28 pt-2 flex flex-col gap-4 anim-page">
         <header>
           <h2 className="font-display text-[22px] font-bold text-ink">Ajustes</h2>
-          <p className="text-[13px] text-muted mt-0.5">Personaliza SNBusiness a tu manera</p>
+          <p className="text-[13px] text-muted mt-0.5">Personaliza SNFinance a tu manera</p>
         </header>
 
         {/* Menu en cuadros: icono + titulo (mejora 20) */}
@@ -120,7 +120,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNBusiness v1.8.1</p>
+  return <p className="text-[11px] text-muted text-center">SNFinance v2.0</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -432,7 +432,31 @@ function IngresosSection() {
           >
             {COUNTRY_PRESETS.map((c) => <option key={c.id} value={c.id}>{c.country}</option>)}
           </select>
+          <p className="text-[11px] text-muted mt-1">
+            Si te equivocaste de país solo cambialo aquí: se recargan sus deducciones,
+            sus tramos y su moneda. Todo lo de abajo también se puede editar a mano.
+          </p>
         </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Moneda">
+            <select
+              className="input-base"
+              value={profile.currency}
+              onChange={(e) => setProfile({ currency: e.target.value })}
+            >
+              {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Formato de números">
+            <select
+              className="input-base"
+              value={profile.locale ?? 'es-CR'}
+              onChange={(e) => setProfile({ locale: e.target.value })}
+            >
+              {LOCALES.map((l) => <option key={l.code} value={l.code}>{l.label.split(' · ')[1] ?? l.label}</option>)}
+            </select>
+          </Field>
+        </div>
         {salaried ? (
           <>
             <StatutoryEditor />
@@ -935,7 +959,7 @@ function DatosSection() {
     try {
       await withLoading('Generando tu Excel…', async () => {
         const blob = await buildWorkbook(months, debts, profile, activeMonthId)
-        await downloadWorkbook(blob, `SNBusiness-${activeMonthId}.xlsx`)
+        await downloadWorkbook(blob, `SNFinance-${activeMonthId}.xlsx`)
       })
     } catch { /* nada */ }
     setExporting(false)
@@ -947,7 +971,7 @@ function DatosSection() {
     try {
       setPendingImport(await withLoading('Leyendo tu respaldo…', () => readBackup(f)))
     } catch {
-      setBackupMsg('Ese archivo no es un respaldo válido de SNBusiness.')
+      setBackupMsg('Ese archivo no es un respaldo válido de SNFinance.')
     }
     if (importRef.current) importRef.current.value = ''
   }
@@ -1009,7 +1033,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNBusiness v1.8.1 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNFinance v2.0 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 
@@ -1024,13 +1048,13 @@ function AyudaSection() {
       icon: <Bug size={17} />,
       title: 'Reportar un error o proponer una mejora',
       desc: 'Cuéntanos qué pasó o qué te gustaría ver',
-      run: () => mail('SNBusiness · Reporte de error / mejora', 'Hola, quiero reportar:\n\nQué pasó (o mi idea):\n\nPasos para verlo:\n1. \n2. \n\nPantalla donde ocurre: '),
+      run: () => mail('SNFinance · Reporte de error / mejora', 'Hola, quiero reportar:\n\nQué pasó (o mi idea):\n\nPasos para verlo:\n1. \n2. \n\nPantalla donde ocurre: '),
     },
     {
       icon: <Mail size={17} />,
       title: 'Contactar al equipo',
       desc: 'Consultas, quejas o cualquier otro tema',
-      run: () => mail('SNBusiness · Contacto', 'Hola, les escribo por: '),
+      run: () => mail('SNFinance · Contacto', 'Hola, les escribo por: '),
     },
   ]
 

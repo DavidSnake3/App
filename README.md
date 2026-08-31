@@ -1,4 +1,4 @@
-# SNBusiness
+# SNFinance
 
 Finanzas personales premium, 100% móvil. React 19 + TypeScript + Tailwind 4 +
 Capacitor (Android) + Firebase + Gemini.

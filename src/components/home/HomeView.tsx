@@ -91,7 +91,7 @@ export function HomeView({ auth }: { auth: AuthState }) {
       try {
         await withLoading('Generando tu Excel…', async () => {
           const blob = await buildWorkbook(months, debts, profile, monthId)
-          await downloadWorkbook(blob, `SNBusiness-${monthId}.xlsx`)
+          await downloadWorkbook(blob, `SNFinance-${monthId}.xlsx`)
         })
       } catch { /* silencioso */ }
       setExporting(false)

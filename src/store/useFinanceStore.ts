@@ -30,18 +30,20 @@ export const DEFAULT_PROFILE: UserProfile = {
   tourDone: false,
   // quien ya usa la app no recibe la bienvenida del onboarding
   snakeIntro: 'done',
+  widgetsTip: true,
 }
 
 /** Widgets del inicio por defecto (el usuario los personaliza a su gusto) */
 export const DEFAULT_WIDGETS: WidgetConf[] = [
-  { id: 'estado', size: 'lg' },
+  { id: 'comprobante', size: 'lg' },
+  { id: 'ahorro', size: 'lg' },
+  { id: 'estado', size: 'sm' },
+  { id: 'dona', size: 'sm' },
+  { id: 'calendario', size: 'lg' },
   { id: 'saldo', size: 'lg' },
   { id: 'resumen', size: 'lg' },
-  { id: 'dona', size: 'lg' },
-  { id: 'consejo', size: 'lg' },
   { id: 'acciones', size: 'lg' },
   { id: 'pendientes', size: 'lg' },
-  { id: 'pilares', size: 'lg' },
 ]
 
 export const DEFAULT_THEME: ThemeSettings = {

@@ -4,7 +4,7 @@ import type { PersistedShape } from '../store/useFinanceStore'
 import { exportState, useFinanceStore } from '../store/useFinanceStore'
 
 interface BackupFile {
-  app: 'SNBusiness'
+  app: string
   version: 2
   exportedAt: string
   data: PersistedShape
@@ -12,13 +12,13 @@ interface BackupFile {
 
 export async function exportBackup(): Promise<void> {
   const backup: BackupFile = {
-    app: 'SNBusiness',
+    app: 'SNFinance',
     version: 2,
     exportedAt: new Date().toISOString(),
     data: exportState(),
   }
   const json = JSON.stringify(backup, null, 2)
-  const name = `SNBusiness-respaldo-${new Date().toISOString().slice(0, 10)}.json`
+  const name = `SNFinance-respaldo-${new Date().toISOString().slice(0, 10)}.json`
 
   if (Capacitor.isNativePlatform()) {
     try {
@@ -44,9 +44,11 @@ export async function exportBackup(): Promise<void> {
 export async function readBackup(file: File): Promise<{ data: PersistedShape; months: number; debts: number; fecha: string }> {
   const text = await file.text()
   const parsed = JSON.parse(text) as Partial<BackupFile>
-  const data = (parsed.app === 'SNBusiness' && parsed.data ? parsed.data : parsed) as PersistedShape
+  // se aceptan respaldos del nombre anterior (SNBusiness)
+  const known = parsed.app === 'SNFinance' || parsed.app === 'SNBusiness'
+  const data = (known && parsed.data ? parsed.data : parsed) as PersistedShape
   if (!data || typeof data !== 'object' || !data.months || !data.settings) {
-    throw new Error('El archivo no parece un respaldo de SNBusiness.')
+    throw new Error('El archivo no parece un respaldo de SNFinance.')
   }
   return {
     data,

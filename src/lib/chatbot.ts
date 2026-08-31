@@ -1,8 +1,9 @@
-// "Snake": el chatbot asistente de SNBusiness (mejoras 1, 2, 8 y 15).
+// "Snake": el chatbot asistente de SNFinance (mejoras 1, 2, 8 y 15).
 // Único punto de IA de la app: conoce todas las funciones, puede leer los
 // datos del usuario para explicar cualquier número, armar planes de pago y
 // ahorro a la medida, y registrar deudas desde una factura (imagen o PDF).
-import type { Debt } from '../types/finance'
+import type { ActionData } from './chatActions'
+import { actionSpec } from './chatActions'
 import { geminiChat, type GeminiTurn } from './ai'
 import { buildPayables, debtEndMonthId, debtPaidCount, debtRemaining, getMonthSummary } from './finance'
 import { carryOver, envelopeTotal, hormigasTotal, realBalance, savingsTotal } from './fund'
@@ -23,22 +24,19 @@ export interface ChatMsg {
   failed?: boolean
 }
 
+/**
+ * Acción que Snake propone y el usuario confirma con un botón. El catálogo
+ * vive en chatActions.ts (qué hace cada tipo y cómo se resume).
+ */
 export interface ChatAction {
-  tipo: 'agregar_deuda'
-  deuda: {
-    name: string
-    total: number
-    monthlyPayment?: number
-    installments?: number
-    dueDay?: number
-    account?: string
-  }
+  tipo: string
+  datos: ActionData
 }
 
 // ─── Conocimiento de la app + datos del usuario ──────────────────────────────
 
 const APP_KNOWLEDGE = `
-Eres "Snake", el asistente financiero oficial de SNBusiness.
+Eres "Snake", el asistente financiero oficial de SNFinance.
 Personalidad: cercano, claro, breve y motivador. SIEMPRE en español. Sin emojis.
 Formato: párrafos cortos; usa **negritas** para montos/nombres y listas con "- " cuando ayuden.
 
@@ -59,9 +57,21 @@ CONOCES LA APP COMPLETA (guía para el usuario):
 REGLAS:
 1) Cuando el usuario pregunte "por qué aparece tal monto", usa los DATOS DEL USUARIO de abajo y muestra la cuenta exacta (ej.: 665000 − 72019.50 de deducción de ley − 181014 préstamo = 411966.50). IMPORTANTÍSIMO: un ADELANTO jamás se resta al explicar el ingreso mensual (es parte del pago). Con pago QUINCENAL, cada quincena llega la MITAD del neto mensual (la deducción de ley y las demás deducciones se reparten mitad y mitad entre las dos quincenas).
 2) Para planes de cancelación de deudas o ahorro: usa su ingreso real, cuotas y fechas de pago; propone pasos concretos con montos y fechas, máximo 6 pasos, y una alternativa. Pregunta preferencias solo si faltan datos clave.
-3) Si el usuario adjunta una FACTURA/recibo (imagen o PDF) o te da los datos de una deuda para agregarla: extrae nombre del comercio/banco, saldo TOTAL pendiente, cuota mensual, número de cuotas pendientes, día de pago y cuenta/referencia si aparece. Termina tu respuesta con un bloque EXACTAMENTE así (una sola línea, sin comentar dentro):
-[[ACCION]]{"tipo":"agregar_deuda","deuda":{"name":"...","total":123,"monthlyPayment":123,"installments":12,"dueDay":22,"account":"..."}}[[/ACCION]]
-Solo incluye el bloque si tienes al menos nombre y total; los demás campos son opcionales. Si el adjunto NO es una factura/recibo, dilo con amabilidad y no incluyas el bloque.
+3) PUEDES HACER COSAS EN LA APP. Cuando el usuario te pida registrar, cambiar o configurar algo (o cuando le leas una factura), termina tu respuesta con UN bloque de acción en UNA sola línea, sin comentarios dentro:
+[[ACCION]]{"tipo":"<tipo>","datos":{...}}[[/ACCION]]
+El usuario ve una tarjeta y decide: nada se guarda sin que él toque el botón. Nunca digas que ya lo guardaste: di que se lo dejas listo para confirmar.
+Tipos y datos disponibles:
+- agregar_deuda: {name, total, monthlyPayment, installments, dueDay, account}
+- agregar_gasto: {name, amount, kind:"gasto|servicio|personal", dueDay, recurrencia:"once|monthly|weekly|biweekly|annual"}
+- marcar_pagado: {nombre}
+- configurar_planilla: {bruto, periodo:"daily|weekly|fortnightly|biweekly|monthly", paisId:"cr|mx|co|...", deduccionNombre, deduccionPct}
+- agregar_deduccion: {name, amount, esAdelanto:true|false}
+- crear_sobre: {name, meta, actual}
+- aportar_ahorro: {monto, sobre}
+- agregar_hormiga: {name, amount}
+- fijar_saldo: {monto}
+- ingreso_extra: {monto}
+Reglas: un solo bloque por respuesta; solo si tienes los datos mínimos (nombre/monto según el tipo); si falta algo pregúntalo antes; si el adjunto NO es una factura, dilo y no incluyas bloque.
 4) No inventes números: si algo no está en los datos, dilo.
 5) Respuestas de máximo ~120 palabras salvo que pidan un plan detallado.
 6) USUARIO NUEVO (sin planilla, sin gastos y sin deudas): acabas de darle la bienvenida. Guíalo paso a paso pidiéndole UNA cosa a la vez, empezando por su salario bruto y cada cuánto le pagan. Si te sube el comprobante, extrae el bruto, la deducción de ley y las demás deducciones, y dile los montos exactos. TÚ NO PUEDES escribir la planilla: dile dónde ponerlo (Ajustes → Ingresos y planilla) con los valores ya calculados, y ofrécele registrar sus deudas desde una factura. Nunca lo abrumes con todo de una vez.
@@ -199,10 +209,15 @@ function parseAction(text: string): { clean: string; action?: ChatAction } {
     .trim()
   if (!m) return { clean }
   try {
-    const parsed = JSON.parse(m[1]) as ChatAction
-    if (parsed?.tipo === 'agregar_deuda' && parsed.deuda?.name && parsed.deuda.total > 0) {
-      return { clean, action: parsed }
-    }
+    const raw = JSON.parse(m[1]) as Record<string, unknown>
+    const tipo = String(raw?.tipo ?? '')
+    const spec = actionSpec(tipo)
+    if (!spec) return { clean }
+    // se acepta {datos:{}} y también la forma vieja {deuda:{}} / {gasto:{}}…
+    const datos = (raw.datos ?? raw.deuda ?? raw.gasto ?? raw.planilla
+      ?? raw.sobre ?? raw.aporte ?? raw.hormiga ?? raw) as ActionData
+    const action: ChatAction = { tipo, datos }
+    if (spec.valid(datos)) return { clean, action }
   } catch { /* JSON inválido: ignorar la acción */ }
   return { clean }
 }
@@ -237,35 +252,4 @@ export async function sendToFin(
   })
   const { clean, action } = parseAction(raw)
   return { text: clean || 'Listo.', action }
-}
-
-/**
- * Número seguro: la IA a veces devuelve montos como texto ("84,166.50") o
- * NaN — que al guardarse se vuelve null y el monto aparece mal al reabrir.
- */
-function num(v: unknown): number {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : 0
-  if (typeof v === 'string') {
-    const n = Number(v.replace(/[^\d.-]/g, ''))
-    return Number.isFinite(n) ? n : 0
-  }
-  return 0
-}
-
-/** Convierte la acción del chat en el payload del store */
-export function actionToDebt(a: ChatAction): Omit<Debt, 'id' | 'createdAt' | 'payments'> {
-  const d = a.deuda
-  const total = Math.max(1, Math.round(num(d.total)))
-  const rawPago = num(d.monthlyPayment)
-  const installments = Math.max(1, Math.round(num(d.installments) || (rawPago > 0 ? Math.ceil(total / rawPago) : 12)))
-  const monthlyPayment = Math.max(1, Math.round(rawPago || total / installments))
-  return {
-    name: String(d.name ?? 'Deuda').slice(0, 60),
-    total,
-    monthlyPayment,
-    installments,
-    startMonthId: currentMonthId(),
-    dueDay: Math.max(1, Math.min(31, Math.round(num(d.dueDay) || 15))),
-    account: d.account ? String(d.account).slice(0, 40) : undefined,
-  }
 }

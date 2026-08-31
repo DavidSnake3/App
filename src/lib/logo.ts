@@ -1,4 +1,4 @@
-// Geometría del logo SNBusiness ("SN" con flecha de crecimiento)
+// Geometría del logo SNFinance ("SN" con flecha de crecimiento)
 
 /** Trazo de la S */
 export const SN_S = 'M164 56 H102 Q64 56 64 90 Q64 124 102 124 H124 Q160 124 160 156 Q160 188 124 188 H56'
