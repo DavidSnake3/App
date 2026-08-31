@@ -8,12 +8,14 @@ import type { PayPeriod } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { currentMonthId } from '../../lib/dates'
 import { CURRENCIES, formatMoney, formatMoneyExact } from '../../lib/format'
-import { COUNTRY_PRESETS, PERIOD_UNIT, countryPreset, payrollBreakdown } from '../../lib/payroll'
+import {
+  COUNTRY_PRESETS, INPUT_PERIODS, PERIOD_LABEL, PERIOD_UNIT, countryPreset, payrollBreakdown,
+  presetExtraPays, presetLabel, presetPct, presetStatutory,
+} from '../../lib/payroll'
 import { PALETTES } from '../../lib/themes'
 import { celebrate } from '../../lib/fx'
 import { requestPermission } from '../../lib/notifications'
 import { CurrencyInput } from '../ui/CurrencyInput'
-import { Segmented } from '../ui/Segmented'
 import { AppLogo } from '../ui/AppLogo'
 import { AnimacionesSection, AparienciaSection } from '../settings/SettingsView'
 
@@ -73,7 +75,18 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   // País: define el nombre y el % de la deducción de ley (app universal)
   const [countryId, setCountryId] = useState('cr')
   const preset = countryPreset(countryId) ?? COUNTRY_PRESETS[0]
-  const bdPreview = payrollBreakdown({ inputPeriod, gross, ccssPct: preset.pct, deductions: [], viewPeriod: 'monthly' })
+  const presetName = presetLabel(preset)
+  const presetTotalPct = presetPct(preset)
+  const bdPreview = payrollBreakdown({
+    inputPeriod,
+    gross,
+    ccssPct: presetTotalPct,
+    statutory: preset.statutory.map((d, i) => ({ id: `p${i}`, name: d.name, pct: d.pct, cap: d.cap ?? 0 })),
+    taxEnabled: true,
+    taxBrackets: preset.taxBrackets,
+    deductions: [],
+    viewPeriod: 'monthly',
+  })
 
   const [planMode, setPlanMode] = useState<'monthly' | 'annual'>('monthly')
   const [services, setServices] = useState(SUGGESTED_SERVICES)
@@ -115,6 +128,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
       phone: phone.trim(),
       photoUrl: user?.photo ?? '',
       currency,
+      locale: preset.locale || undefined,
       payday: 30,
       payFrequency: inputPeriod === 'weekly' ? 'monthly' : inputPeriod === 'biweekly' ? 'biweekly' : 'monthly',
       planMode,
@@ -127,14 +141,20 @@ export function Onboarding({ user }: { user: AppUser | null }) {
         inputPeriod,
         gross,
         countryId: preset.id,
-        statutoryName: preset.label,
-        ccssPct: preset.pct,
+        statutoryName: presetName,
+        ccssPct: presetTotalPct,
+        statutory: presetStatutory(preset),
+        taxEnabled: preset.taxBrackets.some((b) => b.pct > 0),
+        taxBrackets: preset.taxBrackets,
+        extraPays: presetExtraPays(preset),
       })
       // El plan de pago arranca alineado al período del comprobante
       setPaySchedule(
-        inputPeriod === 'weekly'
+        inputPeriod === 'weekly' || inputPeriod === 'daily'
           ? { frequency: 'weekly', weekday: 4 }
-          : { frequency: inputPeriod, paydays: inputPeriod === 'biweekly' ? [15, 30] : [30] },
+          : inputPeriod === 'biweekly' || inputPeriod === 'fortnightly'
+            ? { frequency: 'biweekly', paydays: [15, 30] }
+            : { frequency: 'monthly', paydays: [30] },
       )
     }
     ensureMonthExists(monthId)
@@ -236,8 +256,8 @@ export function Onboarding({ user }: { user: AppUser | null }) {
                 {COUNTRY_PRESETS.map((c) => <option key={c.id} value={c.id}>{c.country}</option>)}
               </select>
               <p className="text-[11px] text-muted mt-1">
-                Define tu moneda y tu deducción de ley: <span className="font-semibold text-ink">{preset.label}</span>
-                {preset.pct > 0 && <> ({preset.pct}%)</>}. Puedes ajustarlo cuando quieras.
+                Define tu moneda, tus deducciones de ley (<span className="font-semibold text-ink">{presetName}</span>
+                {presetTotalPct > 0 ? ` ${presetTotalPct}%` : ''}) y los tramos de impuesto. Todo editable después.
               </p>
             </Field>
             <Field label="Tu moneda">
@@ -246,15 +266,11 @@ export function Onboarding({ user }: { user: AppUser | null }) {
               </select>
             </Field>
             <Field label="¿Cada cuánto te pagan?">
-              <Segmented
-                value={inputPeriod}
-                onChange={(v) => setInputPeriod(v)}
-                options={[
-                  { value: 'weekly', label: 'Semanal' },
-                  { value: 'biweekly', label: 'Quincenal' },
-                  { value: 'monthly', label: 'Mensual' },
-                ]}
-              />
+              <select className="input-base" value={inputPeriod} onChange={(e) => setInputPeriod(e.target.value as PayPeriod)}>
+                {INPUT_PERIODS.map((per) => (
+                  <option key={per} value={per}>{PERIOD_LABEL[per]}</option>
+                ))}
+              </select>
             </Field>
             <Field label={`Salario BRUTO ${PERIOD_UNIT[inputPeriod]}`}>
               <CurrencyInput value={gross} onChange={(v) => { setGross(v); if (v > 0) setSkipPayroll(false) }} />
@@ -262,7 +278,10 @@ export function Onboarding({ user }: { user: AppUser | null }) {
             {gross > 0 && (
               <div className="card bg-elevated/60 p-3.5 anim-fade">
                 <p className="text-[12.5px] text-muted">
-                  {preset.label}{preset.pct > 0 ? ` (${preset.pct}%)` : ''}: <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.ccss)}</span>
+                  {presetName}{presetTotalPct > 0 ? ` (${presetTotalPct}%)` : ''}: <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.ccss)}</span>
+                  {bdPreview.tax > 0 && (
+                    <> · Impuesto: <span className="num font-semibold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bdPreview.tax)}</span></>
+                  )}
                 </p>
                 <p className="text-[13px] text-ink mt-1">
                   Líquido {PERIOD_UNIT[inputPeriod]}: <span className="num font-bold" style={{ color: 'var(--c-income)' }}>{formatMoneyExact(bdPreview.net)}</span>

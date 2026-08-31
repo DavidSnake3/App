@@ -3,6 +3,7 @@ import type {
   ProjectedMonth, Recurrence,
 } from '../types/finance'
 import { addMonthsToId, monthDiff, monthLabel, parseMonthId, todayISO } from './dates'
+import { extraPaysInMonth } from './payroll'
 
 let _idCounter = 0
 export function uid(): string {
@@ -224,7 +225,9 @@ export function buildAnnualProjection(
       const debtLoad = debts
         .filter((d) => debtIsActiveInMonth(d, monthId))
         .reduce((s, d) => s + d.monthlyPayment, 0)
-      const income = settings.defaultSalary
+      // los pagos extraordinarios del país (aguinaldo, 13.º…) entran en su mes
+      const extras = extraPaysInMonth(settings.payroll, month, settings.defaultSalary)
+      const income = settings.defaultSalary + extras.reduce((t, e) => t + e.amount, 0)
       const expenses = Math.round(avgExpenses > 0 ? avgExpenses : debtLoad)
       result.push({
         monthId, month, label: monthLabel(monthId, true),

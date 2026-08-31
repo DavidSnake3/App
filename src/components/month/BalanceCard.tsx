@@ -14,7 +14,7 @@ import {
 } from '../../lib/fund'
 import { PERIOD_LABEL, PERIOD_UNIT, convertPeriod } from '../../lib/payroll'
 import { isCurrentMonth, monthLabel } from '../../lib/dates'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, formatSecond } from '../../lib/format'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
 
@@ -112,6 +112,9 @@ export function BalanceCard() {
             >
               {formatMoney(Math.round(view.balance))}
             </p>
+            {formatSecond(Math.round(view.balance)) && (
+              <p className="text-[11px] text-muted num mt-0.5">≈ {formatSecond(Math.round(view.balance))}</p>
+            )}
           </div>
           <PeriodTabs value={viewPeriod} onChange={(p) => setPayroll({ viewPeriod: p })} />
         </div>
@@ -245,6 +248,9 @@ function BalanceDetailSheet({ open, onClose, view }: { open: boolean; onClose: (
           >
             {formatMoney(Math.round(v(balance)))}
           </p>
+          {formatSecond(Math.round(v(balance))) && (
+            <p className="text-[11.5px] text-muted num mt-1">≈ {formatSecond(Math.round(v(balance)))}</p>
+          )}
           <p className="text-[11.5px] text-muted mt-2">
             Tienes comprometido el <span className="num font-bold text-ink">{comprometido}%</span> de lo que entra
           </p>

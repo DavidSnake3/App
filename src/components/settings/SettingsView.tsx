@@ -10,13 +10,14 @@ import type { AlarmSoundId, Debt, PayPeriod, PaySoundId, PendingAlarm } from '..
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { useChat } from '../../store/useChat'
 import { BG_PRESETS, PALETTES, compressImage } from '../../lib/themes'
-import { CURRENCIES, formatMoney, formatMoneyExact } from '../../lib/format'
+import { CURRENCIES, LOCALES, formatMoney, formatMoneyExact } from '../../lib/format'
 import { requestPermission, sendTestNotification } from '../../lib/notifications'
 import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm, playSuccess } from '../../lib/sound'
 import { firebaseReady, logout } from '../../lib/firebase'
 import {
-  COUNTRY_PRESETS, PERIOD_LABEL, PERIOD_UNIT, convertPeriod, countryPreset, formatPayday,
-  nextPaydays, payrollBreakdown, periodToMonthlyFactor, statutoryLabel,
+  COUNTRY_PRESETS, INPUT_PERIODS, PERIOD_LABEL, PERIOD_UNIT, convertPeriod, countryPreset,
+  formatPayday, nextPaydays, payrollBreakdown, presetExtraPays, presetLabel, presetPct,
+  presetStatutory,
 } from '../../lib/payroll'
 import { realBalance } from '../../lib/fund'
 import { debtIsSettled, uid } from '../../lib/finance'
@@ -31,6 +32,7 @@ import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AlarmOverlay } from '../overlays/AlarmOverlay'
 import { SavingsSection } from './SavingsSection'
+import { ExtraPaysEditor, LegalNotice, StatutoryEditor, TaxEditor } from './PayrollEditors'
 
 const ACCENT_CHOICES = ['#7c5cff', '#10b981', '#0ea5e9', '#f43f5e', '#d97706', '#ec4899', '#14b8a6', '#8b5cf6']
 
@@ -118,7 +120,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNBusiness v1.7.1</p>
+  return <p className="text-[11px] text-muted text-center">SNBusiness v1.8</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -229,6 +231,40 @@ function CuentaSection({ auth }: { auth: AuthState }) {
             {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
           </select>
         </Field>
+        <Field label="Formato de números y fechas">
+          <select className="input-base" value={profile.locale ?? 'es-CR'} onChange={(e) => setProfile({ locale: e.target.value })}>
+            {LOCALES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+          </select>
+        </Field>
+      </Card>
+
+      {/* Segunda moneda opcional (app universal) */}
+      <Card title="Ver equivalente en otra moneda">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Moneda">
+            <select
+              className="input-base"
+              value={profile.secondCurrency ?? ''}
+              onChange={(e) => setProfile({ secondCurrency: e.target.value })}
+            >
+              <option value="">Ninguna</option>
+              {CURRENCIES.filter((c) => c.code !== profile.currency).map((c) => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label={`1 ${profile.currency} equivale a`}>
+            <input
+              type="number" min={0} step="0.0001" inputMode="decimal" className="input-base num"
+              value={profile.exchangeRate ?? 0}
+              onChange={(e) => setProfile({ exchangeRate: Math.max(0, Number(e.target.value) || 0) })}
+            />
+          </Field>
+        </div>
+        <p className="text-[11px] text-muted">
+          El tipo de cambio lo escribes tú (la app funciona sin internet). Se muestra como
+          referencia debajo de tu balance.
+        </p>
       </Card>
 
       <Card title="Sesión">
@@ -292,7 +328,6 @@ function IngresosSection() {
   const linkableDebts = debts.filter((d) => !debtIsSettled(d) && !d.viaPlanilla && !p.deductions.some((x) => x.debtId === d.id))
 
   const inputPeriod = p.inputPeriod ?? 'monthly'
-  const statutory = statutoryLabel(p)
 
   const addManualDed = () => {
     if (!newDedName.trim() || newDedAmount <= 0) return
@@ -337,15 +372,15 @@ function IngresosSection() {
       {/* Comprobante (mejoras 2, 8 y 9: semanal, quincenal o mensual) */}
       <Card title="Comprobante salarial" icon={<FileText size={14} />}>
         <Field label="¿Cada cuánto recibes tu comprobante?">
-          <Segmented
+          <select
+            className="input-base"
             value={inputPeriod}
-            onChange={changeInputPeriod}
-            options={[
-              { value: 'weekly', label: 'Semanal' },
-              { value: 'biweekly', label: 'Quincenal' },
-              { value: 'monthly', label: 'Mensual' },
-            ]}
-          />
+            onChange={(e) => changeInputPeriod(e.target.value as PayPeriod)}
+          >
+            {INPUT_PERIODS.map((per) => (
+              <option key={per} value={per}>{PERIOD_LABEL[per]}</option>
+            ))}
+          </select>
           <p className="text-[11px] text-muted mt-1">
             Escribe los montos tal como vienen en tu comprobante ({PERIOD_UNIT[p.inputPeriod ?? 'monthly']}).
           </p>
@@ -361,37 +396,24 @@ function IngresosSection() {
             onChange={(e) => {
               const c = countryPreset(e.target.value)
               if (!c) return
-              setPayroll({ countryId: c.id, statutoryName: c.label, ccssPct: c.pct })
+              setPayroll({
+                countryId: c.id,
+                statutoryName: presetLabel(c),
+                ccssPct: presetPct(c),
+                statutory: presetStatutory(c),
+                taxEnabled: c.taxBrackets.some((b) => b.pct > 0),
+                taxBrackets: c.taxBrackets,
+                extraPays: presetExtraPays(c),
+              })
               if (c.currency) setProfile({ currency: c.currency })
+              if (c.locale) setProfile({ locale: c.locale })
             }}
           >
             {COUNTRY_PRESETS.map((c) => <option key={c.id} value={c.id}>{c.country}</option>)}
           </select>
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Nombre de la deducción">
-            <input
-              className="input-base"
-              placeholder="CCSS, IMSS, AFP…"
-              value={p.statutoryName ?? ''}
-              onChange={(e) => setPayroll({ statutoryName: e.target.value })}
-            />
-          </Field>
-          <Field label="Porcentaje (%)">
-            <input
-              type="number" min={0} max={60} step="0.01" inputMode="decimal" className="input-base num"
-              value={p.ccssPct}
-              onChange={(e) => setPayroll({ ccssPct: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })}
-            />
-          </Field>
-        </div>
-        <p className="text-[11px] text-muted -mt-1">
-          Los porcentajes por país son una referencia: ajústalos a tu comprobante real.
-          {p.gross > 0 && (
-            <> {statutory} te quita <span className="num font-bold" style={{ color: 'var(--c-danger)' }}>−{formatMoneyExact(bd.ccss)}</span> {PERIOD_UNIT[bd.period]}
-            {bd.period !== 'monthly' && <> ≈ <span className="num">−{formatMoney(Math.round(bd.ccss * periodToMonthlyFactor(bd.period)))}</span> al mes</>}.</>
-          )}
-        </p>
+        <StatutoryEditor />
+        <TaxEditor />
 
         <div>
           <p className="text-[12px] text-muted mb-1.5">Otras deducciones (créditos, adelantos, embargos…)</p>
@@ -457,7 +479,10 @@ function IngresosSection() {
         {p.gross > 0 ? (
           <div className="card bg-elevated/60 p-3.5">
             <Row2 label={`Salario bruto (${PERIOD_UNIT[bd.period]})`} value={formatMoneyExact(bd.gross)} />
-            <Row2 label={`${statutory} (${p.ccssPct}%)`} value={`−${formatMoneyExact(bd.ccss)}`} danger />
+            {bd.statutoryRows.map((r, i) => (
+              <Row2 key={`s${i}`} label={`${r.name} (${r.pct}%)`} value={`−${formatMoneyExact(r.amount)}`} danger />
+            ))}
+            {bd.tax > 0 && <Row2 label="Impuesto sobre la renta" value={`−${formatMoneyExact(bd.tax)}`} danger />}
             {bd.deductions.map((d, i) => <Row2 key={i} label={d.name} value={`−${formatMoneyExact(d.amount)}`} danger />)}
             {bd.advances.map((a, i) => <Row2 key={`a${i}`} label={a.name} value={formatMoneyExact(a.amount)} />)}
             <div className="border-t border-dashed my-1.5" style={{ borderColor: 'var(--c-border)' }} />
@@ -476,6 +501,13 @@ function IngresosSection() {
           </Field>
         )}
       </Card>
+
+      {/* Pagos extraordinarios y aviso legal (app universal) */}
+      <Card title="Pagos extraordinarios" icon={<PartyPopper size={14} />}>
+        <ExtraPaysEditor />
+      </Card>
+
+      <LegalNotice />
 
       {/* Plan de pago (mejora 3) */}
       <Card title="¿Cuándo te pagan?" icon={<AlarmClock size={14} />}>
@@ -947,7 +979,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNBusiness v1.7.1 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNBusiness v1.8 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

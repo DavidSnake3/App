@@ -7,7 +7,9 @@ import type {
 } from '../types/finance'
 import { currentMonthId, todayISO } from '../lib/dates'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
-import { DEFAULT_CCSS_PCT, DEFAULT_STATUTORY_NAME, convertPeriod, payrollBreakdown } from '../lib/payroll'
+import {
+  DEFAULT_CCSS_PCT, DEFAULT_STATUTORY_NAME, convertPeriod, countryPreset, payrollBreakdown,
+} from '../lib/payroll'
 import { makeFundConfig } from '../lib/fund'
 
 // ─── Valores por defecto ─────────────────────────────────────────────────────
@@ -15,6 +17,7 @@ import { makeFundConfig } from '../lib/fund'
 export const DEFAULT_PROFILE: UserProfile = {
   name: '',
   lastName: '',
+  locale: 'es-CR',
   email: '',
   phone: '',
   photoUrl: '',
@@ -57,12 +60,18 @@ export const DEFAULT_ANIMATIONS: AnimationPrefs = {
   alarmSound: 'clasica',
 }
 
+const CR = countryPreset('cr')!
+
 export const DEFAULT_PAYROLL: PayrollConfig = {
   inputPeriod: 'monthly',
   countryId: 'cr',
   statutoryName: DEFAULT_STATUTORY_NAME,
   gross: 0,
   ccssPct: DEFAULT_CCSS_PCT,
+  statutory: [{ id: 'cr-ccss', name: CR.statutory[0].name, pct: CR.statutory[0].pct, cap: 0 }],
+  taxEnabled: false,
+  taxBrackets: CR.taxBrackets,
+  extraPays: [],
   deductions: [],
   viewPeriod: 'monthly',
 }
@@ -218,6 +227,27 @@ function healDebts(debts: Debt[] | undefined): Debt[] {
     if (total === d.total && installments === d.installments && monthlyPayment === d.monthlyPayment) return d
     return { ...d, total, installments, monthlyPayment }
   })
+}
+
+/**
+ * Planilla sana: los estados viejos traen solo `ccssPct`; se convierten a la
+ * lista de deducciones de ley y se completan tramos y pagos extraordinarios.
+ */
+function healPayroll(p: Partial<PayrollConfig> | undefined): PayrollConfig {
+  const base = { ...DEFAULT_PAYROLL, ...p }
+  if (!base.statutory || base.statutory.length === 0) {
+    base.statutory = [{
+      id: 'legacy',
+      name: base.statutoryName?.trim() || DEFAULT_STATUTORY_NAME,
+      pct: base.ccssPct ?? 0,
+      cap: 0,
+    }]
+  }
+  if (!base.taxBrackets || base.taxBrackets.length === 0) {
+    base.taxBrackets = countryPreset(base.countryId)?.taxBrackets ?? DEFAULT_PAYROLL.taxBrackets
+  }
+  if (!base.extraPays) base.extraPays = []
+  return base
 }
 
 function patchMonth(
@@ -659,7 +689,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             theme: { ...DEFAULT_THEME, ...data.settings?.theme },
             animations: { ...DEFAULT_ANIMATIONS, ...data.settings?.animations },
             notifications: { ...DEFAULT_NOTIFICATIONS, ...data.settings?.notifications },
-            payroll: { ...DEFAULT_PAYROLL, ...data.settings?.payroll },
+            payroll: healPayroll(data.settings?.payroll),
             paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...data.settings?.paySchedule },
             savings: { ...DEFAULT_SAVINGS, ...data.settings?.savings, envelopes: data.settings?.savings?.envelopes ?? [] },
             fund: { ...DEFAULT_FUND, ...data.settings?.fund },
@@ -682,7 +712,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
     }),
     {
       name: 'finance-app-state',
-      version: 6,
+      version: 7,
       // Merge profundo de settings: cualquier estado guardado sin los campos
       // nuevos (clientes viejos, nube) recibe los defaults sin romper nada
       merge: (persisted, current) => {
@@ -698,7 +728,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             theme: { ...DEFAULT_THEME, ...p.settings?.theme },
             animations: { ...DEFAULT_ANIMATIONS, ...p.settings?.animations },
             notifications: { ...DEFAULT_NOTIFICATIONS, ...p.settings?.notifications },
-            payroll: { ...DEFAULT_PAYROLL, ...p.settings?.payroll },
+            payroll: healPayroll(p.settings?.payroll),
             paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...p.settings?.paySchedule },
             savings: { ...DEFAULT_SAVINGS, ...p.settings?.savings, envelopes: p.settings?.savings?.envelopes ?? [] },
             fund: { ...DEFAULT_FUND, ...p.settings?.fund },
@@ -738,6 +768,22 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
               paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...(s.settings as Partial<AppSettings>)?.paySchedule },
               savings: { ...DEFAULT_SAVINGS, ...(s.settings as Partial<AppSettings>)?.savings },
               homeWidgets: s.settings?.homeWidgets ?? DEFAULT_WIDGETS,
+            },
+          } as FinanceState & FinanceActions
+        }
+        if (version < 7) {
+          // v6 → v7: planilla universal (deducciones de ley, tramos, extras)
+          const s = persisted as FinanceState
+          const sav = { ...DEFAULT_SAVINGS, ...(s.settings as Partial<AppSettings>)?.savings }
+          return {
+            ...s,
+            profile: { ...DEFAULT_PROFILE, ...s.profile },
+            settings: {
+              ...DEFAULT_SETTINGS,
+              ...s.settings,
+              payroll: healPayroll((s.settings as Partial<AppSettings>)?.payroll),
+              savings: { ...sav, envelopes: sav.envelopes ?? [] },
+              fund: { ...DEFAULT_FUND, ...(s.settings as Partial<AppSettings>)?.fund },
             },
           } as FinanceState & FinanceActions
         }

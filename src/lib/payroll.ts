@@ -1,58 +1,27 @@
-// Comprobante salarial y plan de pago del salario (mejoras 2, 3, 8 y 9)
-// El comprobante REAL del usuario puede ser semanal, quincenal o mensual:
-// todos los montos se guardan en ese período (inputPeriod) y se convierten
-// con exactitud de céntimos, igual que una planilla real.
-import type { PayPeriod, PayrollConfig, PaySchedule } from '../types/finance'
+// Comprobante salarial y plan de pago del salario (app universal).
+// El comprobante REAL del usuario puede ser diario, semanal, cada 14 días,
+// quincenal o mensual: todos los montos se guardan en ese período
+// (inputPeriod) y se convierten con exactitud de céntimos.
+import type {
+  PayPeriod, PayrollConfig, PaySchedule, StatutoryDeduction, TaxBracket,
+} from '../types/finance'
 import { daysInMonth } from './dates'
 
 export const DEFAULT_CCSS_PCT = 10.83 // CCSS empleado (Costa Rica)
 export const DEFAULT_STATUTORY_NAME = 'CCSS'
 
-/**
- * Deducción de ley del empleado por país (referencia editable, mejora 10).
- * Son porcentajes orientativos del aporte del EMPLEADO: cada usuario puede
- * corregir el nombre y el % en Ajustes, así la app sirve en cualquier país.
- */
-export interface CountryPreset {
-  id: string
-  country: string
-  label: string
-  pct: number
-  currency: string
-}
+export {
+  COUNTRY_PRESETS, countryPreset, presetLabel, presetPct, presetStatutory,
+  presetExtraPays, LEGAL_NOTICE,
+} from './countries'
+export type { CountryPreset } from './countries'
 
-export const COUNTRY_PRESETS: CountryPreset[] = [
-  { id: 'cr', country: 'Costa Rica', label: 'CCSS', pct: 10.83, currency: 'CRC' },
-  { id: 'mx', country: 'México', label: 'IMSS', pct: 2.78, currency: 'MXN' },
-  { id: 'gt', country: 'Guatemala', label: 'IGSS', pct: 4.83, currency: 'GTQ' },
-  { id: 'sv', country: 'El Salvador', label: 'ISSS + AFP', pct: 10.25, currency: 'USD' },
-  { id: 'hn', country: 'Honduras', label: 'IHSS + RAP', pct: 5.5, currency: 'HNL' },
-  { id: 'ni', country: 'Nicaragua', label: 'INSS', pct: 7, currency: 'NIO' },
-  { id: 'pa', country: 'Panamá', label: 'Seguro Social', pct: 9.75, currency: 'PAB' },
-  { id: 'do', country: 'Rep. Dominicana', label: 'TSS (SFS + AFP)', pct: 5.91, currency: 'DOP' },
-  { id: 'co', country: 'Colombia', label: 'Salud + Pensión', pct: 8, currency: 'COP' },
-  { id: 'pe', country: 'Perú', label: 'ONP / AFP', pct: 13, currency: 'PEN' },
-  { id: 'ec', country: 'Ecuador', label: 'IESS', pct: 9.45, currency: 'USD' },
-  { id: 'cl', country: 'Chile', label: 'AFP + Salud', pct: 17, currency: 'CLP' },
-  { id: 'ar', country: 'Argentina', label: 'Jubilación + Obra social', pct: 17, currency: 'ARS' },
-  { id: 'es', country: 'España', label: 'Seguridad Social', pct: 6.47, currency: 'EUR' },
-  { id: 'us', country: 'Estados Unidos', label: 'FICA', pct: 7.65, currency: 'USD' },
-  { id: 'other', country: 'Otro país', label: 'Deducción de ley', pct: 0, currency: '' },
-]
-
-export function countryPreset(id?: string): CountryPreset | undefined {
-  return COUNTRY_PRESETS.find((c) => c.id === id)
-}
-
-/** Nombre a mostrar de la deducción de ley (universal) */
-export function statutoryLabel(p: { statutoryName?: string; countryId?: string }): string {
-  return p.statutoryName?.trim() || countryPreset(p.countryId)?.label || DEFAULT_STATUTORY_NAME
-}
-
-/** Factor período → mensual (semanal usa 52 semanas / 12 meses) */
+/** Factor período → mensual (cuántos pagos de ese período caben en un mes) */
 export function periodToMonthlyFactor(p: PayPeriod): number {
+  if (p === 'daily') return 30
   if (p === 'weekly') return 52 / 12
-  if (p === 'biweekly') return 2
+  if (p === 'fortnightly') return 26 / 12 // cada 14 días
+  if (p === 'biweekly') return 2          // quincenal: 2 pagos al mes
   return 1
 }
 
@@ -66,12 +35,33 @@ function round2(v: number): number {
   return Math.round(v * 100) / 100
 }
 
+/** Nombre a mostrar de la deducción de ley principal (universal) */
+export function statutoryLabel(p: { statutoryName?: string; statutory?: StatutoryDeduction[] }): string {
+  if (p.statutory?.length) {
+    return p.statutory.length === 1 ? p.statutory[0].name : 'Deducciones de ley'
+  }
+  return p.statutoryName?.trim() || DEFAULT_STATUTORY_NAME
+}
+
+export interface StatutoryRow {
+  name: string
+  pct: number
+  /** monto en el período del comprobante */
+  amount: number
+  /** true si el techo de cotización limitó la base */
+  capped: boolean
+}
+
 export interface PayrollBreakdown {
   /** período en el que están expresados gross/ccss/deducciones/net */
   period: PayPeriod
   gross: number
-  /** monto que quita la CCSS en el período del comprobante (automático) */
+  /** total de deducciones de ley en el período (seguro social, pensión…) */
   ccss: number
+  /** detalle de cada deducción de ley */
+  statutoryRows: StatutoryRow[]
+  /** impuesto sobre la renta del período (0 si está desactivado) */
+  tax: number
   /** deducciones reales (créditos, embargos…) — SIN contar adelantos */
   deductions: { name: string; amount: number; debtId?: string }[]
   /** adelantos de salario: parte de tu pago (ej. tu 1ª quincena) */
@@ -85,13 +75,59 @@ export interface PayrollBreakdown {
   monthlyNet: number
   monthlyAdvance: number
   monthlySettlement: number
+  /** ingreso mensual gravable (bruto mensual − deducciones de ley) */
+  monthlyTaxable: number
+}
+
+/** Impuesto progresivo sobre el ingreso mensual gravable */
+export function progressiveTax(monthlyTaxable: number, brackets: TaxBracket[]): number {
+  if (monthlyTaxable <= 0 || !brackets.length) return 0
+  let tax = 0
+  let prev = 0
+  for (const b of brackets) {
+    const top = b.upTo == null ? Infinity : b.upTo
+    if (monthlyTaxable <= prev) break
+    const slice = Math.min(monthlyTaxable, top) - prev
+    if (slice > 0) tax += slice * (b.pct / 100)
+    prev = top
+    if (!Number.isFinite(top)) break
+  }
+  return round2(tax)
+}
+
+/** Deducciones de ley efectivas (usa la lista nueva o el % legado) */
+export function statutoryList(p: PayrollConfig): StatutoryDeduction[] {
+  if (p.statutory && p.statutory.length) return p.statutory
+  return [{ id: 'legacy', name: statutoryLabel(p), pct: p.ccssPct ?? 0, cap: 0 }]
 }
 
 export function payrollBreakdown(p: PayrollConfig): PayrollBreakdown {
   const period: PayPeriod = p.inputPeriod ?? 'monthly'
   const gross = Math.max(0, p.gross)
-  // exacto a céntimos, como los comprobantes reales (ej. 10,916.64)
-  const ccss = round2(gross * (p.ccssPct / 100))
+  const f = periodToMonthlyFactor(period)
+  const monthlyGross = gross * f
+
+  // Deducciones de ley: el techo de cotización se aplica al bruto MENSUAL
+  const rows: StatutoryRow[] = statutoryList(p).map((d) => {
+    const cap = d.cap && d.cap > 0 ? d.cap : 0
+    const base = cap > 0 ? Math.min(monthlyGross, cap) : monthlyGross
+    const monthlyAmount = base * (d.pct / 100)
+    return {
+      name: d.name,
+      pct: d.pct,
+      amount: round2(monthlyAmount / f),
+      capped: cap > 0 && monthlyGross > cap,
+    }
+  })
+  const ccss = round2(rows.reduce((t, r) => t + r.amount, 0))
+
+  // Impuesto sobre la renta por tramos (sobre el gravable mensual)
+  const monthlyTaxable = Math.max(0, round2(monthlyGross - ccss * f))
+  const monthlyTax = p.taxEnabled && p.taxBrackets?.length
+    ? progressiveTax(monthlyTaxable, p.taxBrackets)
+    : 0
+  const tax = round2(monthlyTax / f)
+
   // Una deducción vinculada a deuda NUNCA es adelanto (la cuota es plata que sale)
   const deductions = p.deductions
     .filter((d) => !d.isAdvance || d.debtId)
@@ -101,18 +137,42 @@ export function payrollBreakdown(p: PayrollConfig): PayrollBreakdown {
     .map((d) => ({ name: d.name, amount: d.amount }))
   const other = round2(deductions.reduce((s, d) => s + d.amount, 0))
   const advanceTotal = round2(advances.reduce((s, d) => s + d.amount, 0))
-  const totalDeductions = round2(ccss + other)
+  const totalDeductions = round2(ccss + tax + other)
   const net = Math.max(0, round2(gross - totalDeductions))
   const settlementNet = Math.max(0, round2(net - advanceTotal))
-  const f = periodToMonthlyFactor(period)
+
   return {
-    period, gross, ccss, deductions, advances, advanceTotal, totalDeductions,
-    net, settlementNet,
+    period, gross, ccss, statutoryRows: rows, tax, deductions, advances,
+    advanceTotal, totalDeductions, net, settlementNet,
     monthlyNet: round2(net * f),
     // El adelanto es un evento del MES (tu 1ª quincena): no se escala por período
     monthlyAdvance: round2(advanceTotal),
     monthlySettlement: Math.max(0, round2(net * f - advanceTotal)),
+    monthlyTaxable,
   }
+}
+
+/** Pagos extraordinarios que caen en un mes (aguinaldo, 13.º, 14.º…) */
+export function extraPaysInMonth(
+  p: PayrollConfig,
+  monthNumber: number,
+  monthlyNet: number,
+): { name: string; amount: number }[] {
+  return (p.extraPays ?? [])
+    .filter((e) => e.month === monthNumber)
+    .map((e) => ({
+      name: e.name,
+      amount: Math.round(e.mode === 'fixed' ? e.amount : monthlyNet * (e.factor || 1)),
+    }))
+    .filter((e) => e.amount > 0)
+}
+
+/** Total anual de pagos extraordinarios */
+export function extraPaysYearTotal(p: PayrollConfig, monthlyNet: number): number {
+  return Math.round((p.extraPays ?? []).reduce(
+    (t, e) => t + (e.mode === 'fixed' ? e.amount : monthlyNet * (e.factor || 1)),
+    0,
+  ))
 }
 
 /** Un valor del comprobante (en bd.period) mostrado en otro período de vista */
@@ -121,16 +181,26 @@ export function inView(bd: PayrollBreakdown, value: number, view: PayPeriod): nu
 }
 
 export const PERIOD_LABEL: Record<PayPeriod, string> = {
+  daily: 'Diario',
   weekly: 'Semanal',
+  fortnightly: 'Cada 14 días',
   biweekly: 'Quincenal',
   monthly: 'Mensual',
 }
 
 export const PERIOD_UNIT: Record<PayPeriod, string> = {
+  daily: 'por día',
   weekly: 'por semana',
+  fortnightly: 'cada 14 días',
   biweekly: 'por quincena',
   monthly: 'por mes',
 }
+
+/** Los tres períodos con los que se puede VER el dinero en la app */
+export const VIEW_PERIODS: PayPeriod[] = ['weekly', 'biweekly', 'monthly']
+
+/** Todos los períodos en los que puede venir un comprobante real */
+export const INPUT_PERIODS: PayPeriod[] = ['daily', 'weekly', 'fortnightly', 'biweekly', 'monthly']
 
 // ─── Fechas de pago (plan de ingresos, mejora 3) ─────────────────────────────
 
@@ -155,9 +225,9 @@ export interface PaydayInfo {
 }
 
 /**
- * Montos por día de pago del mes (en colones mensuales). Quincenal: cada
- * quincena recibe la MITAD del neto (la CCSS y las deducciones se reparten
- * mitad y mitad entre las dos quincenas, como en las planillas reales).
+ * Montos por día de pago del mes. Quincenal: cada quincena recibe la MITAD
+ * del neto (las deducciones se reparten mitad y mitad entre las dos
+ * quincenas, como en las planillas reales).
  */
 export function paydayAmounts(schedule: PaySchedule, bd: PayrollBreakdown): { amount: number; label?: string }[] {
   const paydays = (schedule.paydays.length ? schedule.paydays : [30]).slice().sort((a, b) => a - b)

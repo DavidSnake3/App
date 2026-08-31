@@ -154,6 +154,12 @@ export interface UserProfile {
   phone: string
   photoUrl: string               // foto de la cuenta (Google)
   currency: string               // 'CRC' | 'USD' | 'EUR' | 'MXN' | …
+  /** región para formato de números y fechas (ej. 'es-CR', 'en-US') */
+  locale?: string
+  /** segunda moneda opcional para ver equivalentes */
+  secondCurrency?: string
+  /** cuántas unidades de la segunda moneda equivalen a 1 de la principal */
+  exchangeRate?: number
   payday: number                 // día de pago principal
   payFrequency: 'monthly' | 'biweekly'
   planMode: 'monthly' | 'annual' // elección del onboarding (punto 24)
@@ -234,13 +240,53 @@ export interface PayrollDeduction {
   isAdvance?: boolean
 }
 
-export type PayPeriod = 'weekly' | 'biweekly' | 'monthly'
+/**
+ * Períodos de pago. `fortnightly` = cada 14 días (26 pagos al año, común en
+ * EE. UU.), distinto de `biweekly` = quincenal (2 pagos al mes).
+ */
+export type PayPeriod = 'daily' | 'weekly' | 'fortnightly' | 'biweekly' | 'monthly'
+
+/** Deducción de ley del empleado: seguro social, pensión, salud… (universal) */
+export interface StatutoryDeduction {
+  id: string
+  name: string
+  pct: number
+  /** techo de cotización: solo se cobra sobre esta parte del bruto MENSUAL */
+  cap?: number
+}
+
+/** Tramo del impuesto sobre la renta (sobre el ingreso MENSUAL gravable) */
+export interface TaxBracket {
+  /** hasta este ingreso mensual gravable; null = sin límite (último tramo) */
+  upTo: number | null
+  pct: number
+}
+
+/** Pago extraordinario: aguinaldo, 13.º, 14.º, prima, bono… */
+export interface ExtraPay {
+  id: string
+  name: string
+  /** mes en que se recibe (1-12) */
+  month: number
+  /** 'salary' = fracción de un salario mensual neto; 'fixed' = monto fijo */
+  mode: 'salary' | 'fixed'
+  /** fracción del salario (1 = un salario completo, 0.5 = 15 días) */
+  factor: number
+  amount: number
+}
 
 export interface PayrollConfig {
   /** país elegido (define el nombre y % de la deducción de ley por defecto) */
   countryId?: string
-  /** nombre de la deducción de ley: CCSS, IMSS, AFP, Seguridad Social… */
+  /** nombre de la deducción de ley principal (legado; ver `statutory`) */
   statutoryName?: string
+  /** deducciones de ley del país (una o varias, con techo opcional) */
+  statutory?: StatutoryDeduction[]
+  /** impuesto sobre la renta por tramos */
+  taxEnabled?: boolean
+  taxBrackets?: TaxBracket[]
+  /** pagos extraordinarios del país (aguinaldo, 13.º, 14.º…) */
+  extraPays?: ExtraPay[]
   /**
    * Período del comprobante REAL del usuario (mejora 9): los montos de
    * `gross` y `deductions` están expresados en este período.
