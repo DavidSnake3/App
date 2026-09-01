@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import {
   AlarmClock, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
-  Briefcase, Camera, Database, Download, FileText, HandCoins, Image as ImageIcon,
+  Briefcase, Camera, Compass, Database, Download, FileText, HandCoins, Image as ImageIcon,
   Landmark, LifeBuoy, LogOut, Mail, MessageCircleQuestion, Moon, Palette,
   PartyPopper, PiggyBank, Play, Plus, Shapes, Sparkles, Sun, Trash2, Upload,
   User as UserIcon, Vibrate, Volume2, Wallet, X,
@@ -187,7 +187,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNFinance v3.5.1</p>
+  return <p className="text-[11px] text-muted text-center">SNFinance v3.6.0</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -1155,11 +1155,20 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNFinance v3.5.1 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNFinance v3.6.0 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 
   const rows: { icon: React.ReactNode; title: string; desc: string; run: () => void }[] = [
+    {
+      icon: <Compass size={17} />,
+      title: 'Ver el recorrido otra vez',
+      desc: 'El paseo rápido por la app, como la primera vez',
+      run: () => {
+        useFinanceStore.getState().setProfile({ tourDone: false })
+        useFinanceStore.getState().setActiveTab('home')
+      },
+    },
     {
       icon: <MessageCircleQuestion size={17} />,
       title: '¿Necesitas ayuda con la app?',

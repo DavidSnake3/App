@@ -39,6 +39,7 @@ export function BottomNav() {
           return (
             <button
               key={id}
+              data-tour={`tab-${id}`}
               onClick={() => ir(id)}
               aria-label={label}
               aria-current={active ? 'page' : undefined}

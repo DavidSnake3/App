@@ -18,7 +18,7 @@ import { SettingsView } from './components/settings/SettingsView'
 import { Onboarding } from './components/onboarding/Onboarding'
 import { AuthScreen } from './components/auth/AuthScreen'
 import { AlarmOverlay } from './components/overlays/AlarmOverlay'
-import { WidgetsTip } from './components/overlays/WidgetsTip'
+import { TourGuiado } from './components/overlays/TourGuiado'
 import { SplashIntro } from './components/overlays/SplashIntro'
 import { ChatBot } from './components/chat/ChatBot'
 import { ChatLauncher } from './components/chat/ChatLauncher'
@@ -33,7 +33,7 @@ function App() {
 
   const onboarded = useFinanceStore((s) => s.profile.onboarded)
   const snakeIntro = useFinanceStore((s) => s.profile.snakeIntro)
-  const widgetsTip = useFinanceStore((s) => s.profile.widgetsTip)
+  const tourDone = useFinanceStore((s) => s.profile.tourDone)
   const chatOpen = useChat((s) => s.open)
   const activeTab = useFinanceStore((s) => s.activeTab)
   const subs = useFinanceStore((s) => s.subs)
@@ -70,8 +70,8 @@ function App() {
     return () => clearTimeout(t)
   }, [avisoSalir])
 
-  // Al salir del chat de bienvenida: explicar que el inicio se personaliza
-  const [showTip, setShowTip] = useState(false)
+  // Recorrido guiado de bienvenida: se muestra una sola vez, al entrar
+  const [showTour, setShowTour] = useState(false)
   const chatWasOpen = useRef(false)
 
   // Dirección de la transición entre pestañas (para el deslizamiento)
@@ -125,22 +125,22 @@ function App() {
     return () => clearTimeout(t)
   }, [onboarded, snakeIntro, showSplash])
 
-  // Si prefirió configurarlo después (sin chat), el aviso de widgets se
-  // muestra igual al entrar al inicio por primera vez
+  // El recorrido arranca cuando la app ya está en pantalla y Snake no está
+  // abierto, y solo si el usuario no lo ha visto antes.
   useEffect(() => {
-    if (!onboarded || showSplash || chatOpen) return
-    if (snakeIntro !== 'skipped' || widgetsTip !== false) return
-    const t = setTimeout(() => setShowTip(true), 900)
+    if (!onboarded || showSplash || chatOpen || tourDone) return
+    const t = setTimeout(() => setShowTour(true), 700)
     return () => clearTimeout(t)
-  }, [onboarded, showSplash, chatOpen, snakeIntro, widgetsTip])
+  }, [onboarded, showSplash, chatOpen, tourDone])
 
+  // Al cerrar el chat de bienvenida, si el recorrido sigue pendiente, se abre
   useEffect(() => {
     if (chatOpen) { chatWasOpen.current = true; return }
-    if (!chatWasOpen.current || widgetsTip !== false || !onboarded) return
+    if (!chatWasOpen.current || tourDone || !onboarded) return
     chatWasOpen.current = false
-    const t = setTimeout(() => setShowTip(true), 500)
+    const t = setTimeout(() => setShowTour(true), 500)
     return () => clearTimeout(t)
-  }, [chatOpen, widgetsTip, onboarded])
+  }, [chatOpen, tourDone, onboarded])
 
   // Fondos guardados con la compresión vieja (muy pesados para la nube):
   // reducirlos una vez para que sincronicen con la cuenta
@@ -207,14 +207,7 @@ function App() {
 
         {alarm && <AlarmOverlay alarm={alarm} onDismiss={dismissAlarm} />}
         <ChatBot auth={auth} />
-        {showTip && (
-          <WidgetsTip
-            onClose={() => {
-              setShowTip(false)
-              useFinanceStore.getState().setProfile({ widgetsTip: true })
-            }}
-          />
-        )}
+        {showTour && <TourGuiado onDone={() => setShowTour(false)} />}
       </div>
     )
   }

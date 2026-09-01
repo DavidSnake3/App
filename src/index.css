@@ -551,3 +551,35 @@ input, select, textarea, button { font-family: inherit; }
   background: var(--app-gradient);
   box-shadow: 0 8px 22px -12px color-mix(in oklab, var(--app-accent) 70%, transparent);
 }
+
+/* ─── Recorrido guiado de bienvenida ──────────────────────────────────────
+   El agujero se recorta con una sombra gigante: todo lo de afuera queda
+   oscuro y el elemento resaltado se ve tal cual. Moverlo entre paradas es
+   una transición CSS, así que el hilo principal queda libre. */
+.tour-capa {
+  --tour-velo: rgb(4 6 12 / 0.82);
+}
+.tour-velo-plano {
+  background: var(--tour-velo);
+  backdrop-filter: blur(2px);
+}
+.tour-hueco {
+  box-shadow:
+    0 0 0 9999px var(--tour-velo),
+    0 0 0 2px color-mix(in oklab, var(--app-accent) 70%, transparent),
+    0 0 34px 6px color-mix(in oklab, var(--app-accent) 34%, transparent);
+  transition:
+    left 0.42s cubic-bezier(0.32, 0.72, 0.24, 1),
+    top 0.42s cubic-bezier(0.32, 0.72, 0.24, 1),
+    width 0.42s cubic-bezier(0.32, 0.72, 0.24, 1),
+    height 0.42s cubic-bezier(0.32, 0.72, 0.24, 1),
+    border-radius 0.42s ease;
+  animation: tourHalo 2.4s ease-in-out infinite;
+}
+@keyframes tourHalo {
+  0%, 100% { box-shadow: 0 0 0 9999px var(--tour-velo), 0 0 0 2px color-mix(in oklab, var(--app-accent) 70%, transparent), 0 0 30px 4px color-mix(in oklab, var(--app-accent) 28%, transparent); }
+  50%      { box-shadow: 0 0 0 9999px var(--tour-velo), 0 0 0 3px color-mix(in oklab, var(--app-accent) 85%, transparent), 0 0 44px 10px color-mix(in oklab, var(--app-accent) 42%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-hueco { transition: none; animation: none; }
+}

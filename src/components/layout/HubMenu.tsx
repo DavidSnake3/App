@@ -54,6 +54,7 @@ export function HubMenu<T extends string>({ items, onPick, children }: Props<T>)
           return (
             <button
               key={it.id}
+          data-tour={`hub-${it.id}`}
               onClick={() => { if (sounds) playTap(); onPick(it.id) }}
               className="pressable tile px-3.5 py-3.5 flex flex-col text-left min-h-[132px] anim-rise"
               style={{

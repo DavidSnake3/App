@@ -192,6 +192,7 @@ export function HomeView({ auth }: { auth: AuthState }) {
         >
           {widgets.map((w, i) => (
             <div
+              data-tour={i === 0 ? 'home-widget-first' : undefined}
               key={w.id}
               className={`relative anim-rise ${editMode ? 'widget-wiggle' : ''}`}
               style={{

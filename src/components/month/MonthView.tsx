@@ -182,7 +182,7 @@ export function MonthView() {
           : <HubTitle title="Mi mes" subtitle="Todo lo que pagas, debes y presupuestas" />}
 
         {/* Navegación de mes + borrar mes (punto 1) */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between" data-tour="month-switcher">
           <button
             onClick={() => setActiveMonth(addMonthsToId(monthId, -1))}
             aria-label="Mes anterior"

@@ -27,6 +27,7 @@ export function Fab({ onClick, label, children, background }: Props) {
         <button
           onClick={onClick}
           aria-label={label}
+          data-tour="fab-add"
           className="pressable pointer-events-auto w-14 h-14 rounded-2xl flex items-center justify-center text-white anim-pop"
           style={{
             background: background ?? 'var(--app-gradient)',

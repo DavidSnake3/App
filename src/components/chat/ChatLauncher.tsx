@@ -6,6 +6,7 @@ export function ChatLauncher() {
   const openChat = useChat((s) => s.openChat)
   return (
     <button
+      data-tour="snake-launcher"
       onClick={() => openChat()}
       aria-label="Hablar con Snake, tu asistente"
       className="pressable absolute bottom-[20px] left-4 z-30 w-14 h-14 rounded-full flex items-center justify-center"
