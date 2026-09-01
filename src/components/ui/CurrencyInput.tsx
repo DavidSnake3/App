@@ -1,4 +1,4 @@
-import { currencySymbol } from '../../lib/format'
+import { currencySymbol, formatNumber } from '../../lib/format'
 
 interface Props {
   value: number
@@ -13,7 +13,7 @@ interface Props {
  * y formatea con separador de miles en vivo.
  */
 export function CurrencyInput({ value, onChange, placeholder = '0', className = '', autoFocus }: Props) {
-  const display = value === 0 ? '' : new Intl.NumberFormat('es-CR').format(value)
+  const display = value === 0 ? '' : formatNumber(value)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const digits = e.target.value.replace(/\D/g, '').slice(0, 12)

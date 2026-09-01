@@ -9,6 +9,7 @@ import type { Account } from '../../types/finance'
 import type { CardStatement } from '../../lib/accounts'
 import { fixedPaymentFor, minSettings, payToReachUsage, payoffWithMinimum } from '../../lib/accounts'
 import { formatMoney } from '../../lib/format'
+import { useFinanceStore } from '../../store/useFinanceStore'
 
 /** Los tres montos + el desglose del mínimo + la simulación */
 export function CardInsights({ account, st, onPay }: {
@@ -16,9 +17,10 @@ export function CardInsights({ account, st, onPay }: {
   st: CardStatement
   onPay: (monto: number) => void
 }) {
-  const cfg = minSettings(account)
+  const countryId = useFinanceStore((s) => s.settings.payroll.countryId)
+  const cfg = minSettings(account, countryId)
   const min = st.minimum
-  const sim = payoffWithMinimum(account, st.pending)
+  const sim = payoffWithMinimum(account, st.pending, countryId)
   const [abierto, setAbierto] = useState(false)
 
   const aCapital = Math.round(min.toCapital * 100)

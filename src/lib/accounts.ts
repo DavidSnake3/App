@@ -10,6 +10,7 @@ import type {
   Account, AccountType, AppSettings, Debt, Installment, Loan, MonthData, Movement,
 } from '../types/finance'
 import { addMonthsToId, currentMonthId, daysInMonth, monthDiff, parseMonthId } from './dates'
+import { cardRules, type CardRules } from './countries'
 import { debtIsActiveInMonth } from './finance'
 
 function round2(v: number): number {
@@ -346,6 +347,8 @@ export function cardStatement(a: Account, ctx: BalanceCtx): CardStatement {
   const c = a.credit
   const debt = cardDebt(a, ctx)
   const rate = monthlyRate(a)
+  // el país del usuario define las reglas por defecto del mínimo y de la mora
+  const pais = ctx.settings.payroll?.countryId
 
   if (!c) {
     return {
@@ -353,8 +356,8 @@ export function cardStatement(a: Account, ctx: BalanceCtx): CardStatement {
       pending: debt, daysToDue: 0, overdue: false, interest: 0, interestIfUnpaid: 0,
       totalWithInterest: debt,
       currentCycle: 0, available: 0, usage: 0, usageAtCutoff: 0,
-      monthlyRate: rate, moratoryRate: moratoryMonthlyRate(a), lateFee: 0,
-      minimum: cardMinimum(a, debt, 0, 0),
+      monthlyRate: rate, moratoryRate: moratoryMonthlyRate(a, pais), lateFee: 0,
+      minimum: cardMinimum(a, debt, 0, 0, undefined, pais),
     }
   }
 
@@ -460,7 +463,7 @@ export function cardStatement(a: Account, ctx: BalanceCtx): CardStatement {
     .reduce((sum, i) => sum + i.monthly, 0))
 
   // cargo por gestión de cobranza (Costa Rica: 5% del principal en mora)
-  const cfg = minSettings(a)
+  const cfg = minSettings(a, pais)
   let lateFee = 0
   if (overdue && Math.abs(daysToDue) >= cfg.lateFeeAfterDays && cfg.lateFeePct > 0) {
     lateFee = round2(pending * (cfg.lateFeePct / 100))
@@ -472,7 +475,7 @@ export function cardStatement(a: Account, ctx: BalanceCtx): CardStatement {
   const minimum = cardMinimum(a, statementBalance, interesesDelPeriodo, cuotasDelMes, {
     interest: interest,
     fee: lateFee,
-  })
+  }, pais)
 
   const limite = c.limit || 0
   return {
@@ -492,31 +495,35 @@ export function cardStatement(a: Account, ctx: BalanceCtx): CardStatement {
     usage: limite > 0 ? Math.min(1, debt / limite) : 0,
     usageAtCutoff: limite > 0 ? Math.min(1, statementBalance / limite) : 0,
     monthlyRate: rate,
-    moratoryRate: moratoryMonthlyRate(a),
+    moratoryRate: moratoryMonthlyRate(a, pais),
     lateFee,
     minimum,
   }
 }
 
-/** Valores por defecto del pago mínimo cuando el usuario no los configuró */
-export function minSettings(a: Account) {
+/**
+ * Condiciones del pago mínimo de una tarjeta. Lo que el usuario configuró
+ * manda; lo que falte se llena con la regla del país (`countryId`), y si el
+ * país no tiene dato, con la referencia general.
+ */
+export function minSettings(a: Account, countryId?: string) {
   const c = a.credit
+  const pais: CardRules = cardRules(countryId)
   return {
-    mode: c?.minMode ?? 'plazo',
-    // Costa Rica: el plazo de financiamiento típico es 60 meses
-    months: Math.max(1, c?.financingMonths ?? 60),
-    pct: c?.minPaymentPct ?? 5,
+    mode: c?.minMode ?? pais.minMode,
+    months: Math.max(1, c?.financingMonths ?? pais.financingMonths),
+    pct: c?.minPaymentPct ?? pais.minPaymentPct,
     floor: c?.minPaymentFloor ?? 0,
-    moratoryExtra: c?.moratoryExtra ?? 2,
-    lateFeePct: c?.lateFeePct ?? 5,
+    moratoryExtra: c?.moratoryExtra ?? pais.moratoryExtra,
+    lateFeePct: c?.lateFeePct ?? pais.lateFeePct,
     lateFeeCap: c?.lateFeeCap ?? 0,
     lateFeeAfterDays: c?.lateFeeAfterDays ?? 5,
   }
 }
 
 /** Interés mensual de mora: el corriente más los puntos que cobre el banco */
-export function moratoryMonthlyRate(a: Account): number {
-  const cfg = minSettings(a)
+export function moratoryMonthlyRate(a: Account, countryId?: string): number {
+  const cfg = minSettings(a, countryId)
   const anual = (a.credit?.ratePeriod === 'monthly' ? (a.credit?.rate ?? 0) * 12 : a.credit?.rate ?? 0)
   return (anual + cfg.moratoryExtra) / 12
 }
@@ -535,8 +542,9 @@ export function cardMinimum(
   interesesDelPeriodo: number,
   cuotasDelMes: number,
   mora: { interest: number; fee: number } = { interest: 0, fee: 0 },
+  countryId?: string,
 ): CardMinimum {
-  const cfg = minSettings(a)
+  const cfg = minSettings(a, countryId)
   // el principal del corte no incluye las cuotas de planes ni los intereses
   const principal = Math.max(0, statementBalance - cuotasDelMes)
   let amortizacion = cfg.mode === 'plazo'
@@ -567,8 +575,8 @@ export function cardMinimum(
  * así que se llevan aparte del principal. Si el mínimo no cubre ni los
  * intereses, la deuda nunca baja: eso se reporta como `perpetual`.
  */
-export function payoffWithMinimum(a: Account, saldo: number): PayoffSim {
-  const cfg = minSettings(a)
+export function payoffWithMinimum(a: Account, saldo: number, countryId?: string): PayoffSim {
+  const cfg = minSettings(a, countryId)
   const i = monthlyRate(a) / 100
   const horizonte = cfg.mode === 'plazo' ? cfg.months : 60
   let principal = Math.max(0, saldo)

@@ -4,7 +4,7 @@ import type { Debt } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { addMonthsToId, currentMonthId, monthLabel } from '../../lib/dates'
 import { debtEndMonthId, debtIsActiveInMonth, debtPaidCount } from '../../lib/finance'
-import { formatMoney } from '../../lib/format'
+import { formatDate, formatMoney } from '../../lib/format'
 import { payBurst } from '../../lib/fx'
 import { ItemIcon } from '../../lib/icons'
 import { BottomSheet } from '../ui/BottomSheet'
@@ -70,7 +70,7 @@ function DebtDetail({ debt, onEdit }: { debt: Debt; onEdit: (d: Debt) => void })
   }
 
 
-  const fmtFecha = (iso?: string) => iso ? new Date(iso).toLocaleDateString('es-CR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
+  const fmtFecha = (iso?: string) => formatDate(iso)
 
   return (
     <div className="flex flex-col gap-4">

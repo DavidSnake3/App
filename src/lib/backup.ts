@@ -1,6 +1,7 @@
 // Exportar e importar respaldo completo en JSON (mejora 14)
 import { Capacitor } from '@capacitor/core'
 import type { PersistedShape } from '../store/useFinanceStore'
+import { formatDate } from './format'
 import { exportState, useFinanceStore } from '../store/useFinanceStore'
 
 interface BackupFile {
@@ -54,7 +55,7 @@ export async function readBackup(file: File): Promise<{ data: PersistedShape; mo
     data,
     months: Object.keys(data.months).length,
     debts: (data.debts ?? []).length,
-    fecha: parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleDateString('es-CR') : 'desconocida',
+    fecha: parsed.exportedAt ? formatDate(parsed.exportedAt) : 'desconocida',
   }
 }
 

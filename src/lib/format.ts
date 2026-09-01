@@ -59,6 +59,39 @@ export function formatMoneyShort(amount: number, currency = _currency): string {
   return `${sign}${symbol}${Math.round(abs)}`
 }
 
+/** Número con separadores de miles según la región del usuario */
+export function formatNumber(value: number, decimals = 0): string {
+  try {
+    return new Intl.NumberFormat(_locale, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(value)
+  } catch {
+    return String(value)
+  }
+}
+
+/**
+ * Fecha corta según la región del usuario.
+ *
+ * Ojo: `new Date('2026-09-01')` se interpreta como UTC y en América se ve como
+ * el día anterior. Las fechas de solo día se construyen a mano para que el día
+ * que el usuario escribió sea el que se muestra.
+ */
+export function formatDate(iso?: string): string {
+  if (!iso) return ''
+  const soloFecha = /^\d{4}-\d{2}-\d{2}$/.test(iso.slice(0, 10)) && iso.length <= 10
+  const d = soloFecha
+    ? new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)))
+    : new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  try {
+    return d.toLocaleDateString(_locale, { day: '2-digit', month: '2-digit', year: 'numeric' })
+  } catch {
+    return d.toISOString().slice(0, 10)
+  }
+}
+
 export function currencySymbol(currency = _currency): string {
   const map: Record<string, string> = {
     CRC: '₡', USD: '$', EUR: '€', MXN: '$', COP: '$', GTQ: 'Q',

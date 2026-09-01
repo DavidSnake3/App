@@ -7,6 +7,36 @@
 // La app no es asesoría fiscal: manda siempre el comprobante real.
 import type { ExtraPay, StatutoryDeduction, TaxBracket } from '../types/finance'
 
+/**
+ * Cómo calcula el banco el pago mínimo de una tarjeta en ese país. Es una
+ * REFERENCIA editable por tarjeta: cada emisor tiene sus propias condiciones y
+ * el usuario las corrige con lo que diga su estado de cuenta.
+ */
+export interface CardRules {
+  /** 'plazo' = saldo ÷ meses de financiamiento; 'porcentaje' = % del saldo */
+  minMode: 'plazo' | 'porcentaje'
+  /** meses de financiamiento (modo plazo) */
+  financingMonths: number
+  /** % del saldo (modo porcentaje) */
+  minPaymentPct: number
+  /** puntos porcentuales que se suman al interés corriente por mora */
+  moratoryExtra: number
+  /** % del monto en mora que cobran por gestión de cobranza */
+  lateFeePct: number
+  /** de dónde sale la regla */
+  note?: string
+}
+
+/** Regla genérica cuando no hay dato del país */
+export const DEFAULT_CARD_RULES: CardRules = {
+  minMode: 'porcentaje',
+  financingMonths: 36,
+  minPaymentPct: 5,
+  moratoryExtra: 2,
+  lateFeePct: 0,
+  note: 'Referencia general: 5% del saldo más los intereses del período.',
+}
+
 export interface CountryPreset {
   id: string
   country: string
@@ -20,6 +50,8 @@ export interface CountryPreset {
   extraPays: { name: string; month: number; factor: number }[]
   /** nota corta sobre el régimen del país */
   note?: string
+  /** reglas de tarjeta de crédito del país (pago mínimo y mora) */
+  card?: CardRules
 }
 
 export const COUNTRY_PRESETS: CountryPreset[] = [
@@ -38,6 +70,14 @@ export const COUNTRY_PRESETS: CountryPreset[] = [
     ],
     extraPays: [{ name: 'Aguinaldo', month: 12, factor: 1 }],
     note: 'CCSS 10.83% (salud y pensión) e impuesto al salario por tramos.',
+    card: {
+      minMode: 'plazo',
+      financingMonths: 60,
+      minPaymentPct: 5,
+      moratoryExtra: 2,
+      lateFeePct: 5,
+      note: 'Decreto 35867-MEIC: el mínimo es el saldo entre el plazo de financiamiento (los bancos usan 48-66 meses) más los intereses. La mora se cobra sobre el capital impago.',
+    },
   },
   {
     id: 'mx',
@@ -57,6 +97,14 @@ export const COUNTRY_PRESETS: CountryPreset[] = [
     ],
     extraPays: [{ name: 'Aguinaldo (15 días)', month: 12, factor: 0.5 }],
     note: 'ISR por tramos mensuales (simplificado, sin cuota fija ni subsidio).',
+    card: {
+      minMode: 'porcentaje',
+      financingMonths: 36,
+      minPaymentPct: 1.5,
+      moratoryExtra: 2,
+      lateFeePct: 0,
+      note: 'Circular 13/2011 de Banxico: 1.5% del saldo más los intereses (o 1.25% de la línea, el que sea mayor).',
+    },
   },
   {
     id: 'gt',
@@ -179,6 +227,14 @@ export const COUNTRY_PRESETS: CountryPreset[] = [
       { name: 'Prima de servicios (diciembre)', month: 12, factor: 0.5 },
     ],
     note: 'La retención en la fuente depende de UVT y deducciones: ajusta los tramos.',
+    card: {
+      minMode: 'plazo',
+      financingMonths: 36,
+      minPaymentPct: 5,
+      moratoryExtra: 2,
+      lateFeePct: 0,
+      note: 'Los bancos cobran una cuota por plazo diferido más la cuota de manejo; la tasa de usura la certifica la Superfinanciera cada mes.',
+    },
   },
   {
     id: 'pe',
@@ -197,6 +253,14 @@ export const COUNTRY_PRESETS: CountryPreset[] = [
       { name: 'Gratificación (julio)', month: 7, factor: 1 },
       { name: 'Gratificación (diciembre)', month: 12, factor: 1 },
     ],
+    card: {
+      minMode: 'plazo',
+      financingMonths: 36,
+      minPaymentPct: 5,
+      moratoryExtra: 2,
+      lateFeePct: 0,
+      note: 'Circular SBS B-2206-2012: 1/36 del saldo revolvente, con un piso de S/30 o US$10.',
+    },
   },
   {
     id: 'ec',
@@ -234,6 +298,14 @@ export const COUNTRY_PRESETS: CountryPreset[] = [
       { upTo: null, pct: 23 },
     ],
     extraPays: [],
+    card: {
+      minMode: 'porcentaje',
+      financingMonths: 36,
+      minPaymentPct: 5,
+      moratoryExtra: 2,
+      lateFeePct: 0,
+      note: 'CMF (NCG 537): monto no facturado más 5% del monto financiable.',
+    },
   },
   {
     id: 'ar',
@@ -305,6 +377,14 @@ export const COUNTRY_PRESETS: CountryPreset[] = [
     ],
     extraPays: [],
     note: 'Federal solamente: agrega tu impuesto estatal como deducción si aplica.',
+    card: {
+      minMode: 'porcentaje',
+      financingMonths: 36,
+      minPaymentPct: 2,
+      moratoryExtra: 0,
+      lateFeePct: 0,
+      note: 'Práctica típica: 1%-3% del saldo más los intereses, con un piso de 25-35 dólares y un cargo fijo por atraso.',
+    },
   },
   {
     id: 'other',
@@ -339,6 +419,11 @@ function nextId(prefix: string): string {
 }
 
 /** Deducciones de ley del preset listas para guardar */
+/** Reglas de tarjeta del país elegido (o la referencia general) */
+export function cardRules(countryId?: string): CardRules {
+  return countryPreset(countryId)?.card ?? DEFAULT_CARD_RULES
+}
+
 export function presetStatutory(p: CountryPreset): StatutoryDeduction[] {
   return p.statutory.map((d) => ({ id: nextId('st'), name: d.name, pct: d.pct, cap: d.cap ?? 0 }))
 }

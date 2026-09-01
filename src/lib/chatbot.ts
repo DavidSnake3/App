@@ -10,6 +10,7 @@ import { buildPayables, debtEndMonthId, debtPaidCount, debtRemaining, getMonthSu
 import { carryOver, envelopeTotal, realBalance, savingsTotal } from './fund'
 import { PERIOD_LABEL, WORKER_LABEL, formatPayday, nextPaydays, payrollBreakdown, statutoryLabel } from './payroll'
 import { addMonthsToId, currentMonthId, monthLabel, todayDay } from './dates'
+import { formatDate } from './format'
 import { useFinanceStore } from '../store/useFinanceStore'
 import { makeLedger } from '../hooks/useLedger'
 import {
@@ -114,7 +115,7 @@ export function buildUserContext(): string {
   const bd = payrollBreakdown(settings.payroll)
   const lines: string[] = []
 
-  lines.push(`Hoy: ${new Date().toLocaleDateString('es-CR')} (día ${todayDay()} del mes ${monthLabel(nowId)}).`)
+  lines.push(`Hoy: ${formatDate(new Date().toISOString())} (día ${todayDay()} del mes ${monthLabel(nowId)}).`)
   lines.push(`Usuario: ${profile.name || 'sin nombre'} · moneda ${profile.currency} · ${WORKER_LABEL[profile.workerType ?? 'asalariado']}.`)
 
   if (settings.payroll.gross > 0) {

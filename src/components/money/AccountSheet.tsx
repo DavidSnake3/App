@@ -3,6 +3,7 @@ import { ChevronDown, CreditCard, Info, Trash2 } from 'lucide-react'
 import type { Account, AccountType } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { ACCOUNT_TYPES } from '../../lib/accounts'
+import { cardRules } from '../../lib/countries'
 import { todayISO } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
 import { BottomSheet } from '../ui/BottomSheet'
@@ -54,6 +55,8 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
   currentBalance: number
   onDone: () => void
 }) {
+  const countryId = useFinanceStore((s) => s.settings.payroll.countryId)
+  const reglas = cardRules(countryId)
   const addAccount = useFinanceStore((s) => s.addAccount)
   const updateAccount = useFinanceStore((s) => s.updateAccount)
   const deleteAccount = useFinanceStore((s) => s.deleteAccount)
@@ -72,11 +75,11 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
   const [rate, setRate] = useState(editing?.credit?.rate ?? 0)
   const [ratePeriod, setRatePeriod] = useState<'annual' | 'monthly'>(editing?.credit?.ratePeriod ?? 'annual')
   const [openingDebt, setOpeningDebt] = useState(editing?.credit?.openingDebt ?? 0)
-  const [minMode, setMinMode] = useState<'plazo' | 'porcentaje'>(editing?.credit?.minMode ?? 'plazo')
-  const [financingMonths, setFinancingMonths] = useState(editing?.credit?.financingMonths ?? 60)
-  const [minPct, setMinPct] = useState(editing?.credit?.minPaymentPct ?? 5)
-  const [moratoryExtra, setMoratoryExtra] = useState(editing?.credit?.moratoryExtra ?? 2)
-  const [lateFeePct, setLateFeePct] = useState(editing?.credit?.lateFeePct ?? 5)
+  const [minMode, setMinMode] = useState<'plazo' | 'porcentaje'>(editing?.credit?.minMode ?? reglas.minMode)
+  const [financingMonths, setFinancingMonths] = useState(editing?.credit?.financingMonths ?? reglas.financingMonths)
+  const [minPct, setMinPct] = useState(editing?.credit?.minPaymentPct ?? reglas.minPaymentPct)
+  const [moratoryExtra, setMoratoryExtra] = useState(editing?.credit?.moratoryExtra ?? reglas.moratoryExtra)
+  const [lateFeePct, setLateFeePct] = useState(editing?.credit?.lateFeePct ?? reglas.lateFeePct)
   const [avanzado, setAvanzado] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
 
@@ -334,8 +337,7 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
                       className="input-base mt-1.5 num text-center"
                     />
                     <p className="text-[11px] text-muted mt-1 leading-snug">
-                      En Costa Rica el pago mínimo es el saldo entre este plazo (los bancos usan
-                      entre 48 y 66 meses; lo normal es 60) más los intereses del período.
+                      El pago mínimo es el saldo entre este plazo más los intereses del período.
                     </p>
                   </div>
                 ) : (
@@ -383,9 +385,12 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
                   </div>
                 </div>
                 <p className="text-[11px] text-muted -mt-1 leading-snug">
-                  La mora se cobra sobre el capital que quedó sin pagar (no sobre todo el saldo).
-                  En Costa Rica suele ser el interés corriente más 2 puntos, y el cargo por
-                  gestión de cobro un 5% de lo que está en mora.
+                  La mora se cobra sobre el capital que quedó sin pagar, no sobre todo el saldo.
+                  {reglas.note && <> {reglas.note}</>}
+                </p>
+                <p className="text-[10.5px] text-muted leading-snug">
+                  Son valores de referencia de tu país: corrígelos con lo que diga tu estado de
+                  cuenta, que cada banco tiene los suyos.
                 </p>
               </div>
             )}
