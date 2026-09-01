@@ -7,8 +7,8 @@ import { useFinanceStore } from '../../store/useFinanceStore'
 import { useMoney } from '../../hooks/useLedger'
 import { accountTypeLabel } from '../../lib/accounts'
 import { formatMoney } from '../../lib/format'
-import { ItemIcon } from '../../lib/icons'
 import { accountColor } from '../../lib/itemColors'
+import { AccountFace } from '../ui/AccountFace'
 import { AccountSheet } from './AccountSheet'
 import { MovementSheet } from './MovementSheet'
 
@@ -115,16 +115,7 @@ export function AccountsSection() {
                 borderColor: `color-mix(in oklab, ${tono} 24%, var(--c-border))`,
               }}
             >
-              <span
-                className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
-                style={{
-                  background: `linear-gradient(145deg, ${tono}, color-mix(in oklab, ${tono} 52%, #000))`,
-                  color: '#fff',
-                  boxShadow: `0 7px 18px -10px ${tono}`,
-                }}
-              >
-                <ItemIcon icon={account.icon} name={account.name} size={18} />
-              </span>
+              <AccountFace account={account} size={46} />
               <span className="flex-1 min-w-0">
                 <span className="flex items-center gap-1.5">
                   <span className="text-[14px] font-semibold text-ink truncate">{account.name}</span>
@@ -172,16 +163,7 @@ export function AccountsSection() {
                   : `color-mix(in oklab, ${tono} 24%, var(--c-border))`,
               }}
             >
-              <span
-                className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
-                style={{
-                  background: `linear-gradient(145deg, ${tono}, color-mix(in oklab, ${tono} 52%, #000))`,
-                  color: '#fff',
-                  boxShadow: `0 7px 18px -10px ${tono}`,
-                }}
-              >
-                <ItemIcon icon={account.icon ?? 'tarjeta'} name={account.name} size={18} />
-              </span>
+              <AccountFace account={account} size={46} />
               <span className="flex-1 min-w-0">
                 <span className="block text-[14px] font-semibold text-ink truncate">{account.name}</span>
                 <span className="block text-[11.5px] text-muted">

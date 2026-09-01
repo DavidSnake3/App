@@ -178,6 +178,10 @@ export interface Account {
   name: string
   type: AccountType
   icon?: string
+  /** cómo se ve: tarjeta azul, monedero, efectivo… (ver lib/accountLooks) */
+  look?: string
+  /** red de la tarjeta, solo el nombre: Visa, Mastercard… */
+  network?: string
   /** color del acento de la tarjeta/cuenta */
   color?: string
   /** moneda de la cuenta (por defecto, la del perfil) */

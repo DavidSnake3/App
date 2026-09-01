@@ -12,6 +12,9 @@ import { IconPicker } from '../ui/IconPicker'
 import { Toggle } from '../ui/Toggle'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ColorPicker } from '../ui/ColorPicker'
+import { AccountLookPicker } from '../ui/AccountLookPicker'
+import { AccountFace } from '../ui/AccountFace'
+import { defaultLookFor } from '../../lib/accountLooks'
 import { ItemIcon } from '../../lib/icons'
 
 interface Props {
@@ -67,6 +70,8 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
   const [name, setName] = useState(editing?.name ?? '')
   const [icon, setIcon] = useState(editing?.icon ?? '')
   const [color, setColor] = useState(editing?.color ?? '')
+  const [look, setLook] = useState(editing?.look ?? '')
+  const [network, setNetwork] = useState(editing?.network ?? '')
   const [balance, setBalance] = useState(editing ? (editing.type === 'credito' ? 0 : currentBalance) : 0)
   const [includeInTotal, setIncludeInTotal] = useState(editing?.includeInTotal ?? true)
   const [isMain, setIsMain] = useState(Boolean(editing?.isMain))
@@ -103,6 +108,8 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
         type,
         icon: icon || undefined,
         color: color || undefined,
+        look: look || defaultLookFor(type),
+        network: network || undefined,
         includeInTotal: esCredito ? false : includeInTotal,
         isMain: esCredito ? false : isMain,
         credit,
@@ -129,6 +136,18 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
   return (
     <>
       <div className="flex flex-col gap-4 pb-2">
+        {/* Vista previa: así se va a ver en la lista */}
+        <div className="flex items-center gap-3">
+          <AccountFace
+            account={{ type, look: look || defaultLookFor(type), network, color }}
+            size={64}
+          />
+          <div className="min-w-0">
+            <p className="text-[15px] font-bold text-ink truncate">{name || 'Cuenta nueva'}</p>
+            <p className="text-[11.5px] text-muted">Así se va a ver en tus cuentas</p>
+          </div>
+        </div>
+
         {/* Tipo de cuenta */}
         <div>
           <label className="text-[12px] font-semibold text-muted">Tipo de cuenta</label>
@@ -169,6 +188,14 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
             className="input-base mt-1.5"
           />
         </div>
+
+        <AccountLookPicker
+          value={look}
+          onChange={setLook}
+          type={type}
+          network={network}
+          onNetworkChange={setNetwork}
+        />
 
         <IconPicker value={icon} onChange={setIcon} name={name} kind={esCredito ? 'deuda' : 'gasto'} />
 

@@ -4,8 +4,7 @@ import type { WidgetSize } from '../../types/finance'
 import type { WidgetCtx } from './widgetMeta'
 import { useMoney } from '../../hooks/useLedger'
 import { formatMoney } from '../../lib/format'
-import { ItemIcon } from '../../lib/icons'
-import { accountColor } from '../../lib/itemColors'
+import { AccountFace } from '../ui/AccountFace'
 
 /** Efectivo real repartido por cuenta */
 export function CuentasWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }) {
@@ -55,15 +54,7 @@ export function CuentasWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx 
         <div className="flex flex-col gap-1.5 mt-2.5 pt-2.5 border-t border-edge/60">
           {money.balances.slice(0, max).map(({ account, balance }) => (
             <div key={account.id} className="flex items-center gap-2">
-              <span
-                className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
-                style={{
-                  background: `color-mix(in oklab, ${accountColor(account)} 18%, transparent)`,
-                  color: accountColor(account),
-                }}
-              >
-                <ItemIcon icon={account.icon} name={account.name} size={11} />
-              </span>
+              <AccountFace account={account} size={22} />
               <span className="text-[12px] text-ink flex-1 truncate">{account.name}</span>
               <span className="num text-[12px] font-semibold text-ink shrink-0">
                 {formatMoney(Math.round(balance))}
