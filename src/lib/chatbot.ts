@@ -4,7 +4,8 @@
 // ahorro a la medida, y registrar deudas desde una factura (imagen o PDF).
 import type { ActionData } from './chatActions'
 import { actionSpec } from './chatActions'
-import { geminiChat, type GeminiTurn } from './ai'
+import { geminiChat, getLastUsage, type GeminiTurn } from './ai'
+import { BASIC_ACTIONS, planLimits } from './plans'
 import { buildPayables, debtEndMonthId, debtPaidCount, debtRemaining, getMonthSummary } from './finance'
 import { carryOver, envelopeTotal, hormigasTotal, realBalance, savingsTotal } from './fund'
 import { PERIOD_LABEL, WORKER_LABEL, formatPayday, nextPaydays, payrollBreakdown, statutoryLabel } from './payroll'
@@ -234,12 +235,13 @@ export async function sendToFin(
   history: ChatMsg[],
   userText: string,
   attachment?: ChatAttachment,
-): Promise<{ text: string; action?: ChatAction }> {
+): Promise<{ text: string; action?: ChatAction; usage: number }> {
+  const limits = planLimits(useFinanceStore.getState().profile.snakePlan)
   const turns: GeminiTurn[] = [
     // contexto fresco en cada envío (los datos cambian)
     { role: 'user', parts: [{ text: `DATOS DEL USUARIO (actualizados ahora):\n${buildUserContext()}` }] },
     { role: 'model', parts: [{ text: 'Entendido, tengo los datos del usuario listos.' }] },
-    ...history.slice(-12).map((m): GeminiTurn => ({
+    ...history.slice(-limits.context).map((m): GeminiTurn => ({
       role: m.role,
       parts: [{ text: m.text || '(adjunto)' }],
     })),
@@ -255,9 +257,17 @@ export async function sendToFin(
   const raw = await geminiChat(turns, {
     system: APP_KNOWLEDGE,
     temperature: 0.6,
-    maxTokens: 2048,
+    maxTokens: limits.maxTokens,
+    model: limits.model,
+    thinking: limits.thinking,
     timeoutMs: attachment ? 40_000 : 18_000,
   })
   const { clean, action } = parseAction(raw)
-  return { text: clean || 'Listo.', action }
+  // en el plan gratis solo se ofrecen las acciones básicas
+  const allowed = action && (limits.allActions || BASIC_ACTIONS.has(action.tipo))
+  return {
+    text: clean || 'Listo.',
+    action: allowed ? action : undefined,
+    usage: getLastUsage().total,
+  }
 }

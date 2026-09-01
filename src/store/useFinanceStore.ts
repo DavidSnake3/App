@@ -3,7 +3,8 @@ import { persist } from 'zustand/middleware'
 import type {
   AnimationPrefs, AppSettings, Budget, Debt, DebtPayment, Expense, FundConfig, Loan,
   MonthData, NotificationPrefs, PayrollConfig, PaySchedule, SavingsConfig,
-  SavingsEnvelope, SubItem, TabId, ThemeSettings, UserProfile, ViewMode, WidgetConf,
+  SavingsEnvelope, SubItem, TabId, ThemeSettings, UsageState, UserProfile, ViewMode,
+  WidgetConf,
 } from '../types/finance'
 import { currentMonthId, todayISO } from '../lib/dates'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
@@ -31,6 +32,7 @@ export const DEFAULT_PROFILE: UserProfile = {
   // quien ya usa la app no recibe la bienvenida del onboarding
   snakeIntro: 'done',
   widgetsTip: true,
+  snakePlan: 'gratis',
 }
 
 /** Widgets del inicio por defecto (el usuario los personaliza a su gusto) */
@@ -130,8 +132,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 // ─── Estado ──────────────────────────────────────────────────────────────────
 
+export const EMPTY_USAGE: UsageState = {
+  dayKey: '', msgs: 0, tokens: 0, attachments: 0,
+  monthKey: '', monthMsgs: 0, monthTokens: 0,
+}
+
 interface FinanceState {
   months: Record<string, MonthData>
+  /** consumo de Snake (mensajes y tokens reales) */
+  usage: UsageState
   debts: Debt[]
   /** préstamos que YO hice (cuentas por cobrar) */
   loans: Loan[]
@@ -205,6 +214,9 @@ interface FinanceActions {
   addLoanPayment(loanId: string, amount: number, note?: string): void
   deleteLoanPayment(loanId: string, paymentId: string): void
 
+  /** registra el consumo REAL de un mensaje de Snake */
+  recordUsage(tokens: number, hadAttachment: boolean): void
+
   /** presupuestos propios (mejora 4) */
   addBudget(b: Omit<Budget, 'id' | 'createdAt' | 'entries'>): void
   updateBudget(id: string, patch: Partial<Omit<Budget, 'id' | 'entries'>>): void
@@ -226,6 +238,7 @@ export interface PersistedShape {
   debts: Debt[]
   loans?: Loan[]
   budgets?: Budget[]
+  usage?: UsageState
   profile: UserProfile
   settings: AppSettings
   activeMonthId: string
@@ -361,6 +374,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       debts: [],
       loans: [],
       budgets: [],
+      usage: EMPTY_USAGE,
       profile: DEFAULT_PROFILE,
       settings: DEFAULT_SETTINGS,
       activeMonthId: currentMonthId(),
@@ -708,6 +722,28 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           ...touch(),
         })),
 
+      recordUsage: (tokens, hadAttachment) =>
+        set((s) => {
+          const now = new Date()
+          const dayKey = now.toISOString().slice(0, 10)
+          const monthKey = dayKey.slice(0, 7)
+          const u = s.usage ?? EMPTY_USAGE
+          const sameDay = u.dayKey === dayKey
+          const sameMonth = u.monthKey === monthKey
+          return {
+            usage: {
+              dayKey,
+              msgs: (sameDay ? u.msgs : 0) + 1,
+              tokens: (sameDay ? u.tokens : 0) + Math.max(0, tokens),
+              attachments: (sameDay ? u.attachments : 0) + (hadAttachment ? 1 : 0),
+              monthKey,
+              monthMsgs: (sameMonth ? u.monthMsgs : 0) + 1,
+              monthTokens: (sameMonth ? u.monthTokens : 0) + Math.max(0, tokens),
+            },
+            ...touch(),
+          }
+        }),
+
       // ── Presupuestos ─────────────────────────────────────────────────────
       addBudget: (b) =>
         set((s) => ({
@@ -759,6 +795,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           debts: healDebts(data.debts),
           loans: data.loans ?? [],
           budgets: data.budgets ?? [],
+          usage: data.usage ?? EMPTY_USAGE,
           profile: { ...DEFAULT_PROFILE, ...data.profile },
           settings: {
             ...DEFAULT_SETTINGS,
@@ -782,6 +819,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           debts: [],
           loans: [],
           budgets: [],
+          usage: EMPTY_USAGE,
           profile: DEFAULT_PROFILE,
           settings: DEFAULT_SETTINGS,
           activeMonthId: currentMonthId(),
@@ -802,6 +840,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           debts: healDebts(p.debts),
           loans: p.loans ?? [],
           budgets: p.budgets ?? [],
+          usage: p.usage ?? EMPTY_USAGE,
           profile: { ...DEFAULT_PROFILE, ...p.profile },
           settings: {
             ...DEFAULT_SETTINGS,
@@ -937,6 +976,7 @@ export function exportState(): PersistedShape {
     debts: s.debts,
     loans: s.loans,
     budgets: s.budgets,
+    usage: s.usage,
     profile: s.profile,
     settings: s.settings,
     activeMonthId: s.activeMonthId,

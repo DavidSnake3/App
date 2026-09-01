@@ -3,7 +3,7 @@ import {
   AlarmClock, ArrowLeft, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
   Briefcase, Camera, Database, Download, FileText, HandCoins, Image as ImageIcon,
   Landmark, LifeBuoy, LogOut, Mail, MessageCircleQuestion, Moon, Palette,
-  PartyPopper, PiggyBank, Play, Plus, Sun, Trash2, Upload,
+  PartyPopper, PiggyBank, Play, Plus, Sparkles, Sun, Trash2, Upload,
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
 import type { AlarmSoundId, Debt, PayPeriod, PaySoundId, PendingAlarm, WorkerType } from '../../types/finance'
@@ -32,11 +32,12 @@ import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AlarmOverlay } from '../overlays/AlarmOverlay'
 import { SavingsSection } from './SavingsSection'
+import { SnakeSection } from './SnakeSection'
 import { ExtraPaysEditor, LegalNotice, StatutoryEditor, TaxEditor } from './PayrollEditors'
 
 const ACCENT_CHOICES = ['#7c5cff', '#10b981', '#0ea5e9', '#f43f5e', '#d97706', '#ec4899', '#14b8a6', '#8b5cf6']
 
-type SectionId = 'cuenta' | 'ingresos' | 'ahorros' | 'apariencia' | 'animaciones' | 'notificaciones' | 'datos' | 'ayuda'
+type SectionId = 'cuenta' | 'ingresos' | 'ahorros' | 'snake' | 'apariencia' | 'animaciones' | 'notificaciones' | 'datos' | 'ayuda'
 
 const SUPPORT_EMAIL = 'davidjosuevillegassalas@gmail.com'
 
@@ -48,6 +49,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
     { id: 'cuenta', icon: <UserIcon size={17} />, title: 'Cuenta y perfil', desc: 'Sesión, nombre, moneda y foto' },
     { id: 'ingresos', icon: <Wallet size={17} />, title: 'Ingresos y planilla', desc: 'Cómo recibes tu dinero, deducciones, plan de pago y saldo real' },
     { id: 'ahorros', icon: <PiggyBank size={17} />, title: 'Ahorros', desc: 'Sobres de ahorro, metas y aportes' },
+    { id: 'snake', icon: <Sparkles size={17} />, title: 'Snake y planes', desc: 'Tu plan, consumo del asistente y capacidad' },
     { id: 'apariencia', icon: <Palette size={17} />, title: 'Tema y apariencia', desc: 'Claro/oscuro, paletas, acento y fondo' },
     { id: 'animaciones', icon: <PartyPopper size={17} />, title: 'Animaciones y sonidos', desc: 'Confeti, sonidos de pago y de alarma, pruebas' },
     { id: 'notificaciones', icon: <Bell size={17} />, title: 'Notificaciones y alarmas', desc: 'Recordatorios, modo alarma y pruebas' },
@@ -76,6 +78,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
           {section === 'cuenta' && <CuentaSection auth={auth} />}
           {section === 'ingresos' && <IngresosSection />}
           {section === 'ahorros' && <SavingsSection />}
+          {section === 'snake' && <SnakeSection auth={auth} />}
           {section === 'apariencia' && <AparienciaSection />}
           {section === 'animaciones' && <AnimacionesSection />}
           {section === 'notificaciones' && <NotificacionesSection />}
@@ -120,7 +123,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNFinance v2.1</p>
+  return <p className="text-[11px] text-muted text-center">SNFinance v2.2</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -1033,7 +1036,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNFinance v2.1 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNFinance v2.2 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

@@ -32,6 +32,24 @@ export interface GeminiOpts {
   temperature?: number
   maxTokens?: number
   timeoutMs?: number
+  /** modelo preferido (según el plan del usuario) */
+  model?: string
+  /** presupuesto de razonamiento: 0 = rápido, más = respuestas más pensadas */
+  thinking?: number
+}
+
+/** Tokens REALES que reportó Gemini en la respuesta */
+export interface GeminiUsage {
+  prompt: number
+  output: number
+  total: number
+}
+
+let lastUsage: GeminiUsage = { prompt: 0, output: 0, total: 0 }
+
+/** Consumo del último mensaje enviado a Gemini */
+export function getLastUsage(): GeminiUsage {
+  return lastUsage
 }
 
 export interface GeminiPart {
@@ -67,8 +85,9 @@ async function requestOnce(model: string, turns: GeminiTurn[], opts: GeminiOpts,
           temperature: opts.temperature ?? 0.7,
           maxOutputTokens: opts.maxTokens ?? 1024,
           ...(opts.json ? { responseMimeType: 'application/json' } : {}),
-          // Sin "pensar" el modelo responde en segundos en lugar de decenas
-          ...(fast ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+          // Sin "pensar" el modelo responde en segundos en lugar de decenas.
+          // Los planes pagos suben el presupuesto de razonamiento.
+          ...(fast ? { thinkingConfig: { thinkingBudget: opts.thinking ?? 0 } } : {}),
         },
       }),
     },
@@ -81,6 +100,14 @@ async function requestOnce(model: string, turns: GeminiTurn[], opts: GeminiOpts,
     throw err
   }
   const data = await res.json()
+  // consumo real reportado por la API (para los planes y la barra de uso)
+  const meta = data?.usageMetadata ?? {}
+  lastUsage = {
+    prompt: Number(meta.promptTokenCount) || 0,
+    output: Number(meta.candidatesTokenCount) || 0,
+    total: Number(meta.totalTokenCount)
+      || (Number(meta.promptTokenCount) || 0) + (Number(meta.candidatesTokenCount) || 0),
+  }
   const parts: { text?: string; thought?: boolean }[] = data?.candidates?.[0]?.content?.parts ?? []
   // ignorar las partes de razonamiento interno del modelo
   const text = parts.filter((p) => !p.thought).map((p) => p.text ?? '').join('')
@@ -99,7 +126,10 @@ export async function geminiChat(turns: GeminiTurn[], opts: GeminiOpts = {}): Pr
   if (!getGeminiKey()) throw new Error('Sin clave de IA')
 
   let lastErr: unknown = null
-  for (const model of MODELS) {
+  const models = opts.model
+    ? [opts.model, ...MODELS.filter((m) => m !== opts.model)]
+    : MODELS
+  for (const model of models) {
     // 1º en modo rápido (sin razonamiento). Si el modelo rechaza la opción
     // (400), un único reintento en modo normal; otros errores → siguiente modelo.
     try {

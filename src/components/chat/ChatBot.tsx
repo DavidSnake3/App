@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Paperclip, RotateCcw, Send, X } from 'lucide-react'
+import { Check, Crown, Paperclip, RotateCcw, Send, X } from 'lucide-react'
 import type { AuthState } from '../../hooks/useAuth'
 import { useChat } from '../../store/useChat'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -8,6 +8,8 @@ import {
   type ChatAttachment, type ChatMsg,
 } from '../../lib/chatbot'
 import { actionSpec } from '../../lib/chatActions'
+import { plan as getPlan } from '../../lib/plans'
+import { PlansSheet } from './PlansSheet'
 import { aiAvailable } from '../../lib/ai'
 import { withLoading } from '../../store/useLoading'
 import { uid as newId } from '../../lib/finance'
@@ -64,6 +66,20 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
   const intent = useChat((s) => s.intent)
   const closeChat = useChat((s) => s.closeChat)
   const profileName = useFinanceStore((s) => s.profile.name)
+  const snakePlan = useFinanceStore((s) => s.profile.snakePlan)
+  const usage = useFinanceStore((s) => s.usage)
+  const recordUsage = useFinanceStore((s) => s.recordUsage)
+  const [plansOpen, setPlansOpen] = useState(false)
+
+  // Cuota del plan: los contadores se reinician cada día
+  const limits = getPlan(snakePlan).limits
+  const hoy = new Date().toISOString().slice(0, 10)
+  const usados = usage?.dayKey === hoy ? usage.msgs : 0
+  const tokensHoy = usage?.dayKey === hoy ? usage.tokens : 0
+  const adjuntosHoy = usage?.dayKey === hoy ? usage.attachments : 0
+  const restantes = Math.max(0, limits.msgsPerDay - usados)
+  const sinCuota = restantes <= 0 || tokensHoy >= limits.tokensPerDay
+  const sinAdjuntos = adjuntosHoy >= limits.attachmentsPerDay
 
   // la intención solo importa al abrir (bienvenida del onboarding)
   const [mountIntent] = useState(intent)
@@ -99,6 +115,7 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
     setBusy(true)
     try {
       const res = await withLoading(THINKING_MSGS, () => sendToFin(history, text, att ?? undefined))
+      recordUsage(res.usage, Boolean(att))
       persist([...base, { id: newId(), role: 'model', text: res.text, action: res.action }])
     } catch {
       persist([...base, {
@@ -115,6 +132,7 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
   const send = async (textOverride?: string) => {
     const text = (textOverride ?? input).trim()
     if ((!text && !attach) || busy) return
+    if (sinCuota) { setPlansOpen(true); return }
     const userMsg: ChatMsg = { id: newId(), role: 'user', text, attachment: attach?.name }
     const base = [...msgs, userMsg]
     persist(base)
@@ -135,6 +153,11 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
 
   const pickFile = async (f: File | undefined) => {
     if (!f) return
+    if (sinAdjuntos) {
+      setAttachMsg(`Tu plan permite ${limits.attachmentsPerDay} ${limits.attachmentsPerDay === 1 ? 'factura' : 'facturas'} al día. Mañana se renueva.`)
+      if (fileRef.current) fileRef.current.value = ''
+      return
+    }
     setAttachMsg('')
     try {
       if (f.type === 'application/pdf') {
@@ -192,6 +215,13 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
           </button>
         )}
         <button
+          onClick={() => setPlansOpen(true)}
+          aria-label="Ver planes de Snake"
+          className="pressable w-9 h-9 rounded-full bg-elevated border border-edge flex items-center justify-center text-muted"
+        >
+          <Crown size={14} />
+        </button>
+        <button
           onClick={closeChat}
           aria-label="Cerrar chat"
           className="pressable w-9 h-9 rounded-full bg-elevated border border-edge flex items-center justify-center text-muted"
@@ -199,6 +229,41 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
           <X size={16} />
         </button>
       </header>
+
+      {/* Cuota del plan: cuánto le queda hoy */}
+      <button
+        onClick={() => setPlansOpen(true)}
+        className="pressable px-4 py-2 border-b border-edge shrink-0 text-left"
+        style={{ background: 'var(--c-card)' }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-muted">
+            Plan <span className="font-semibold text-ink">{getPlan(snakePlan).name}</span>
+            {' · '}
+            {sinCuota ? (
+              <span style={{ color: 'var(--c-danger)' }}>sin mensajes hoy</span>
+            ) : (
+              <>te quedan <span className="num font-semibold text-ink">{restantes}</span> de {limits.msgsPerDay} mensajes</>
+            )}
+          </span>
+          <span className="text-[10.5px] font-semibold" style={{ color: 'var(--app-accent-soft)' }}>
+            Ver planes
+          </span>
+        </div>
+        <div className="h-1.5 rounded-full bg-elevated overflow-hidden mt-1.5">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${Math.min(100, Math.round((usados / limits.msgsPerDay) * 100))}%`,
+              background: sinCuota
+                ? 'var(--c-danger)'
+                : usados / limits.msgsPerDay > 0.75
+                  ? 'var(--c-warning)'
+                  : 'var(--app-gradient)',
+            }}
+          />
+        </div>
+      </button>
 
       {/* Mensajes */}
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
@@ -287,8 +352,30 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
             <RotateCcw size={13} /> Intentar de nuevo
           </button>
         )}
+        {/* Cuota agotada */}
+        {sinCuota && (
+          <div
+            className="rounded-2xl p-3.5 text-center"
+            style={{ background: 'color-mix(in oklab, var(--c-warning) 12%, transparent)' }}
+          >
+            <p className="text-[13px] font-semibold text-ink">Snake descansa hasta mañana</p>
+            <p className="text-[11.5px] text-muted mt-1 leading-snug">
+              Usaste tus {limits.msgsPerDay} mensajes del plan {getPlan(snakePlan).name}.
+              Mañana se renuevan solos.
+            </p>
+            <button
+              onClick={() => setPlansOpen(true)}
+              className="pressable mt-2.5 rounded-xl px-4 py-2 text-[12.5px] font-semibold text-white"
+              style={{ background: 'var(--app-gradient)' }}
+            >
+              Ver planes con más capacidad
+            </button>
+          </div>
+        )}
         <div ref={endRef} />
       </div>
+
+      <PlansSheet open={plansOpen} onClose={() => setPlansOpen(false)} />
 
       {/* Adjunto pendiente / avisos de adjunto */}
       {attach && (
@@ -320,14 +407,15 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
-          placeholder="Escríbele a Snake…"
+          disabled={sinCuota}
+          placeholder={sinCuota ? 'Sin mensajes hoy · toca «Ver planes»' : 'Escríbele a Snake…'}
           rows={1}
           className="input-base flex-1 resize-none max-h-28 !rounded-3xl"
           style={{ minHeight: 44 }}
         />
         <button
           onClick={() => void send()}
-          disabled={busy || (!input.trim() && !attach)}
+          disabled={busy || sinCuota || (!input.trim() && !attach)}
           aria-label="Enviar"
           className="pressable w-11 h-11 rounded-full flex items-center justify-center text-white shrink-0 disabled:opacity-40"
           style={{ background: 'var(--app-gradient)' }}

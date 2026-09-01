@@ -237,6 +237,24 @@ export interface UserProfile {
   snakeIntro: 'plan' | 'comprobante' | 'done' | 'skipped'
   /** ya vio el aviso de que el inicio se personaliza con widgets */
   widgetsTip?: boolean
+  /** plan de Snake: 'gratis' | 'plus' | 'premium' */
+  snakePlan?: string
+}
+
+/**
+ * Consumo de Snake. Los tokens son los REALES que reporta Gemini
+ * (usageMetadata), no estimaciones.
+ */
+export interface UsageState {
+  /** 'yyyy-MM-dd' del día que se está contando */
+  dayKey: string
+  msgs: number
+  tokens: number
+  attachments: number
+  /** 'yyyy-MM' del mes que se está contando */
+  monthKey: string
+  monthMsgs: number
+  monthTokens: number
 }
 
 // ─── Widgets del inicio (personalizables) ────────────────────────────────────
