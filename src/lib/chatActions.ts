@@ -4,6 +4,7 @@ import type { ExpenseKind, Recurrence } from '../types/finance'
 import { useFinanceStore } from '../store/useFinanceStore'
 import { buildPayables, uid } from './finance'
 import { countryPreset, presetExtraPays, presetStatutory } from './payroll'
+import { FINANCIAL_PLANS } from './financialPlans'
 import { formatMoney } from './format'
 import { PERIOD_LABEL } from './payroll'
 
@@ -69,6 +70,26 @@ function recurrenceOf(v: unknown): Recurrence {
     annual: 'annual', anual: 'annual',
   }
   return map[r] ?? 'once'
+}
+
+/** Busca un préstamo por el nombre de la persona */
+function findLoan(person: string) {
+  const q = person.toLowerCase().trim()
+  if (!q) return null
+  const loans = st().loans.filter((l) => l.amount > l.payments.reduce((s, p) => s + p.amount, 0))
+  return loans.find((l) => l.person.toLowerCase() === q)
+    ?? loans.find((l) => l.person.toLowerCase().includes(q))
+    ?? null
+}
+
+/** Busca un presupuesto por nombre */
+function findBudget(name: string) {
+  const q = name.toLowerCase().trim()
+  if (!q) return null
+  const list = st().budgets
+  return list.find((b) => b.name.toLowerCase() === q)
+    ?? list.find((b) => b.name.toLowerCase().includes(q))
+    ?? null
 }
 
 /** Busca un pago del mes por nombre (tolerante a mayúsculas y parciales) */
@@ -270,6 +291,82 @@ export const ACTIONS: Record<string, ActionSpec> = {
     valid: (d) => num(d.monto ?? d.amount) >= 0 && (num(d.monto ?? d.amount) > 0 || d.monto === 0),
     summary: (d) => `Hoy tienes ${money(d.monto ?? d.amount)} en el banco`,
     run: (d) => st().setFundNow(Math.round(num(d.monto ?? d.amount))),
+  },
+
+  prestar: {
+    title: 'Le presté plata a alguien',
+    cta: 'Registrar el préstamo',
+    done: 'Préstamo registrado: lo ves en Deudas → Me deben',
+    valid: (d) => str(d.persona ?? d.name).length > 0 && num(d.monto ?? d.amount) > 0,
+    summary: (d) => `${str(d.persona ?? d.name)} · ${money(d.monto ?? d.amount)}`,
+    run: (d) => st().addLoan({
+      person: str(d.persona ?? d.name, 'Alguien').slice(0, 40),
+      amount: Math.round(num(d.monto ?? d.amount)),
+      dateISO: str(d.fecha) || new Date().toISOString().slice(0, 10),
+      note: str(d.nota) || undefined,
+    }),
+  },
+
+  abono_prestamo: {
+    title: 'Me abonaron un préstamo',
+    cta: 'Registrar el abono',
+    done: 'Abono registrado',
+    valid: (d) => {
+      const l = findLoan(str(d.persona ?? d.name))
+      return Boolean(l) && num(d.monto ?? d.amount) > 0
+    },
+    summary: (d) => {
+      const l = findLoan(str(d.persona ?? d.name))
+      return l
+        ? `${l.person} te abonó ${money(d.monto ?? d.amount)}`
+        : `No encontré a "${str(d.persona ?? d.name)}" en tus préstamos`
+    },
+    run: (d) => {
+      const l = findLoan(str(d.persona ?? d.name))
+      if (l) st().addLoanPayment(l.id, Math.round(num(d.monto ?? d.amount)), 'Abono')
+    },
+  },
+
+  crear_presupuesto: {
+    title: 'Nuevo presupuesto',
+    cta: 'Crear el presupuesto',
+    done: 'Presupuesto creado: lo ves en la pestaña Mes',
+    valid: (d) => str(d.name).length > 0 && num(d.monto ?? d.amount) > 0,
+    summary: (d) => `${str(d.name)} · ${money(d.monto ?? d.amount)} ${str(d.periodo) === 'weekly' ? 'por semana' : 'por mes'}`,
+    run: (d) => st().addBudget({
+      name: str(d.name, 'Presupuesto').slice(0, 40),
+      amount: Math.round(num(d.monto ?? d.amount)),
+      period: str(d.periodo) === 'weekly' ? 'weekly' : 'monthly',
+    }),
+  },
+
+  gasto_presupuesto: {
+    title: 'Gasto en un presupuesto',
+    cta: 'Anotarlo',
+    done: 'Gasto anotado en tu presupuesto',
+    valid: (d) => Boolean(findBudget(str(d.presupuesto ?? d.name))) && num(d.monto ?? d.amount) > 0,
+    summary: (d) => {
+      const b = findBudget(str(d.presupuesto ?? d.name))
+      return b
+        ? `${money(d.monto ?? d.amount)} en ${b.name}`
+        : `No encontré el presupuesto "${str(d.presupuesto ?? d.name)}"`
+    },
+    run: (d) => {
+      const b = findBudget(str(d.presupuesto ?? d.name))
+      if (b) st().addBudgetEntry(b.id, Math.round(num(d.monto ?? d.amount)), str(d.nota) || undefined)
+    },
+  },
+
+  elegir_plan: {
+    title: 'Plan financiero',
+    cta: 'Usar este plan',
+    done: 'Plan activado: lo ves en la pestaña Mes',
+    valid: (d) => Boolean(FINANCIAL_PLANS.find((p) => p.id === str(d.plan ?? d.id))),
+    summary: (d) => {
+      const p = FINANCIAL_PLANS.find((x) => x.id === str(d.plan ?? d.id))
+      return p ? `${p.name} — ${p.tagline}` : ''
+    },
+    run: (d) => st().setSettings({ financialPlanId: str(d.plan ?? d.id) }),
   },
 
   ingreso_extra: {

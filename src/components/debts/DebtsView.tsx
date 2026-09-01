@@ -8,6 +8,8 @@ import {
 import { formatMoney } from '../../lib/format'
 import { monthLabel } from '../../lib/dates'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { Segmented } from '../ui/Segmented'
+import { LoansView } from './LoansView'
 import { AddDebtSheet } from './AddDebtSheet'
 import { DebtDetailSheet } from './DebtDetailSheet'
 import { DebtTrend } from './DebtTrend'
@@ -19,6 +21,7 @@ export function DebtsView() {
   const month = useFinanceStore((s) => s.months[monthId])
   const deleteDebt = useFinanceStore((s) => s.deleteDebt)
 
+  const [tab, setTab] = useState<'debo' | 'deben'>('debo')
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Debt | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -37,10 +40,25 @@ export function DebtsView() {
     <div className="flex-1 overflow-y-auto overscroll-contain">
       <div className="px-4 pb-32 pt-2 flex flex-col gap-4">
         <header>
-          <h2 className="font-display text-[22px] font-bold text-ink">Deudas</h2>
-          <p className="text-[13px] text-muted mt-0.5">Controla tus cuotas y sal de deudas con estrategia</p>
+          <h2 className="font-display text-[22px] font-bold text-ink">Deudas y préstamos</h2>
+          <p className="text-[13px] text-muted mt-0.5">
+            {tab === 'debo' ? 'Controla tus cuotas y sal de deudas con estrategia' : 'Lo que le prestaste a otros y sus abonos'}
+          </p>
         </header>
 
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'debo', label: 'Yo debo' },
+            { value: 'deben', label: 'Me deben' },
+          ]}
+        />
+
+        {tab === 'deben' && <LoansView />}
+
+        {tab === 'debo' && (
+        <>
         {/* Resumen de deudas */}
         <div className="card p-4 grid grid-cols-2 gap-4 relative overflow-hidden">
           <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'var(--app-gradient)' }} />
@@ -167,9 +185,12 @@ export function DebtsView() {
             ))}
           </section>
         )}
+        </>
+        )}
       </div>
 
-      {/* FAB */}
+      {/* Botón de agregar deuda */}
+      {tab === 'debo' && (
       <button
         onClick={() => { setEditing(null); setAddOpen(true) }}
         aria-label="Agregar deuda"
@@ -178,6 +199,7 @@ export function DebtsView() {
       >
         <Plus size={26} />
       </button>
+      )}
 
       <AddDebtSheet open={addOpen} onClose={() => { setAddOpen(false); setEditing(null) }} editing={editing} />
       <DebtDetailSheet

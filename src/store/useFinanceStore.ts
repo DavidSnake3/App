@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
-  AnimationPrefs, AppSettings, Debt, DebtPayment, Expense, FundConfig, MonthData,
-  NotificationPrefs, PayrollConfig, PaySchedule, SavingsConfig, SavingsEnvelope,
-  SubItem, TabId, ThemeSettings, UserProfile, ViewMode, WidgetConf,
+  AnimationPrefs, AppSettings, Budget, Debt, DebtPayment, Expense, FundConfig, Loan,
+  MonthData, NotificationPrefs, PayrollConfig, PaySchedule, SavingsConfig,
+  SavingsEnvelope, SubItem, TabId, ThemeSettings, UserProfile, ViewMode, WidgetConf,
 } from '../types/finance'
 import { currentMonthId, todayISO } from '../lib/dates'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
@@ -133,6 +133,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
 interface FinanceState {
   months: Record<string, MonthData>
   debts: Debt[]
+  /** préstamos que YO hice (cuentas por cobrar) */
+  loans: Loan[]
+  /** presupuestos propios por categoría */
+  budgets: Budget[]
   profile: UserProfile
   settings: AppSettings
   activeMonthId: string
@@ -191,8 +195,22 @@ interface FinanceActions {
   setFundNow(baseAmount: number): void
   disableFund(): void
 
-  addHormiga(monthId: string, h: { name: string; amount: number }): void
+  addHormiga(monthId: string, h: { name: string; amount: number; budgetId?: string }): void
   deleteHormiga(monthId: string, id: string): void
+
+  /** préstamos propios: le presté plata a alguien (mejora 1) */
+  addLoan(l: Omit<Loan, 'id' | 'createdAt' | 'payments'>): void
+  updateLoan(id: string, patch: Partial<Omit<Loan, 'id' | 'payments'>>): void
+  deleteLoan(id: string): void
+  addLoanPayment(loanId: string, amount: number, note?: string): void
+  deleteLoanPayment(loanId: string, paymentId: string): void
+
+  /** presupuestos propios (mejora 4) */
+  addBudget(b: Omit<Budget, 'id' | 'createdAt' | 'entries'>): void
+  updateBudget(id: string, patch: Partial<Omit<Budget, 'id' | 'entries'>>): void
+  deleteBudget(id: string): void
+  addBudgetEntry(budgetId: string, amount: number, note?: string): void
+  deleteBudgetEntry(budgetId: string, entryId: string): void
   /** salario neto manual (sin planilla): actualiza default + mes actual y futuros */
   setDefaultSalaryEverywhere(v: number): void
   setViewMode(mode: ViewMode): void
@@ -206,6 +224,8 @@ interface FinanceActions {
 export interface PersistedShape {
   months: Record<string, MonthData>
   debts: Debt[]
+  loans?: Loan[]
+  budgets?: Budget[]
   profile: UserProfile
   settings: AppSettings
   activeMonthId: string
@@ -339,6 +359,8 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
     (set, get) => ({
       months: {},
       debts: [],
+      loans: [],
+      budgets: [],
       profile: DEFAULT_PROFILE,
       settings: DEFAULT_SETTINGS,
       activeMonthId: currentMonthId(),
@@ -649,7 +671,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
 
       setFundNow: (baseAmount) =>
         set((s) => ({
-          settings: { ...s.settings, fund: makeFundConfig(baseAmount, s.months, s.debts, s.settings) },
+          settings: { ...s.settings, fund: makeFundConfig(baseAmount, s.months, s.debts, s.settings, s.loans) },
           ...touch(),
         })),
       disableFund: () =>
@@ -660,6 +682,56 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           ...m,
           hormigas: [...(m.hormigas ?? []), { ...h, id: uid(), dateISO: todayISO().slice(0, 10) }],
         }))),
+
+      // ── Préstamos propios ────────────────────────────────────────────────
+      addLoan: (l) =>
+        set((s) => ({
+          loans: [...s.loans, { ...l, id: uid(), payments: [], createdAt: todayISO() }],
+          ...touch(),
+        })),
+      updateLoan: (id, patch) =>
+        set((s) => ({ loans: s.loans.map((l) => (l.id === id ? { ...l, ...patch } : l)), ...touch() })),
+      deleteLoan: (id) =>
+        set((s) => ({ loans: s.loans.filter((l) => l.id !== id), ...touch() })),
+      addLoanPayment: (loanId, amount, note) =>
+        set((s) => ({
+          loans: s.loans.map((l) => l.id === loanId
+            ? { ...l, payments: [...l.payments, { id: uid(), amount, dateISO: todayISO().slice(0, 10), note }] }
+            : l),
+          ...touch(),
+        })),
+      deleteLoanPayment: (loanId, paymentId) =>
+        set((s) => ({
+          loans: s.loans.map((l) => l.id === loanId
+            ? { ...l, payments: l.payments.filter((p) => p.id !== paymentId) }
+            : l),
+          ...touch(),
+        })),
+
+      // ── Presupuestos ─────────────────────────────────────────────────────
+      addBudget: (b) =>
+        set((s) => ({
+          budgets: [...s.budgets, { ...b, id: uid(), entries: [], createdAt: todayISO() }],
+          ...touch(),
+        })),
+      updateBudget: (id, patch) =>
+        set((s) => ({ budgets: s.budgets.map((b) => (b.id === id ? { ...b, ...patch } : b)), ...touch() })),
+      deleteBudget: (id) =>
+        set((s) => ({ budgets: s.budgets.filter((b) => b.id !== id), ...touch() })),
+      addBudgetEntry: (budgetId, amount, note) =>
+        set((s) => ({
+          budgets: s.budgets.map((b) => b.id === budgetId
+            ? { ...b, entries: [...b.entries, { id: uid(), amount, dateISO: todayISO().slice(0, 10), note }] }
+            : b),
+          ...touch(),
+        })),
+      deleteBudgetEntry: (budgetId, entryId) =>
+        set((s) => ({
+          budgets: s.budgets.map((b) => b.id === budgetId
+            ? { ...b, entries: b.entries.filter((e) => e.id !== entryId) }
+            : b),
+          ...touch(),
+        })),
       deleteHormiga: (monthId, id) =>
         set((s) => patchMonth(s, monthId, (m) => ({
           ...m,
@@ -685,6 +757,8 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set({
           months: data.months ?? {},
           debts: healDebts(data.debts),
+          loans: data.loans ?? [],
+          budgets: data.budgets ?? [],
           profile: { ...DEFAULT_PROFILE, ...data.profile },
           settings: {
             ...DEFAULT_SETTINGS,
@@ -706,6 +780,8 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set({
           months: {},
           debts: [],
+          loans: [],
+          budgets: [],
           profile: DEFAULT_PROFILE,
           settings: DEFAULT_SETTINGS,
           activeMonthId: currentMonthId(),
@@ -715,7 +791,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
     }),
     {
       name: 'finance-app-state',
-      version: 7,
+      version: 8,
       // Merge profundo de settings: cualquier estado guardado sin los campos
       // nuevos (clientes viejos, nube) recibe los defaults sin romper nada
       merge: (persisted, current) => {
@@ -724,6 +800,8 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           ...current,
           ...p,
           debts: healDebts(p.debts),
+          loans: p.loans ?? [],
+          budgets: p.budgets ?? [],
           profile: { ...DEFAULT_PROFILE, ...p.profile },
           settings: {
             ...DEFAULT_SETTINGS,
@@ -771,6 +849,21 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
               paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...(s.settings as Partial<AppSettings>)?.paySchedule },
               savings: { ...DEFAULT_SAVINGS, ...(s.settings as Partial<AppSettings>)?.savings },
               homeWidgets: s.settings?.homeWidgets ?? DEFAULT_WIDGETS,
+            },
+          } as FinanceState & FinanceActions
+        }
+        if (version < 8) {
+          // v7 → v8: préstamos propios, presupuestos y plan financiero
+          const s = persisted as FinanceState
+          return {
+            ...s,
+            loans: s.loans ?? [],
+            budgets: s.budgets ?? [],
+            profile: { ...DEFAULT_PROFILE, ...s.profile },
+            settings: {
+              ...DEFAULT_SETTINGS,
+              ...s.settings,
+              payroll: healPayroll((s.settings as Partial<AppSettings>)?.payroll),
             },
           } as FinanceState & FinanceActions
         }
@@ -842,6 +935,8 @@ export function exportState(): PersistedShape {
   return {
     months: s.months,
     debts: s.debts,
+    loans: s.loans,
+    budgets: s.budgets,
     profile: s.profile,
     settings: s.settings,
     activeMonthId: s.activeMonthId,

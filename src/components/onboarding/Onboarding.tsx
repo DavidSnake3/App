@@ -13,6 +13,7 @@ import {
   presetExtraPays, presetLabel, presetPct, presetStatutory,
 } from '../../lib/payroll'
 import { PALETTES } from '../../lib/themes'
+import { FINANCIAL_PLANS } from '../../lib/financialPlans'
 import { celebrate } from '../../lib/fx'
 import { requestPermission } from '../../lib/notifications'
 import { CurrencyInput } from '../ui/CurrencyInput'
@@ -30,7 +31,7 @@ const SUGGESTED_SERVICES: ServiceDraft[] = [
   { name: 'Streaming', amount: 0, on: false, dueDay: 10 },
 ]
 
-type StepId = 'bienvenida' | 'datos' | 'ingresos' | 'modo' | 'servicios' | 'final' | 'snake'
+type StepId = 'bienvenida' | 'datos' | 'ingresos' | 'plan' | 'modo' | 'servicios' | 'final' | 'snake'
 
 /** Cómo recibe su dinero el usuario (define si hay deducciones de planilla) */
 const WORKER_OPTIONS: { id: WorkerType; title: string; desc: string; icon: React.ReactNode }[] = [
@@ -81,6 +82,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   const setPaySchedule = useFinanceStore((s) => s.setPaySchedule)
   const setTheme = useFinanceStore((s) => s.setTheme)
   const setNotifications = useFinanceStore((s) => s.setNotifications)
+  const setSettings = useFinanceStore((s) => s.setSettings)
   const ensureMonthExists = useFinanceStore((s) => s.ensureMonthExists)
   const addExpense = useFinanceStore((s) => s.addExpense)
   const animPrefs = useFinanceStore((s) => s.settings.animations)
@@ -89,8 +91,8 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   // Con cuenta de Google no preguntamos nombre/correo/teléfono
   const steps: StepId[] = useMemo(
     () => user
-      ? ['bienvenida', 'ingresos', 'modo', 'servicios', 'final', 'snake']
-      : ['bienvenida', 'datos', 'ingresos', 'modo', 'servicios', 'final', 'snake'],
+      ? ['bienvenida', 'ingresos', 'plan', 'modo', 'servicios', 'final', 'snake']
+      : ['bienvenida', 'datos', 'ingresos', 'plan', 'modo', 'servicios', 'final', 'snake'],
     [user],
   )
 
@@ -136,6 +138,8 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   const [snakeChoice, setSnakeChoice] = useState<'plan' | 'comprobante' | null>(null)
   // paso "Personaliza": desplegar tema/animaciones/sonidos completos
   const [showMore, setShowMore] = useState(false)
+  // plan financiero elegido (50/30/20 y compañía)
+  const [planId, setPlanId] = useState<string | undefined>('50-30-20')
 
   const canNext = useMemo(() => {
     if (step === 'datos') return name.trim().length >= 2
@@ -227,6 +231,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
         children: [],
       })
     }
+    if (planId) setSettings({ financialPlanId: planId })
     if (notifOn) setNotifications({ enabled: true })
     celebrate(animPrefs)
   }
@@ -441,6 +446,62 @@ export function Onboarding({ user }: { user: AppUser | null }) {
                 Prefiero configurarlo después
               </button>
             )}
+          </StepShell>
+        )}
+
+        {step === 'plan' && (
+          <StepShell
+            title="¿Cómo querés repartir tu dinero?"
+            subtitle="Elegí una regla y la app te dice mes a mes si vas dentro o te pasaste. Podés cambiarla o quitarla después."
+          >
+            <div className="flex flex-col gap-2.5">
+              {FINANCIAL_PLANS.map((p) => {
+                const activo = planId === p.id
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setPlanId(activo ? undefined : p.id)}
+                    className="pressable card p-3.5 text-left"
+                    style={activo
+                      ? { borderColor: 'var(--app-accent)', background: 'color-mix(in oklab, var(--app-accent) 8%, var(--c-card))' }
+                      : undefined}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-display text-[16px] font-bold text-ink flex-1">{p.name}</span>
+                      {activo && <Check size={16} style={{ color: 'var(--app-accent-soft)' }} />}
+                    </div>
+                    <p className="text-[12px] text-muted mt-0.5">{p.tagline}</p>
+                    <div className="flex h-2.5 rounded-full overflow-hidden mt-2">
+                      {p.buckets.map((b) => (
+                        <span key={b.key} style={{ width: `${b.pct}%`, background: b.color }} />
+                      ))}
+                    </div>
+                    {activo && (
+                      <div className="anim-fade mt-2.5 flex flex-col gap-1.5">
+                        {p.buckets.map((b) => (
+                          <div key={b.key} className="flex gap-2">
+                            <span className="num text-[12.5px] font-bold shrink-0 w-9 text-right" style={{ color: b.color }}>
+                              {b.pct}%
+                            </span>
+                            <span className="flex-1">
+                              <span className="block text-[12px] font-semibold text-ink">{b.label}</span>
+                              <span className="block text-[11px] text-muted leading-snug">{b.desc}</span>
+                            </span>
+                          </div>
+                        ))}
+                        <p className="text-[10.5px] text-muted mt-0.5">{p.source}</p>
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            <button
+              onClick={() => { setPlanId(undefined); setIdx((i) => Math.min(steps.length - 1, i + 1)) }}
+              className="pressable text-[13px] text-muted underline decoration-dotted self-start"
+            >
+              Sin plan por ahora
+            </button>
           </StepShell>
         )}
 

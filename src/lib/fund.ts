@@ -2,7 +2,10 @@
 // Refleja lo que hay EN EL BANCO: base que el usuario escribe + lo que llega
 // por quincenas − lo pagado − gastos hormiga − aportes al ahorro. El sobrante
 // de cada mes se arrastra solo al siguiente (no es ahorro: es lo que sobró).
-import type { AppSettings, Debt, FundConfig, MonthData, SavingsDeposit, SavingsEnvelope } from '../types/finance'
+import type {
+  AppSettings, Debt, FundConfig, Loan, MonthData, SavingsDeposit, SavingsEnvelope,
+} from '../types/finance'
+import { loanFlowInMonth } from './loans'
 import { currentMonthId, daysInMonth, parseMonthId } from './dates'
 import { buildPayables, getMonthSummary } from './finance'
 
@@ -36,8 +39,33 @@ export function receivedInMonth(m: MonthData, settings: AppSettings, today = new
     for (let d = 1; d <= day; d++) {
       if (new Date(year, month - 1, d).getDay() === targetJs) count++
     }
+    // si el mes tiene 5 viernes, se reciben 5 pagos: es real, no se topa
     const perWeek = (salary * 12) / 52
-    return round2(Math.min(salary * 1.3, count * perWeek) + m.income.additional)
+    return round2(count * perWeek + m.income.additional)
+  }
+
+  if (sch.frequency === 'daily') {
+    const perDay = salary / daysInMonth(m.id)
+    return round2(perDay * day + m.income.additional)
+  }
+
+  if (sch.frequency === 'fortnightly') {
+    // pagos cada 14 días contados desde la fecha de referencia
+    const perPay = (salary * 12) / 26
+    const anchor = sch.anchorISO ? new Date(sch.anchorISO) : null
+    const { year, month } = parseMonthId(m.id)
+    let count = 0
+    if (anchor && !Number.isNaN(anchor.getTime())) {
+      const cur = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())
+      let guard = 0
+      while (cur <= today && guard++ < 400) {
+        if (cur.getFullYear() === year && cur.getMonth() === month - 1) count++
+        cur.setDate(cur.getDate() + 14)
+      }
+    } else {
+      count = day >= 28 ? 2 : day >= 14 ? 1 : 0
+    }
+    return round2(count * perPay + m.income.additional)
   }
 
   // Cada pago = parte igual del neto (quincenal: mitad y mitad, con las
@@ -86,11 +114,22 @@ export function envelopeTotal(e: SavingsEnvelope): number {
   return round2(Math.max(0, e.initial) + e.deposits.reduce((s, d) => s + d.amount, 0))
 }
 
-/** Flujo neto de un mes: recibido − pagado − hormigas − aportes al ahorro */
-export function monthFlow(m: MonthData, debts: Debt[], settings: AppSettings, today = new Date()): number {
+/**
+ * Flujo neto de un mes: recibido − pagado − hormigas − aportes al ahorro,
+ * más el efecto de los préstamos propios (prestar saca plata, el abono la
+ * devuelve). `loans` es opcional para no romper llamadas antiguas.
+ */
+export function monthFlow(
+  m: MonthData,
+  debts: Debt[],
+  settings: AppSettings,
+  today = new Date(),
+  loans: Loan[] = [],
+): number {
   const s = getMonthSummary(m, debts)
   return round2(
-    receivedInMonth(m, settings, today) - s.paidAmount - hormigasTotal(m) - depositsInMonth(settings, m.id),
+    receivedInMonth(m, settings, today) - s.paidAmount - hormigasTotal(m)
+    - depositsInMonth(settings, m.id) + loanFlowInMonth(loans, m.id),
   )
 }
 
@@ -104,6 +143,7 @@ export function fundFlow(
   settings: AppSettings,
   anchorMonthId: string,
   today = new Date(),
+  loans: Loan[] = [],
 ): number {
   const nowId = currentMonthId()
   let flow = 0
@@ -111,7 +151,7 @@ export function fundFlow(
   for (const m of Object.values(months)) {
     if (m.id < anchorMonthId || m.id > nowId) continue
     covered.add(m.id)
-    flow += monthFlow(m, debts, settings, today)
+    flow += monthFlow(m, debts, settings, today, loans)
   }
   // aportes en meses sin registro (no quedaron cubiertos arriba)
   for (const d of allDeposits(settings)) {
@@ -127,10 +167,13 @@ export function realBalance(
   debts: Debt[],
   settings: AppSettings,
   today = new Date(),
+  loans: Loan[] = [],
 ): number | null {
   const f = settings.fund
   if (!f?.enabled || !f.anchorMonthId) return null
-  return round2(f.baseAmount + fundFlow(months, debts, settings, f.anchorMonthId, today) - f.snapshot)
+  return round2(
+    f.baseAmount + fundFlow(months, debts, settings, f.anchorMonthId, today, loans) - f.snapshot,
+  )
 }
 
 /** Config lista para guardar al fijar "tengo X hoy" (captura el snapshot) */
@@ -139,13 +182,14 @@ export function makeFundConfig(
   months: Record<string, MonthData>,
   debts: Debt[],
   settings: AppSettings,
+  loans: Loan[] = [],
 ): FundConfig {
   const anchorMonthId = currentMonthId()
   return {
     enabled: true,
     baseAmount,
     anchorMonthId,
-    snapshot: fundFlow(months, debts, settings, anchorMonthId),
+    snapshot: fundFlow(months, debts, settings, anchorMonthId, new Date(), loans),
     setAtISO: new Date().toISOString(),
   }
 }
@@ -155,6 +199,7 @@ export function carryOver(
   months: Record<string, MonthData>,
   debts: Debt[],
   settings: AppSettings,
+  loans: Loan[] = [],
 ): number {
   const f = settings.fund
   if (!f?.enabled || !f.anchorMonthId) return 0
@@ -162,7 +207,7 @@ export function carryOver(
   let flow = 0
   for (const m of Object.values(months)) {
     if (m.id < f.anchorMonthId || m.id >= nowId) continue
-    flow += monthFlow(m, debts, settings)
+    flow += monthFlow(m, debts, settings, new Date(), loans)
   }
   return round2(flow)
 }
@@ -197,12 +242,13 @@ export function prevMonthLeftover(
   debts: Debt[],
   settings: AppSettings,
   monthId: string,
+  loans: Loan[] = [],
 ): number {
   const ids = Object.keys(months).filter((id) => id < monthId).sort()
   const prevId = ids[ids.length - 1]
   const prev = prevId ? months[prevId] : undefined
   if (!prev) return 0
-  return monthFlow(prev, debts, settings)
+  return monthFlow(prev, debts, settings, new Date(), loans)
 }
 
 /** Desglose por tipo de pago con subtotales (mejora 17) */

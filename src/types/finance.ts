@@ -51,6 +51,8 @@ export interface Expense {
   children: SubItem[]    // sub-hijos (punto 3)
   note?: string
   icon?: string          // ícono elegido por el usuario (punto: iconos)
+  /** presupuesto al que se carga este pago (opcional) */
+  budgetId?: string
   reminder?: ReminderPref
   anchorMonthId?: string // mes donde se creó (para recurrencias > 1 mes)
   createdAt: string
@@ -68,6 +70,8 @@ export interface AntExpense {
   name: string
   amount: number
   dateISO: string // 'yyyy-MM-dd'
+  /** presupuesto al que se carga (opcional) */
+  budgetId?: string
 }
 
 export interface MonthData {
@@ -113,6 +117,57 @@ export interface Debt {
   /** la cuota se deduce automáticamente de la planilla (no aparece en el mes) */
   viaPlanilla?: boolean
   reminder?: ReminderPref
+  createdAt: string
+}
+
+/** Abono que me hizo la persona a la que le presté */
+export interface LoanPayment {
+  id: string
+  amount: number
+  dateISO: string
+  note?: string
+}
+
+/**
+ * Préstamo PROPIO: plata que le presté a alguien. Es una cuenta por cobrar:
+ * cuánto le presté, desde cuándo y qué me ha ido abonando.
+ */
+export interface Loan {
+  id: string
+  /** a quién le presté */
+  person: string
+  phone?: string
+  /** cuánto le presté en total */
+  amount: number
+  /** desde cuándo me debe */
+  dateISO: string
+  /** fecha en que quedó de pagar (opcional) */
+  dueDateISO?: string
+  note?: string
+  payments: LoanPayment[]
+  createdAt: string
+}
+
+/** Movimiento anotado dentro de un presupuesto */
+export interface BudgetEntry {
+  id: string
+  amount: number
+  note?: string
+  dateISO: string
+}
+
+/**
+ * Presupuesto propio: un límite de gasto que el usuario define (ej. "Comida
+ * de la U: 30 000 al mes") y va anotando lo que gasta ahí.
+ */
+export interface Budget {
+  id: string
+  name: string
+  /** límite del período */
+  amount: number
+  period: 'weekly' | 'monthly'
+  icon?: string
+  entries: BudgetEntry[]
   createdAt: string
 }
 
@@ -315,7 +370,9 @@ export interface PayrollConfig {
 
 /** Plan de pago del salario: cuándo y cuánto te llega */
 export interface PaySchedule {
-  frequency: 'weekly' | 'biweekly' | 'monthly'
+  frequency: PayPeriod
+  /** fecha de referencia para pagos cada 14 días ('yyyy-MM-dd') */
+  anchorISO?: string
   /** días del mes de pago (mensual: [30]; quincenal: [15, 30]) */
   paydays: number[]
   /** día de la semana para pago semanal (0=Lun … 6=Dom) */
@@ -404,6 +461,10 @@ export interface AppSettings {
   savings: SavingsConfig
   /** saldo real: control total del dinero en el banco */
   fund: FundConfig
+  /** regla de reparto elegida (50/30/20, 70/20/10…) */
+  financialPlanId?: string
+  /** porcentajes personalizados del plan (si los cambió) */
+  financialPlanCustom?: { key: string; pct: number }[]
 }
 
 // ─── Proyecciones (punto 13) ─────────────────────────────────────────────────

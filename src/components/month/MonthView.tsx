@@ -14,6 +14,8 @@ import { AddExpenseSheet } from './AddExpenseSheet'
 import { ExpenseDetailSheet } from './ExpenseDetailSheet'
 import { HormigasCard } from './FundCards'
 import { BalanceCard } from './BalanceCard'
+import { PlanCard } from './PlanCard'
+import { BudgetsCard } from './BudgetsCard'
 import { buildMonthCardBlob } from '../../lib/shareCard'
 import { downloadWorkbook } from '../../lib/excel'
 import { withLoading } from '../../store/useLoading'
@@ -139,6 +141,10 @@ export function MonthView() {
         </div>
 
         <BalanceCard />
+
+        {/* Plan financiero y presupuestos (mejoras 3 y 4) */}
+        <PlanCard />
+        <BudgetsCard />
 
         {/* Gastos hormiga */}
         <HormigasCard />

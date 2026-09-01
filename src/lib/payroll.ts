@@ -96,9 +96,15 @@ export interface PayrollBreakdown {
 /** Impuesto progresivo sobre el ingreso mensual gravable */
 export function progressiveTax(monthlyTaxable: number, brackets: TaxBracket[]): number {
   if (monthlyTaxable <= 0 || !brackets.length) return 0
+  // los tramos deben ir de menor a mayor; el "sin límite" siempre al final
+  const sorted = [...brackets].sort((a, b) => {
+    if (a.upTo == null) return 1
+    if (b.upTo == null) return -1
+    return a.upTo - b.upTo
+  })
   let tax = 0
   let prev = 0
-  for (const b of brackets) {
+  for (const b of sorted) {
     const top = b.upTo == null ? Infinity : b.upTo
     if (monthlyTaxable <= prev) break
     const slice = Math.min(monthlyTaxable, top) - prev
@@ -265,6 +271,32 @@ export function paydayAmounts(schedule: PaySchedule, bd: PayrollBreakdown): { am
 export function nextPaydays(schedule: PaySchedule, bd: PayrollBreakdown, n = 4, from = new Date()): PaydayInfo[] {
   const out: PaydayInfo[] = []
   const start = new Date(from.getFullYear(), from.getMonth(), from.getDate())
+
+  // Diario: todos los días, el neto mensual repartido entre 30
+  if (schedule.frequency === 'daily') {
+    const per = round2(bd.monthlyNet / 30)
+    for (let i = 0; i < n; i++) {
+      const d = new Date(start)
+      d.setDate(d.getDate() + i)
+      out.push({ date: d, amount: per, adjusted: false })
+    }
+    return out
+  }
+
+  // Cada 14 días: se cuenta desde la fecha de referencia (anchorISO)
+  if (schedule.frequency === 'fortnightly') {
+    const per = round2((bd.monthlyNet * 12) / 26)
+    const anchor = schedule.anchorISO ? new Date(schedule.anchorISO) : new Date(start)
+    const d = Number.isNaN(anchor.getTime()) ? new Date(start) : anchor
+    const cursor = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    while (cursor < start) cursor.setDate(cursor.getDate() + 14)
+    for (let i = 0; i < n; i++) {
+      const pay = adjustForWeekend(new Date(cursor), schedule.adjustWeekend)
+      out.push({ date: pay, amount: per, adjusted: pay.getTime() !== cursor.getTime() })
+      cursor.setDate(cursor.getDate() + 14)
+    }
+    return out
+  }
 
   if (schedule.frequency === 'weekly') {
     // día de la semana (0=Lun … 6=Dom) → JS (0=Dom)
