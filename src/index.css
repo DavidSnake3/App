@@ -389,8 +389,8 @@ input, select, textarea, button { font-family: inherit; }
   .orb {
     position: absolute;
     border-radius: 999px;
-    filter: blur(30px);
-    opacity: 0.35;
+    filter: blur(34px);
+    opacity: 0.24;
     pointer-events: none;
   }
 
@@ -438,3 +438,65 @@ input, select, textarea, button { font-family: inherit; }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 .anim-money { animation: moneyIn 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+/* ── Acabado de cuadros de menú y gráficas ──────────────────────────────── */
+@layer components {
+  /* Cuadro del menú: base con el tono de la sección muy suave */
+  .tile {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-2xl);
+    border: 1px solid var(--c-border);
+    box-shadow:
+      0 1px 0 0 color-mix(in oklab, #fff 5%, transparent) inset,
+      0 10px 26px -20px rgb(0 0 0 / 0.6);
+    transition: transform 0.18s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+  }
+  .tile:active { transform: scale(0.975); }
+
+  /* Encabezado de día en listas (Hoy · Ayer · 12 de sep) */
+  .chip-day {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--c-muted);
+    background: var(--c-elevated);
+    border: 1px solid var(--c-border);
+  }
+}
+
+/* Barras de gráfica que crecen al aparecer */
+@keyframes growUp {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+.anim-grow {
+  transform-origin: bottom center;
+  animation: growUp 0.6s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+/* Dona que se dibuja al aparecer */
+@keyframes ringDraw {
+  from { stroke-dasharray: 0 999; }
+}
+.anim-ring { animation: ringDraw 0.9s cubic-bezier(0.3, 0.8, 0.3, 1) both; }
+
+/* Brillo sutil en barras horizontales de progreso */
+.bar-shine {
+  position: relative;
+  overflow: hidden;
+}
+.bar-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.28), transparent);
+  transform: translateX(-100%);
+  animation: sheenSlide 3.2s ease-in-out infinite;
+}

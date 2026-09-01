@@ -110,7 +110,7 @@ export function BalanceCard({ compact = false }: { compact?: boolean }) {
     <>
       <div className="card-glow p-4">
         <span className="glow-dot" />
-        <span className="orb -right-10 -top-12 w-44 h-44" style={{ background: 'var(--app-gradient)' }} />
+        <span className="orb -right-6 -top-12 w-32 h-32" style={{ background: 'var(--app-gradient)' }} />
 
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">

@@ -86,27 +86,55 @@ export function YearCharts({ year }: { year: number }) {
           <div className="flex items-center gap-4">
             <div className="relative shrink-0" style={{ width: 118, height: 118 }}>
               <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                <circle cx="50" cy="50" r={R} fill="none" stroke="var(--c-border)" strokeWidth="14" opacity="0.5" />
-                {data.segments.map((p) => (
-                  <circle
-                    key={p.key}
-                    cx="50" cy="50" r={R} fill="none"
-                    stroke={KIND_COLORS[p.key] ?? 'var(--c-muted)'}
-                    strokeWidth="14"
-                    strokeDasharray={`${Math.max(0.5, p.frac * C - 1.5)} ${C}`}
-                    strokeDashoffset={-p.offset * C}
-                  />
-                ))}
+                <defs>
+                  {data.segments.map((p, i) => {
+                    const col = KIND_COLORS[p.key] ?? 'var(--c-muted)'
+                    return (
+                      <linearGradient key={`ag-${p.key}`} id={`anual-${i}`} x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stopColor={col} stopOpacity="1" />
+                        <stop offset="100%" stopColor={col} stopOpacity="0.6" />
+                      </linearGradient>
+                    )
+                  })}
+                  <filter id="anualGlow" x="-30%" y="-30%" width="160%" height="160%">
+                    <feGaussianBlur stdDeviation="2.6" result="b" />
+                    <feMerge>
+                      <feMergeNode in="b" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
+                <circle cx="50" cy="50" r={R} fill="none" stroke="var(--c-border)" strokeWidth="13" opacity="0.5" />
+                <g filter="url(#anualGlow)">
+                  {data.segments.map((p, i) => (
+                    <circle
+                      key={p.key}
+                      className="anim-ring"
+                      cx="50" cy="50" r={R} fill="none"
+                      stroke={`url(#anual-${i})`}
+                      strokeWidth="13"
+                      strokeDasharray={`${Math.max(0.5, p.frac * C - 1.5)} ${C}`}
+                      strokeDashoffset={-p.offset * C}
+                      style={{ animationDelay: `${i * 70}ms` }}
+                    />
+                  ))}
+                </g>
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="num text-[13px] font-bold text-ink leading-none">{formatMoneyShort(data.totalGasto)}</span>
+                <span className="display-money text-[14px] font-bold text-ink">{formatMoneyShort(data.totalGasto)}</span>
                 <span className="text-[9.5px] text-muted mt-0.5">{year}</span>
               </div>
             </div>
             <div className="flex-1 flex flex-col gap-1.5 min-w-0">
               {data.parts.map((p) => (
                 <div key={p.key} className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: KIND_COLORS[p.key] ?? 'var(--c-muted)' }} />
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{
+                      background: KIND_COLORS[p.key] ?? 'var(--c-muted)',
+                      boxShadow: `0 0 8px 0 ${KIND_COLORS[p.key] ?? 'transparent'}`,
+                    }}
+                  />
                   <span className="text-[12px] text-ink flex-1 truncate">{p.label}</span>
                   <span className="num text-[12px] font-semibold text-ink shrink-0">{formatMoneyShort(p.value)}</span>
                   <span className="num text-[10.5px] text-muted w-9 text-right shrink-0">
@@ -134,24 +162,47 @@ export function YearCharts({ year }: { year: number }) {
             </span>
           </div>
         </div>
-        <div className="flex items-end gap-1" style={{ height: 110 }}>
-          {data.rows.map((r) => (
-            <div key={r.id} className="flex-1 flex flex-col items-center justify-end gap-1 h-full min-w-0">
-              <div className="flex items-end gap-[2px]" style={{ height: 86 }}>
-                <div
-                  className="w-[7px] rounded-t"
-                  style={{ height: Math.max(2, (r.income / maxBar) * 86), background: 'var(--c-income)', opacity: r.has ? 0.9 : 0.3 }}
-                  title={`${r.label}: entra ${formatMoney(r.income)}`}
-                />
-                <div
-                  className="w-[7px] rounded-t"
-                  style={{ height: Math.max(2, (r.expenses / maxBar) * 86), background: 'var(--c-danger)', opacity: r.has ? 0.9 : 0.3 }}
-                  title={`${r.label}: sale ${formatMoney(r.expenses)}`}
-                />
+        <div className="flex items-end gap-1" style={{ height: 118 }}>
+          {data.rows.map((r, i) => {
+            const esActual = r.id === currentMonthId()
+            return (
+              <div key={r.id} className="flex-1 flex flex-col items-center justify-end gap-1 h-full min-w-0">
+                <div className="flex items-end gap-[3px]" style={{ height: 92 }}>
+                  <div
+                    className="w-[8px] rounded-t-md anim-grow"
+                    style={{
+                      height: Math.max(2, (r.income / maxBar) * 92),
+                      background: 'linear-gradient(180deg, var(--c-income), color-mix(in oklab, var(--c-income) 30%, transparent))',
+                      opacity: r.has ? 1 : 0.25,
+                      animationDelay: `${i * 40}ms`,
+                      boxShadow: esActual && r.has ? '0 0 12px -2px var(--c-income)' : undefined,
+                    }}
+                    title={`${r.label}: entra ${formatMoney(r.income)}`}
+                  />
+                  <div
+                    className="w-[8px] rounded-t-md anim-grow"
+                    style={{
+                      height: Math.max(2, (r.expenses / maxBar) * 92),
+                      background: 'linear-gradient(180deg, var(--c-danger), color-mix(in oklab, var(--c-danger) 30%, transparent))',
+                      opacity: r.has ? 1 : 0.25,
+                      animationDelay: `${i * 40 + 20}ms`,
+                      boxShadow: esActual && r.has ? '0 0 12px -2px var(--c-danger)' : undefined,
+                    }}
+                    title={`${r.label}: sale ${formatMoney(r.expenses)}`}
+                  />
+                </div>
+                <span
+                  className="text-[8.5px] truncate"
+                  style={{
+                    color: esActual ? 'var(--c-text)' : 'var(--c-muted)',
+                    fontWeight: esActual ? 700 : 400,
+                  }}
+                >
+                  {r.label}
+                </span>
               </div>
-              <span className="text-[8.5px] text-muted truncate">{r.label}</span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </section>
 
@@ -181,8 +232,11 @@ export function YearCharts({ year }: { year: number }) {
                     </div>
                     <div className="h-2.5 rounded-full bg-elevated overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all duration-700"
-                        style={{ width: `${Math.max(2, (Math.max(0, b.value) / max) * 100)}%`, background: b.color }}
+                        className="h-full rounded-full transition-all duration-700 bar-shine"
+                        style={{
+                          width: `${Math.max(2, (Math.max(0, b.value) / max) * 100)}%`,
+                          background: `linear-gradient(90deg, color-mix(in oklab, ${b.color} 70%, #000), ${b.color})`,
+                        }}
                       />
                     </div>
                   </div>
@@ -190,7 +244,7 @@ export function YearCharts({ year }: { year: number }) {
                 <div className="flex items-center justify-between pt-2 mt-0.5 border-t border-edge">
                   <span className="text-[12.5px] font-bold text-ink">Patrimonio neto</span>
                   <span
-                    className="num text-[16px] font-bold"
+                    className="display-money text-[17px] font-bold"
                     style={{ color: patrimonio >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}
                   >
                     {formatMoney(Math.round(patrimonio))}

@@ -35,6 +35,33 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'ahorro', name: 'Ahorro', icon: 'ahorro', kind: 'ambos', builtin: true },
 ]
 
+/**
+ * Colores de las categorías. El color de cada categoría es SIEMPRE el mismo,
+ * así el gráfico, el detalle y la lista de movimientos hablan el mismo idioma.
+ */
+export const CATEGORY_COLORS: Record<string, string> = {
+  comida: '#f97362', super: '#7c5cff', cafe: '#d9a05b', transporte: '#38bdf8',
+  gasolina: '#ff5c7a', casa: '#22d3a5', servicios: '#60a5fa', salud: '#34d399',
+  educacion: '#a78bfa', ropa: '#fbbf24', ocio: '#f472b6', tecnologia: '#818cf8',
+  mascotas: '#facc15', regalos: '#fb7185', belleza: '#e879f9', deudas: '#ef4444',
+  preste: '#8b5cf6', otros: '#94a3b8',
+  salario: '#2dd4a0', extra: '#4ade80', venta: '#10b981', reembolso: '#5eead4',
+  'me-pagaron': '#22c55e', transferencia: '#7c5cff', 'pago-tarjeta': '#f43f5e',
+  ahorro: '#0ea5e9',
+}
+
+const EXTRA_COLORS = ['#7c5cff', '#2dd4a0', '#ffb84d', '#ff5c7a', '#38bdf8', '#a78bfa', '#f472b6', '#facc15']
+
+/** Color de una categoría (las propias del usuario reciben uno estable) */
+export function categoryColor(id?: string): string {
+  if (!id) return CATEGORY_COLORS.otros
+  const fijo = CATEGORY_COLORS[id]
+  if (fijo) return fijo
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) % 9973
+  return EXTRA_COLORS[hash % EXTRA_COLORS.length]
+}
+
 /** Lista de categorías vigentes (las de la app + las del usuario, sin ocultas) */
 export function categoryList(custom: Category[] | undefined, kind?: 'gasto' | 'ingreso'): Category[] {
   const list = mergeCategories(custom)

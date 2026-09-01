@@ -116,7 +116,7 @@ function ResumenDinero() {
   return (
     <div className="card-glow p-4 anim-pop">
       <span className="glow-dot" />
-      <span className="orb -right-8 -top-10 w-40 h-40" style={{ background: 'var(--app-gradient)' }} />
+      <span className="orb -right-6 -top-12 w-28 h-28" style={{ background: 'var(--app-gradient)' }} />
       <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Efectivo real</p>
       <p
         className="display-money text-[32px] font-bold mt-1.5 anim-money"

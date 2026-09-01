@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  CreditCard, Eye, EyeOff, Plus, Repeat, Star, TrendingDown, TrendingUp, Wallet,
+  ChevronRight, CreditCard, Eye, EyeOff, Plus, Repeat, Star, TrendingDown, TrendingUp, Wallet,
 } from 'lucide-react'
 import type { Account } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -46,7 +46,7 @@ export function AccountsSection() {
             <Plus size={16} />
           </button>
         </div>
-        <span className="orb -right-8 -top-10 w-40 h-40" style={{ background: 'var(--app-gradient)' }} />
+        <span className="orb -right-6 -top-12 w-28 h-28" style={{ background: 'var(--app-gradient)' }} />
         <p className="text-[11.5px] font-semibold text-muted flex items-center gap-1.5">
           <Wallet size={12} /> EFECTIVO REAL
         </p>
@@ -106,13 +106,15 @@ export function AccountsSection() {
             <button
               key={account.id}
               onClick={() => setSheet({ open: true, editing: account, balance })}
-              className="pressable card p-3.5 flex items-center gap-3 text-left"
+              className="pressable tile p-3.5 flex items-center gap-3 text-left anim-rise"
+              style={{ background: 'linear-gradient(155deg, color-mix(in oklab, var(--app-accent) 7%, var(--c-card)) 0%, var(--c-card) 60%)' }}
             >
               <span
                 className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
                 style={{
-                  background: 'color-mix(in oklab, var(--app-accent) 13%, transparent)',
+                  background: 'linear-gradient(145deg, color-mix(in oklab, var(--app-accent) 24%, transparent), color-mix(in oklab, var(--app-accent) 9%, transparent))',
                   color: 'var(--app-accent-soft)',
+                  boxShadow: 'inset 0 0 0 1px color-mix(in oklab, var(--app-accent) 30%, transparent)',
                 }}
               >
                 <ItemIcon icon={account.icon} name={account.name} size={18} />
@@ -129,11 +131,14 @@ export function AccountsSection() {
                   {!account.includeInTotal && ' · no suma al total'}
                 </span>
               </span>
-              <span
-                className="num text-[15.5px] font-bold shrink-0"
-                style={{ color: balance < 0 ? 'var(--c-danger)' : 'var(--c-text)' }}
-              >
-                {oculto ? '•••' : formatMoney(balance)}
+              <span className="flex items-center gap-1.5 shrink-0">
+                <span
+                  className="display-money text-[16px] font-bold"
+                  style={{ color: balance < 0 ? 'var(--c-danger)' : 'var(--c-text)' }}
+                >
+                  {oculto ? '•••' : formatMoney(balance)}
+                </span>
+                <ChevronRight size={14} className="text-muted" />
               </span>
             </button>
           ))}
@@ -150,16 +155,20 @@ export function AccountsSection() {
             <button
               key={account.id}
               onClick={() => setSub('money', 'tarjetas')}
-              className="pressable card p-3.5 flex items-center gap-3 text-left"
-              style={statement.overdue
-                ? { borderColor: 'color-mix(in oklab, var(--c-danger) 55%, var(--c-border))' }
-                : undefined}
+              className="pressable tile p-3.5 flex items-center gap-3 text-left anim-rise"
+              style={{
+                background: 'linear-gradient(155deg, color-mix(in oklab, var(--c-danger) 8%, var(--c-card)) 0%, var(--c-card) 60%)',
+                borderColor: statement.overdue
+                  ? 'color-mix(in oklab, var(--c-danger) 55%, var(--c-border))'
+                  : 'color-mix(in oklab, var(--c-danger) 20%, var(--c-border))',
+              }}
             >
               <span
                 className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
                 style={{
-                  background: 'color-mix(in oklab, var(--c-danger) 13%, transparent)',
+                  background: 'linear-gradient(145deg, color-mix(in oklab, var(--c-danger) 24%, transparent), color-mix(in oklab, var(--c-danger) 9%, transparent))',
                   color: 'var(--c-danger)',
+                  boxShadow: 'inset 0 0 0 1px color-mix(in oklab, var(--c-danger) 28%, transparent)',
                 }}
               >
                 <ItemIcon icon={account.icon ?? 'tarjeta'} name={account.name} size={18} />

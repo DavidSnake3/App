@@ -55,8 +55,12 @@ export function HubMenu<T extends string>({ items, onPick, children }: Props<T>)
             <button
               key={it.id}
               onClick={() => { if (sounds) playTap(); onPick(it.id) }}
-              className="pressable card-soft relative overflow-hidden px-3.5 py-3.5 flex flex-col text-left min-h-[128px] anim-rise"
-              style={{ animationDelay: `${i * 45}ms` }}
+              className="pressable tile px-3.5 py-3.5 flex flex-col text-left min-h-[132px] anim-rise"
+              style={{
+                animationDelay: `${i * 45}ms`,
+                background: `linear-gradient(155deg, color-mix(in oklab, ${TONE_COLOR[tone]} 10%, var(--c-card)) 0%, var(--c-card) 62%)`,
+                borderColor: `color-mix(in oklab, ${TONE_COLOR[tone]} 18%, var(--c-border))`,
+              }}
             >
               {/* halo del tono y línea de luz superior */}
               <span
@@ -71,16 +75,19 @@ export function HubMenu<T extends string>({ items, onPick, children }: Props<T>)
                 <span
                   className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 relative"
                   style={{
-                    background: `color-mix(in oklab, ${TONE_COLOR[tone]} 16%, transparent)`,
+                    background: `linear-gradient(145deg, color-mix(in oklab, ${TONE_COLOR[tone]} 26%, transparent), color-mix(in oklab, ${TONE_COLOR[tone]} 10%, transparent))`,
                     color: TONE_TEXT[tone],
-                    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${TONE_COLOR[tone]} 30%, transparent)`,
+                    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${TONE_COLOR[tone]} 34%, transparent), 0 6px 16px -10px ${TONE_COLOR[tone]}`,
                   }}
                 >
                   {it.icon}
                   {Boolean(it.badge) && (
                     <span
-                      className="num absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full text-[9.5px] font-bold flex items-center justify-center text-white"
-                      style={{ background: TONE_COLOR[tone] }}
+                      className="num absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[9.5px] font-bold flex items-center justify-center text-white"
+                      style={{
+                        background: TONE_COLOR[tone],
+                        boxShadow: `0 0 10px 1px color-mix(in oklab, ${TONE_COLOR[tone]} 60%, transparent)`,
+                      }}
                     >
                       {it.badge}
                     </span>
@@ -96,11 +103,13 @@ export function HubMenu<T extends string>({ items, onPick, children }: Props<T>)
                 {it.desc}
               </span>
               {it.stat && (
-                <span
-                  className="num block text-[13px] font-bold mt-1.5 truncate"
-                  style={{ color: TONE_TEXT[tone] }}
-                >
-                  {it.stat}
+                <span className="block mt-2 pt-2 w-full" style={{ borderTop: '1px solid var(--c-border)' }}>
+                  <span
+                    className="display-money block text-[14px] font-bold truncate"
+                    style={{ color: TONE_TEXT[tone] }}
+                  >
+                    {it.stat}
+                  </span>
                 </span>
               )}
             </button>
@@ -123,7 +132,12 @@ export function HubHeader({ title, subtitle, onBack, right }: {
       <button
         onClick={onBack}
         aria-label="Volver al menú"
-        className="pressable w-10 h-10 rounded-full bg-card border border-edge flex items-center justify-center text-muted shrink-0"
+        className="pressable w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+        style={{
+          background: 'var(--c-card)',
+          border: '1px solid color-mix(in oklab, var(--app-accent) 25%, var(--c-border))',
+          color: 'var(--app-accent-soft)',
+        }}
       >
         <ArrowLeft size={17} />
       </button>

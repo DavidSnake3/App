@@ -5,7 +5,7 @@ import {
 import type { Movement } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { accountById, monthMovements, movementsExpense, movementsIncome } from '../../lib/accounts'
-import { category, movementIcon } from '../../lib/categories'
+import { category, categoryColor, movementIcon } from '../../lib/categories'
 import { addMonthsToId, isCurrentMonth, monthLabel } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
@@ -82,17 +82,26 @@ export function MovementsSection() {
 
       {/* Totales */}
       <div className="grid grid-cols-2 gap-2.5">
-        <div className="card p-3.5">
+        <div
+          className="tile p-3.5 anim-rise"
+          style={{ background: 'linear-gradient(155deg, color-mix(in oklab, var(--c-danger) 9%, var(--c-card)) 0%, var(--c-card) 60%)' }}
+        >
           <p className="text-[10.5px] text-muted flex items-center gap-1">
             <ArrowUpRight size={11} style={{ color: 'var(--c-danger)' }} /> SALIÓ
           </p>
-          <p className="num text-[19px] font-bold text-ink mt-0.5">{formatMoney(gastos)}</p>
+          <p className="display-money text-[20px] font-bold text-ink mt-1">{formatMoney(gastos)}</p>
         </div>
-        <div className="card p-3.5">
+        <div
+          className="tile p-3.5 anim-rise"
+          style={{
+            animationDelay: '60ms',
+            background: 'linear-gradient(155deg, color-mix(in oklab, var(--c-income) 9%, var(--c-card)) 0%, var(--c-card) 60%)',
+          }}
+        >
           <p className="text-[10.5px] text-muted flex items-center gap-1">
             <ArrowDownLeft size={11} style={{ color: 'var(--c-income)' }} /> ENTRÓ
           </p>
-          <p className="num text-[19px] font-bold text-ink mt-0.5">{formatMoney(ingresos)}</p>
+          <p className="display-money text-[20px] font-bold text-ink mt-1">{formatMoney(ingresos)}</p>
         </div>
       </div>
 
@@ -138,10 +147,8 @@ export function MovementsSection() {
         <div className="flex flex-col gap-4">
           {porDia.map(([dia, movs]) => (
             <section key={dia}>
-              <div className="flex items-center justify-between mb-1.5 px-1">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-muted">
-                  {diaLabel(dia)}
-                </p>
+              <div className="flex items-center justify-between mb-2 px-0.5">
+                <span className="chip-day">{diaLabel(dia)}</span>
                 <p className="num text-[11px] text-muted">
                   {formatMoney(movs.reduce((s, m) => s + (m.kind === 'ingreso' ? m.amount : -m.amount), 0))}
                 </p>
@@ -156,19 +163,20 @@ export function MovementsSection() {
                     : m.kind === 'transferencia'
                       ? 'var(--app-accent-soft)'
                       : 'var(--c-text)'
+                  const catColor = categoryColor(m.categoryId)
                   return (
                     <button
                       key={m.id}
                       onClick={() => setSheet({ open: true, editing: m })}
-                      className="pressable card px-3.5 py-3 flex items-center gap-3 text-left"
+                      className="pressable tile px-3.5 py-3 flex items-center gap-3 text-left"
+                      style={{ background: 'var(--c-card)' }}
                     >
                       <span
                         className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                         style={{
-                          background: m.kind === 'ingreso'
-                            ? 'color-mix(in oklab, var(--c-income) 14%, transparent)'
-                            : 'var(--c-elevated)',
-                          color: m.kind === 'ingreso' ? 'var(--c-income)' : 'var(--c-muted)',
+                          background: `linear-gradient(145deg, color-mix(in oklab, ${catColor} 26%, transparent), color-mix(in oklab, ${catColor} 8%, transparent))`,
+                          color: catColor,
+                          boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${catColor} 26%, transparent)`,
                         }}
                       >
                         {m.kind === 'transferencia'
@@ -183,7 +191,7 @@ export function MovementsSection() {
                             : `${cat.name}${cuenta ? ` · ${cuenta.name}` : ''}`}
                         </span>
                       </span>
-                      <span className="num text-[14.5px] font-bold shrink-0" style={{ color }}>
+                      <span className="display-money text-[15px] font-bold shrink-0" style={{ color }}>
                         {m.kind === 'ingreso' ? '+' : m.kind === 'gasto' ? '−' : ''}{formatMoney(m.amount)}
                       </span>
                     </button>

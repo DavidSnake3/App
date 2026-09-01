@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { ArrowDownLeft, ArrowUpRight, CalendarRange, PieChart } from 'lucide-react'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { accountTotals, categoryTotals, monthlySeries } from '../../lib/accounts'
-import { category } from '../../lib/categories'
+import { category, categoryColor } from '../../lib/categories'
 import { addMonthsToId, currentMonthId, daysInMonth, monthLabel, MONTH_SHORT } from '../../lib/dates'
 import { formatMoney, formatMoneyShort } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
@@ -11,11 +11,6 @@ import { Segmented } from '../ui/Segmented'
 import { DateField, MonthField } from '../ui/DatePicker'
 
 type Rango = 'mes' | 'ano' | 'custom'
-
-const PALETA = [
-  'var(--app-accent)', '#2dd4a0', '#ffb84d', '#ff5c7a', '#38bdf8',
-  '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#60a5fa',
-]
 
 export function CategoryReport() {
   const months = useFinanceStore((s) => s.months)
@@ -70,7 +65,7 @@ export function CategoryReport() {
     return top.map((c, i) => {
       const frac = total > 0 ? c.total / total : 0
       const dash = frac * C
-      return { ...c, color: PALETA[i % PALETA.length], dash, gap: C - dash, offset: -previos[i], frac }
+      return { ...c, color: categoryColor(c.categoryId), dash, gap: C - dash, offset: -previos[i], frac }
     })
   }, [porCategoria, total])
 
@@ -134,11 +129,19 @@ export function CategoryReport() {
       </div>
 
       {/* Total del período */}
-      <div className="card p-4">
+      <div className="card-glow p-4 anim-pop">
+        <span className="glow-dot" />
+        <span
+          className="orb -right-6 -top-12 w-28 h-28"
+          style={{
+            background: tipo === 'gasto' ? 'var(--app-gradient)' : 'var(--c-income)',
+            opacity: 0.28,
+          }}
+        />
         <p className="text-[11.5px] font-semibold text-muted flex items-center gap-1.5">
           <CalendarRange size={12} /> {etiqueta.toUpperCase()}
         </p>
-        <p className="num text-[28px] font-bold text-ink leading-none mt-1.5">{formatMoney(total)}</p>
+        <p className="display-money text-[32px] font-bold text-ink mt-1.5 anim-money">{formatMoney(total)}</p>
         <p className="text-[11.5px] text-muted mt-1">
           {porCategoria.reduce((s, c) => s + c.count, 0)} movimientos en{' '}
           {porCategoria.length} {porCategoria.length === 1 ? 'categoría' : 'categorías'}
@@ -161,29 +164,48 @@ export function CategoryReport() {
               <PieChart size={12} /> Por categoría
             </p>
             <div className="flex items-center gap-4 mt-3">
-              <svg viewBox="0 0 140 140" className="w-[130px] h-[130px] shrink-0 -rotate-90">
-                <circle cx="70" cy="70" r="54" fill="none" stroke="var(--c-elevated)" strokeWidth="18" />
-                {segmentos.map((s) => (
-                  <circle
-                    key={s.categoryId}
-                    cx="70"
-                    cy="70"
-                    r="54"
-                    fill="none"
-                    stroke={s.color}
-                    strokeWidth="18"
-                    strokeDasharray={`${s.dash} ${s.gap}`}
-                    strokeDashoffset={s.offset}
-                    strokeLinecap="butt"
-                  />
-                ))}
+              <svg viewBox="0 0 140 140" className="w-[136px] h-[136px] shrink-0 -rotate-90">
+                <defs>
+                  {segmentos.map((s, i) => (
+                    <linearGradient key={`g-${s.categoryId}`} id={`seg-${i}`} x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor={s.color} stopOpacity="1" />
+                      <stop offset="100%" stopColor={s.color} stopOpacity="0.62" />
+                    </linearGradient>
+                  ))}
+                  <filter id="donaGlow" x="-30%" y="-30%" width="160%" height="160%">
+                    <feGaussianBlur stdDeviation="3.4" result="b" />
+                    <feMerge>
+                      <feMergeNode in="b" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
+                <circle cx="70" cy="70" r="54" fill="none" stroke="var(--c-elevated)" strokeWidth="17" />
+                <g filter="url(#donaGlow)">
+                  {segmentos.map((s, i) => (
+                    <circle
+                      key={s.categoryId}
+                      className="anim-ring"
+                      cx="70"
+                      cy="70"
+                      r="54"
+                      fill="none"
+                      stroke={`url(#seg-${i})`}
+                      strokeWidth={17}
+                      strokeDasharray={`${s.dash} ${s.gap}`}
+                      strokeDashoffset={s.offset}
+                      strokeLinecap="butt"
+                      style={{ animationDelay: `${i * 70}ms` }}
+                    />
+                  ))}
+                </g>
                 <text
                   x="70"
                   y="66"
                   textAnchor="middle"
-                  className="num"
+                  className="display-money"
                   transform="rotate(90 70 70)"
-                  style={{ fill: 'var(--c-text)', fontSize: 15, fontWeight: 700 }}
+                  style={{ fill: 'var(--c-text)', fontSize: 16, fontWeight: 700 }}
                 >
                   {formatMoneyShort(total)}
                 </text>
@@ -202,7 +224,10 @@ export function CategoryReport() {
                   const c = category(cats, s.categoryId)
                   return (
                     <div key={s.categoryId} className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ background: s.color, boxShadow: `0 0 8px 0 ${s.color}` }}
+                      />
                       <span className="text-[11.5px] text-ink truncate flex-1">{c.name}</span>
                       <span className="num text-[11px] text-muted shrink-0">{Math.round(s.frac * 100)}%</span>
                     </div>
@@ -216,7 +241,7 @@ export function CategoryReport() {
           <div className="card p-4">
             <p className="text-[12px] font-semibold text-muted">Detalle</p>
             <div className="flex flex-col gap-2.5 mt-3">
-              {porCategoria.map((c, i) => {
+              {porCategoria.map((c) => {
                 const cat = category(cats, c.categoryId)
                 const frac = total > 0 ? c.total / total : 0
                 return (
@@ -224,7 +249,7 @@ export function CategoryReport() {
                     <div className="flex items-center gap-2">
                       <span
                         className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-                        style={{ background: 'var(--c-elevated)', color: PALETA[i % PALETA.length] }}
+                        style={{ background: 'var(--c-elevated)', color: categoryColor(c.categoryId) }}
                       >
                         <ItemIcon icon={cat.icon} size={14} />
                       </span>
@@ -238,10 +263,13 @@ export function CategoryReport() {
                         {formatMoney(c.total)}
                       </span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-elevated overflow-hidden mt-1.5">
+                    <div className="h-2 rounded-full bg-elevated overflow-hidden mt-1.5">
                       <div
-                        className="h-full rounded-full transition-all duration-700"
-                        style={{ width: `${Math.max(2, Math.round(frac * 100))}%`, background: PALETA[i % PALETA.length] }}
+                        className="h-full rounded-full transition-all duration-700 bar-shine"
+                        style={{
+                          width: `${Math.max(2, Math.round(frac * 100))}%`,
+                          background: `linear-gradient(90deg, color-mix(in oklab, ${categoryColor(c.categoryId)} 70%, #000), ${categoryColor(c.categoryId)})`,
+                        }}
                       />
                     </div>
                   </div>
@@ -270,25 +298,41 @@ export function CategoryReport() {
           {serie.length > 1 && (
             <div className="card p-4">
               <p className="text-[12px] font-semibold text-muted">Mes a mes</p>
-              <div className="flex items-end gap-1.5 mt-4 h-32">
-                {serie.map((x) => {
+              <div className="flex items-stretch gap-1.5 mt-4 h-36">
+                {serie.map((x, i) => {
                   const valor = tipo === 'gasto' ? x.gasto : x.ingreso
                   const h = Math.round((valor / maxSerie) * 100)
                   const mes = Number(x.monthId.slice(5, 7))
+                  const esActual = x.monthId === currentMonthId()
+                  const color = tipo === 'gasto' ? 'var(--app-accent)' : 'var(--c-income)'
                   return (
-                    <div key={x.monthId} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                      <span className="num text-[9px] text-muted truncate w-full text-center">
+                    <div key={x.monthId} className="flex-1 h-full flex flex-col items-center gap-1 min-w-0">
+                      <span className="num text-[9px] text-muted truncate w-full text-center h-3 leading-3">
                         {valor > 0 ? formatMoneyShort(valor) : ''}
                       </span>
-                      <div
-                        className="w-full rounded-t-lg transition-all duration-700"
+                      {/* el área de la barra necesita altura propia para que el % funcione */}
+                      <span className="flex-1 w-full flex items-end">
+                        <span
+                          className="w-full rounded-t-lg anim-grow block"
+                          style={{
+                            height: `${Math.max(2, h)}%`,
+                            minHeight: 3,
+                            animationDelay: `${i * 55}ms`,
+                            background: `linear-gradient(180deg, ${color}, color-mix(in oklab, ${color} 35%, transparent))`,
+                            boxShadow: esActual ? `0 0 14px -2px ${color}` : undefined,
+                            outline: esActual ? `1px solid color-mix(in oklab, ${color} 55%, transparent)` : undefined,
+                          }}
+                        />
+                      </span>
+                      <span
+                        className="text-[9.5px] h-3.5 leading-[14px]"
                         style={{
-                          height: `${Math.max(2, h)}%`,
-                          background: tipo === 'gasto' ? 'var(--app-gradient)' : 'var(--c-income)',
-                          minHeight: 3,
+                          color: esActual ? 'var(--c-text)' : 'var(--c-muted)',
+                          fontWeight: esActual ? 700 : 400,
                         }}
-                      />
-                      <span className="text-[9.5px] text-muted">{MONTH_SHORT[mes - 1]}</span>
+                      >
+                        {MONTH_SHORT[mes - 1]}
+                      </span>
                     </div>
                   )
                 })}
