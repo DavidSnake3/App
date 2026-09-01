@@ -14,6 +14,7 @@ import { AddDebtSheet } from './AddDebtSheet'
 import { DebtDetailSheet } from './DebtDetailSheet'
 import { DebtTrend } from './DebtTrend'
 import { PaidCheck } from '../month/ItemBits'
+import { Fab } from '../ui/Fab'
 
 /**
  * Deudas. Cuando va dentro del hub del mes (`embedded`) no dibuja su propio
@@ -198,14 +199,9 @@ export function DebtsView({ embedded = false }: { embedded?: boolean }) {
 
       {/* Botón de agregar deuda */}
       {(soloDebo || tab === 'debo') && (
-      <button
-        onClick={() => { setEditing(null); setAddOpen(true) }}
-        aria-label="Agregar deuda"
-        className="pressable absolute bottom-[20px] right-4 w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-xl z-30"
-        style={{ background: 'var(--app-gradient)', boxShadow: '0 10px 30px color-mix(in oklab, var(--app-accent) 45%, transparent)' }}
-      >
-        <Plus size={26} />
-      </button>
+        <Fab onClick={() => { setEditing(null); setAddOpen(true) }} label="Agregar deuda">
+          <Plus size={26} />
+        </Fab>
       )}
 
       <AddDebtSheet open={addOpen} onClose={() => { setAddOpen(false); setEditing(null) }} editing={editing} />

@@ -21,12 +21,14 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'regalos', name: 'Regalos', icon: 'regalo', kind: 'gasto', builtin: true },
   { id: 'belleza', name: 'Cuidado personal', icon: 'belleza', kind: 'gasto', builtin: true },
   { id: 'deudas', name: 'Pago de deudas', icon: 'prestamo', kind: 'gasto', builtin: true },
+  { id: 'preste', name: 'Le presté', icon: 'prestamo', kind: 'gasto', builtin: true },
   { id: 'otros', name: 'Otros', icon: 'efectivo', kind: 'ambos', builtin: true },
   // ingresos
   { id: 'salario', name: 'Salario', icon: 'trabajo', kind: 'ingreso', builtin: true },
   { id: 'extra', name: 'Ingreso extra', icon: 'banco', kind: 'ingreso', builtin: true },
   { id: 'venta', name: 'Venta', icon: 'tienda', kind: 'ingreso', builtin: true },
   { id: 'reembolso', name: 'Reembolso', icon: 'recibo', kind: 'ingreso', builtin: true },
+  { id: 'me-pagaron', name: 'Me pagaron', icon: 'banco', kind: 'ingreso', builtin: true },
   // movimientos entre cuentas
   { id: 'transferencia', name: 'Entre cuentas', icon: 'banco', kind: 'ambos', builtin: true },
   { id: 'pago-tarjeta', name: 'Pago de tarjeta', icon: 'tarjeta', kind: 'ambos', builtin: true },
@@ -35,7 +37,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
 
 /** Lista de categorías vigentes (las de la app + las del usuario, sin ocultas) */
 export function categoryList(custom: Category[] | undefined, kind?: 'gasto' | 'ingreso'): Category[] {
-  const list = custom?.length ? custom : DEFAULT_CATEGORIES
+  const list = mergeCategories(custom)
   return list
     .filter((c) => !c.hidden)
     .filter((c) => !kind || c.kind === kind || c.kind === 'ambos')
@@ -45,8 +47,19 @@ export function categoryList(custom: Category[] | undefined, kind?: 'gasto' | 'i
 export function category(custom: Category[] | undefined, id?: string): Category {
   const list = custom?.length ? custom : DEFAULT_CATEGORIES
   return list.find((c) => c.id === id)
+    // las categorías que trae la app siempre están disponibles, aunque el
+    // usuario guardó su lista antes de que existieran
+    ?? DEFAULT_CATEGORIES.find((c) => c.id === id)
     ?? list.find((c) => c.id === 'otros')
     ?? DEFAULT_CATEGORIES[DEFAULT_CATEGORIES.length - 1]
+}
+
+/** Une las categorías guardadas con las nuevas que traiga la app */
+export function mergeCategories(guardadas: Category[] | undefined): Category[] {
+  if (!guardadas?.length) return DEFAULT_CATEGORIES
+  const ids = new Set(guardadas.map((c) => c.id))
+  const nuevas = DEFAULT_CATEGORIES.filter((c) => !ids.has(c.id))
+  return nuevas.length ? [...guardadas, ...nuevas] : guardadas
 }
 
 /** Ícono que corresponde a un movimiento (el propio o el de su categoría) */

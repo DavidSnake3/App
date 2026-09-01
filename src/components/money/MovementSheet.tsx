@@ -10,6 +10,7 @@ import { ItemIcon } from '../../lib/icons'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { DateField } from '../ui/DatePicker'
 
 interface Props {
   open: boolean
@@ -253,15 +254,7 @@ function MovementForm({
         )}
 
         {/* Fecha */}
-        <div>
-          <label className="text-[12px] font-semibold text-muted">¿Cuándo fue?</label>
-          <input
-            type="date"
-            value={dateISO}
-            onChange={(e) => setDateISO(e.target.value || todayISO().slice(0, 10))}
-            className="input-base mt-1.5 num"
-          />
-        </div>
+        <DateField value={dateISO} onChange={setDateISO} label="¿Cuándo fue?" />
 
         {/* Presupuesto */}
         {!esTransfer && kind === 'gasto' && budgets.length > 0 && (

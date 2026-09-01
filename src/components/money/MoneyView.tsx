@@ -114,14 +114,12 @@ function ResumenDinero() {
   const money = useMoney()
   if (!money.hasAccounts) return null
   return (
-    <div className="card p-4 relative overflow-hidden anim-pop">
-      <div
-        className="absolute -right-8 -top-10 w-40 h-40 rounded-full opacity-25 blur-2xl pointer-events-none"
-        style={{ background: 'var(--app-gradient)' }}
-      />
+    <div className="card-glow p-4 anim-pop">
+      <span className="glow-dot" />
+      <span className="orb -right-8 -top-10 w-40 h-40" style={{ background: 'var(--app-gradient)' }} />
       <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Efectivo real</p>
       <p
-        className="num text-[28px] font-bold leading-none mt-1"
+        className="display-money text-[32px] font-bold mt-1.5 anim-money"
         style={{ color: money.cash >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}
       >
         {formatMoney(Math.round(money.cash))}

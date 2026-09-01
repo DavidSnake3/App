@@ -8,6 +8,7 @@ import { addMonthsToId, currentMonthId, daysInMonth, monthLabel, MONTH_SHORT } f
 import { formatMoney, formatMoneyShort } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
 import { Segmented } from '../ui/Segmented'
+import { DateField, MonthField } from '../ui/DatePicker'
 
 type Rango = 'mes' | 'ano' | 'custom'
 
@@ -22,6 +23,7 @@ export function CategoryReport() {
   const cats = useFinanceStore((s) => s.settings.categories)
   const activeMonthId = useFinanceStore((s) => s.activeMonthId)
 
+  const setActiveMonth = useFinanceStore((s) => s.setActiveMonth)
   const [rango, setRango] = useState<Rango>('mes')
   const [tipo, setTipo] = useState<'gasto' | 'ingreso'>('gasto')
   const [desde, setDesde] = useState(`${addMonthsToId(currentMonthId(), -2)}-01`)
@@ -86,26 +88,31 @@ export function CategoryReport() {
         ]}
       />
 
+      {/* Mes elegible cuando el rango es mensual */}
+      {rango === 'mes' && (
+        <div className="anim-fade">
+          <MonthField value={activeMonthId} onChange={setActiveMonth} compact title="¿Qué mes quieres ver?" />
+        </div>
+      )}
+
+      {rango === 'ano' && (
+        <div className="card p-3.5 anim-fade">
+          <MonthField
+            value={activeMonthId}
+            onChange={setActiveMonth}
+            label="Año"
+            title="Elige un mes de ese año"
+          />
+          <p className="text-[11px] text-muted mt-1.5">
+            Se muestran los 12 meses del año del mes elegido.
+          </p>
+        </div>
+      )}
+
       {rango === 'custom' && (
-        <div className="card p-3.5 grid grid-cols-2 gap-3 anim-fade">
-          <div>
-            <label className="text-[11.5px] font-semibold text-muted">Desde</label>
-            <input
-              type="date"
-              value={desde}
-              onChange={(e) => setDesde(e.target.value)}
-              className="input-base mt-1 num text-[13px] py-2"
-            />
-          </div>
-          <div>
-            <label className="text-[11.5px] font-semibold text-muted">Hasta</label>
-            <input
-              type="date"
-              value={hasta}
-              onChange={(e) => setHasta(e.target.value)}
-              className="input-base mt-1 num text-[13px] py-2"
-            />
-          </div>
+        <div className="card p-3.5 flex flex-col gap-3 anim-fade">
+          <DateField value={desde} onChange={setDesde} label="Desde" />
+          <DateField value={hasta} onChange={setHasta} label="Hasta" />
         </div>
       )}
 

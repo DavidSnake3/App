@@ -306,6 +306,22 @@ export interface LoanPayment {
   amount: number
   dateISO: string
   note?: string
+  /** movimiento que generó este abono (para no contarlo dos veces) */
+  movementId?: string
+  /** cuenta a la que entró la plata */
+  accountId?: string
+}
+
+/** Plata que le presté DE NUEVO a la misma persona (aumenta lo que me debe) */
+export interface LoanAdvance {
+  id: string
+  amount: number
+  dateISO: string
+  note?: string
+  /** movimiento que generó este préstamo extra */
+  movementId?: string
+  /** cuenta de la que salió la plata */
+  accountId?: string
 }
 
 /**
@@ -325,6 +341,12 @@ export interface Loan {
   dueDateISO?: string
   note?: string
   payments: LoanPayment[]
+  /** veces que le volví a prestar (cada una con su fecha) */
+  advances?: LoanAdvance[]
+  /** movimiento del préstamo inicial */
+  movementId?: string
+  /** cuenta de la que salió el préstamo inicial */
+  accountId?: string
   createdAt: string
 }
 

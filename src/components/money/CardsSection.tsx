@@ -88,17 +88,14 @@ export function CardsSection() {
           <div key={account.id} className="flex flex-col gap-2.5">
             {/* Tarjeta visual */}
             <div
-              className="rounded-3xl p-4 relative overflow-hidden"
+              className="rounded-3xl p-4 relative overflow-hidden anim-sheen"
               style={{
                 background: 'linear-gradient(135deg, color-mix(in oklab, var(--app-accent) 45%, #111827) 0%, #0f1424 75%)',
                 border: '1px solid color-mix(in oklab, var(--app-accent) 35%, var(--c-border))',
-                boxShadow: '0 14px 34px rgb(0 0 0 / 0.35)',
+                boxShadow: '0 18px 44px -20px color-mix(in oklab, var(--app-accent) 45%, transparent), 0 6px 18px rgb(0 0 0 / 0.4)',
               }}
             >
-              <div
-                className="absolute -right-10 -top-12 w-44 h-44 rounded-full opacity-30 blur-2xl pointer-events-none"
-                style={{ background: 'var(--app-gradient)' }}
-              />
+              <span className="orb -right-10 -top-12 w-44 h-44" style={{ background: 'var(--app-gradient)', opacity: 0.4 }} />
               <div className="flex items-start justify-between gap-3">
                 <button
                   onClick={() => setEditando(account)}
@@ -128,7 +125,7 @@ export function CardsSection() {
               </div>
 
               <p className="text-[10.5px] mt-3" style={{ color: 'rgb(255 255 255 / 0.7)' }}>DEBES EN TOTAL</p>
-              <p className="num text-[27px] font-bold text-white leading-none mt-0.5">
+              <p className="display-money text-[30px] font-bold text-white mt-1 anim-money">
                 {formatMoney(st.debt)}
               </p>
 

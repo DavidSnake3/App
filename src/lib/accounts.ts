@@ -226,13 +226,16 @@ export function cardDebt(a: Account, ctx: BalanceCtx): number {
     }
   }
 
-  // cuotas de compras a plazos ya devengadas (desde su mes hasta el actual)
+  // cuotas de compras a plazos ya cargadas (las que ya pasaron su día de pago)
+  const hoyISO = isoOf(ctx.today ?? new Date())
   for (const i of ctx.installments) {
     if (i.accountId !== a.id) continue
     for (let n = 0; n < i.count; n++) {
       const mid = addMonthsToId(i.startMonthId, n)
       if (mid > nowId) break
-      if (!i.payments[mid]?.paid) deuda += i.monthly
+      if (i.payments[mid]?.paid) continue
+      // la cuota entra a la deuda el día en que el banco la cobra
+      if (isoOf(dateOf(mid, i.dueDay || 1)) <= hoyISO) deuda += i.monthly
     }
   }
 

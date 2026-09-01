@@ -55,13 +55,17 @@ export function HubMenu<T extends string>({ items, onPick, children }: Props<T>)
             <button
               key={it.id}
               onClick={() => { if (sounds) playTap(); onPick(it.id) }}
-              className="pressable card relative overflow-hidden px-3.5 py-3.5 flex flex-col text-left min-h-[128px] anim-rise"
+              className="pressable card-soft relative overflow-hidden px-3.5 py-3.5 flex flex-col text-left min-h-[128px] anim-rise"
               style={{ animationDelay: `${i * 45}ms` }}
             >
-              {/* halo del tono */}
+              {/* halo del tono y línea de luz superior */}
               <span
                 className="absolute -right-6 -top-8 w-24 h-24 rounded-full blur-2xl pointer-events-none opacity-25"
                 style={{ background: TONE_COLOR[tone] }}
+              />
+              <span
+                className="absolute inset-x-6 top-0 h-px pointer-events-none"
+                style={{ background: `linear-gradient(90deg, transparent, color-mix(in oklab, ${TONE_COLOR[tone]} 80%, #fff), transparent)` }}
               />
               <span className="flex items-start justify-between w-full">
                 <span

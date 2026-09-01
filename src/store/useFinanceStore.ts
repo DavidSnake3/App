@@ -2,12 +2,12 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
   Account, AnimationPrefs, AppSettings, Budget, Category, Debt, DebtPayment, Expense,
-  FundConfig, Installment, Loan, MonthData, Movement, NotificationPrefs, PayrollConfig,
+  FundConfig, Installment, Loan, LoanAdvance, MonthData, Movement, NotificationPrefs, PayrollConfig,
   PaySchedule, SavingsConfig, SavingsEnvelope, SubItem, TabId, ThemeSettings, UsageState,
   UserProfile, ViewMode, WidgetConf,
 } from '../types/finance'
 import { currentMonthId, todayISO } from '../lib/dates'
-import { DEFAULT_CATEGORIES, guessCategory } from '../lib/categories'
+import { DEFAULT_CATEGORIES, guessCategory, mergeCategories } from '../lib/categories'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
 import {
   DEFAULT_CCSS_PCT, DEFAULT_STATUTORY_NAME, convertPeriod, countryPreset, payrollBreakdown,
@@ -227,6 +227,8 @@ interface FinanceActions {
 
   // ── Movimientos del mes ──────────────────────────────────────────────────
   addMovement(mv: Omit<Movement, 'id' | 'createdAt'>): void
+  /** igual que addMovement pero devuelve el id del movimiento creado */
+  addMovementReturningId(mv: Omit<Movement, 'id' | 'createdAt'>): string
   updateMovement(id: string, patch: Partial<Omit<Movement, 'id'>>): void
   deleteMovement(id: string): void
 
@@ -245,8 +247,11 @@ interface FinanceActions {
   addLoan(l: Omit<Loan, 'id' | 'createdAt' | 'payments'>): void
   updateLoan(id: string, patch: Partial<Omit<Loan, 'id' | 'payments'>>): void
   deleteLoan(id: string): void
-  addLoanPayment(loanId: string, amount: number, note?: string): void
+  addLoanPayment(loanId: string, amount: number, note?: string, dateISO?: string, accountId?: string): void
   deleteLoanPayment(loanId: string, paymentId: string): void
+  /** le presté MÁS a la misma persona: aumenta lo que me debe */
+  addLoanAdvance(loanId: string, amount: number, note?: string, dateISO?: string, accountId?: string): void
+  deleteLoanAdvance(loanId: string, advanceId: string): void
 
   /** registra el consumo REAL de un mensaje de Snake */
   recordUsage(tokens: number, hadAttachment: boolean): void
@@ -289,6 +294,12 @@ function touch() {
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100
+}
+
+/** Cuenta de la que sale/entra la plata cuando no se indica una */
+function cuentaPorDefecto(s: { accounts: Account[] }): string {
+  const act = s.accounts.filter((a) => !a.archived && a.type !== 'credito')
+  return (act.find((a) => a.isMain) ?? act[0])?.id ?? ''
 }
 
 /**
@@ -907,11 +918,13 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         })),
 
       // ── Movimientos del mes ──────────────────────────────────────────────
-      addMovement: (mv) =>
+      addMovement: (mv) => { get().addMovementReturningId(mv) },
+      addMovementReturningId: (mv) => {
+        const id = uid()
         set((s) => {
           const monthId = mv.dateISO.slice(0, 7)
           const mes = s.months[monthId] ?? makeMonth(monthId, s.settings)
-          const nuevo: Movement = { ...mv, id: uid(), createdAt: todayISO() }
+          const nuevo: Movement = { ...mv, id, createdAt: todayISO() }
           return {
             months: {
               ...s.months,
@@ -919,7 +932,9 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             },
             ...touch(),
           }
-        }),
+        })
+        return id
+      },
       updateMovement: (id, patch) =>
         set((s) => {
           let encontrado: Movement | undefined
@@ -1018,29 +1033,113 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         }),
 
       // ── Préstamos propios ────────────────────────────────────────────────
-      addLoan: (l) =>
+      /**
+       * Presté plata: se registra el préstamo y se genera el MOVIMIENTO que
+       * saca la plata de la cuenta (así se ve en Movimientos y en el saldo).
+       */
+      addLoan: (l) => {
+        const movementId = get().addMovementReturningId({
+          name: `Le presté a ${l.person}`.slice(0, 40),
+          amount: l.amount,
+          kind: 'gasto',
+          categoryId: 'preste',
+          accountId: l.accountId ?? cuentaPorDefecto(get()),
+          dateISO: (l.dateISO || todayISO()).slice(0, 10),
+          note: l.note,
+        })
         set((s) => ({
-          loans: [...s.loans, { ...l, id: uid(), payments: [], createdAt: todayISO() }],
+          loans: [...s.loans, {
+            ...l,
+            id: uid(),
+            payments: [],
+            advances: [],
+            movementId,
+            createdAt: todayISO(),
+          }],
           ...touch(),
-        })),
+        }))
+      },
       updateLoan: (id, patch) =>
         set((s) => ({ loans: s.loans.map((l) => (l.id === id ? { ...l, ...patch } : l)), ...touch() })),
-      deleteLoan: (id) =>
-        set((s) => ({ loans: s.loans.filter((l) => l.id !== id), ...touch() })),
-      addLoanPayment: (loanId, amount, note) =>
+      deleteLoan: (id) => {
+        const loan = get().loans.find((l) => l.id === id)
+        if (loan) {
+          const movimientos = [
+            loan.movementId,
+            ...(loan.advances ?? []).map((a) => a.movementId),
+            ...loan.payments.map((p) => p.movementId),
+          ].filter(Boolean) as string[]
+          for (const mid of movimientos) get().deleteMovement(mid)
+        }
+        set((s) => ({ loans: s.loans.filter((l) => l.id !== id), ...touch() }))
+      },
+      /** Me abonó: entra la plata a la cuenta y baja lo que me debe */
+      addLoanPayment: (loanId, amount, note, dateISO, accountId) => {
+        const loan = get().loans.find((l) => l.id === loanId)
+        const fecha = (dateISO || todayISO()).slice(0, 10)
+        const cuenta = accountId ?? loan?.accountId ?? cuentaPorDefecto(get())
+        const movementId = get().addMovementReturningId({
+          name: `Abono de ${loan?.person ?? 'préstamo'}`.slice(0, 40),
+          amount,
+          kind: 'ingreso',
+          categoryId: 'me-pagaron',
+          accountId: cuenta,
+          dateISO: fecha,
+          note,
+        })
         set((s) => ({
           loans: s.loans.map((l) => l.id === loanId
-            ? { ...l, payments: [...l.payments, { id: uid(), amount, dateISO: todayISO().slice(0, 10), note }] }
+            ? {
+                ...l,
+                payments: [...l.payments, { id: uid(), amount, dateISO: fecha, note, movementId, accountId: cuenta }],
+              }
             : l),
           ...touch(),
-        })),
-      deleteLoanPayment: (loanId, paymentId) =>
+        }))
+      },
+      deleteLoanPayment: (loanId, paymentId) => {
+        const pago = get().loans.find((l) => l.id === loanId)?.payments.find((p) => p.id === paymentId)
+        if (pago?.movementId) get().deleteMovement(pago.movementId)
         set((s) => ({
           loans: s.loans.map((l) => l.id === loanId
             ? { ...l, payments: l.payments.filter((p) => p.id !== paymentId) }
             : l),
           ...touch(),
-        })),
+        }))
+      },
+
+      /** Le volví a prestar: sube lo que me debe y sale de la cuenta */
+      addLoanAdvance: (loanId, amount, note, dateISO, accountId) => {
+        const loan = get().loans.find((l) => l.id === loanId)
+        const fecha = (dateISO || todayISO()).slice(0, 10)
+        const cuenta = accountId ?? loan?.accountId ?? cuentaPorDefecto(get())
+        const movementId = get().addMovementReturningId({
+          name: `Le presté más a ${loan?.person ?? 'alguien'}`.slice(0, 40),
+          amount,
+          kind: 'gasto',
+          categoryId: 'preste',
+          accountId: cuenta,
+          dateISO: fecha,
+          note,
+        })
+        const avance: LoanAdvance = { id: uid(), amount, dateISO: fecha, note, movementId, accountId: cuenta }
+        set((s) => ({
+          loans: s.loans.map((l) => l.id === loanId
+            ? { ...l, advances: [...(l.advances ?? []), avance] }
+            : l),
+          ...touch(),
+        }))
+      },
+      deleteLoanAdvance: (loanId, advanceId) => {
+        const av = get().loans.find((l) => l.id === loanId)?.advances?.find((a) => a.id === advanceId)
+        if (av?.movementId) get().deleteMovement(av.movementId)
+        set((s) => ({
+          loans: s.loans.map((l) => l.id === loanId
+            ? { ...l, advances: (l.advances ?? []).filter((a) => a.id !== advanceId) }
+            : l),
+          ...touch(),
+        }))
+      },
 
       recordUsage: (tokens, hadAttachment) =>
         set((s) => {
@@ -1135,7 +1234,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...data.settings?.paySchedule },
             savings: { ...DEFAULT_SAVINGS, ...data.settings?.savings, envelopes: data.settings?.savings?.envelopes ?? [] },
             fund: { ...DEFAULT_FUND, ...data.settings?.fund },
-            categories: data.settings?.categories?.length ? data.settings.categories : DEFAULT_CATEGORIES,
+            categories: mergeCategories(data.settings?.categories),
             homeWidgets: data.settings?.homeWidgets ?? DEFAULT_WIDGETS,
           },
           activeMonthId: data.activeMonthId ?? currentMonthId(),
@@ -1188,7 +1287,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...p.settings?.paySchedule },
             savings: { ...DEFAULT_SAVINGS, ...p.settings?.savings, envelopes: p.settings?.savings?.envelopes ?? [] },
             fund: { ...DEFAULT_FUND, ...p.settings?.fund },
-            categories: p.settings?.categories?.length ? p.settings.categories : DEFAULT_CATEGORIES,
+            categories: mergeCategories(p.settings?.categories),
           },
         }
       },

@@ -21,6 +21,7 @@ import { buildMonthCardBlob } from '../../lib/shareCard'
 import { downloadWorkbook } from '../../lib/excel'
 import { withLoading } from '../../store/useLoading'
 import { HubHeader, HubMenu, HubTitle, type HubItem } from '../layout/HubMenu'
+import { Fab } from '../ui/Fab'
 import { DebtsView } from '../debts/DebtsView'
 import { CardsView } from './views/CardsView'
 import { ListView } from './views/ListView'
@@ -280,14 +281,9 @@ export function MonthView() {
 
       {/* FAB agregar (el tipo gasto/servicio/personal se elige dentro) */}
       {sub === 'pagos' && (
-      <button
-        onClick={() => { setEditingExpense(null); setAddOpen(true) }}
-        aria-label="Agregar pago"
-        className="pressable absolute bottom-[20px] right-4 w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-xl z-30"
-        style={{ background: 'var(--app-gradient)', boxShadow: '0 10px 30px color-mix(in oklab, var(--app-accent) 45%, transparent)' }}
-      >
-        <Plus size={26} />
-      </button>
+        <Fab onClick={() => { setEditingExpense(null); setAddOpen(true) }} label="Agregar pago">
+          <Plus size={26} />
+        </Fab>
       )}
 
       {/* Felicitación pequeña (punto 22) */}

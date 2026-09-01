@@ -10,6 +10,7 @@ import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { IconPicker } from '../ui/IconPicker'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { MonthField } from '../ui/DatePicker'
 
 interface Props {
   open: boolean
@@ -184,12 +185,11 @@ function InstallmentForm({ editing, defaultAccountId, onDone }: {
                 />
               </div>
               <div>
-                <label className="text-[12px] font-semibold text-muted">Primera cuota</label>
-                <input
-                  type="month"
+                <MonthField
                   value={startMonthId}
-                  onChange={(e) => setStartMonthId(e.target.value || currentMonthId())}
-                  className="input-base mt-1.5 num"
+                  onChange={setStartMonthId}
+                  label="Primera cuota"
+                  title="¿En qué mes empieza?"
                 />
               </div>
             </div>

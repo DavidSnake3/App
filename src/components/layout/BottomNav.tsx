@@ -54,8 +54,13 @@ export function BottomNav() {
                 }}
               />
               <span
-                className="flex items-center justify-center w-11 h-6.5 rounded-full transition-all duration-200"
-                style={active ? { background: 'color-mix(in oklab, var(--app-accent) 22%, transparent)' } : undefined}
+                className="flex items-center justify-center w-11 h-6.5 rounded-full transition-all duration-300"
+                style={active
+                  ? {
+                      background: 'color-mix(in oklab, var(--app-accent) 22%, transparent)',
+                      boxShadow: '0 0 18px -2px color-mix(in oklab, var(--app-accent) 55%, transparent)',
+                    }
+                  : undefined}
               >
                 <Icon
                   size={20}

@@ -108,8 +108,9 @@ export function BalanceCard({ compact = false }: { compact?: boolean }) {
 
   return (
     <>
-      <div className="card p-4 relative overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'var(--app-gradient)' }} />
+      <div className="card-glow p-4">
+        <span className="glow-dot" />
+        <span className="orb -right-10 -top-12 w-44 h-44" style={{ background: 'var(--app-gradient)' }} />
 
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -117,7 +118,7 @@ export function BalanceCard({ compact = false }: { compact?: boolean }) {
               Balance {PERIOD_LABEL[viewPeriod].toLowerCase()}
             </p>
             <p
-              className="num text-[27px] font-bold leading-none mt-1"
+              className="display-money text-[30px] font-bold mt-1.5 anim-money"
               style={{ color: positivo ? 'var(--c-income)' : 'var(--c-danger)' }}
             >
               {formatMoney(Math.round(view.balance))}

@@ -27,7 +27,8 @@ export function AccountsSection() {
   return (
     <>
       {/* Total: efectivo real */}
-      <div className="card p-4 relative overflow-hidden anim-pop">
+      <div className="card-glow p-4 anim-pop">
+        <span className="glow-dot" />
         <div className="absolute top-3 right-3 flex gap-2 z-10">
           <button
             onClick={() => setOculto((v) => !v)}
@@ -45,14 +46,11 @@ export function AccountsSection() {
             <Plus size={16} />
           </button>
         </div>
-        <div
-          className="absolute -right-8 -top-10 w-40 h-40 rounded-full opacity-25 blur-2xl pointer-events-none"
-          style={{ background: 'var(--app-gradient)' }}
-        />
+        <span className="orb -right-8 -top-10 w-40 h-40" style={{ background: 'var(--app-gradient)' }} />
         <p className="text-[11.5px] font-semibold text-muted flex items-center gap-1.5">
           <Wallet size={12} /> EFECTIVO REAL
         </p>
-        <p className="num text-[30px] font-bold text-ink leading-none mt-1.5">
+        <p className="display-money text-[34px] font-bold text-ink mt-1.5 anim-money">
           {oculto ? '••••••' : formatMoney(money.cash)}
         </p>
         <p className="text-[11.5px] text-muted mt-1">
