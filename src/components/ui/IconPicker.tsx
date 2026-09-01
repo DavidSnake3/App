@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronRight, X } from 'lucide-react'
 import { ICON_IDS, ITEM_ICONS, ItemIcon } from '../../lib/icons'
 
@@ -38,7 +39,7 @@ export function IconPicker({ value, onChange, name, kind }: Props) {
         <ChevronRight size={15} className="text-muted shrink-0" />
       </button>
 
-      {open && (
+      {open && createPortal((
         <div className="fixed inset-0 z-[70] flex flex-col justify-end max-w-[520px] mx-auto">
           <div className="absolute inset-0 bg-black/65 anim-fade" onClick={() => setOpen(false)} />
           <div
@@ -86,7 +87,7 @@ export function IconPicker({ value, onChange, name, kind }: Props) {
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   )
 }

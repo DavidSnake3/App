@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 interface Props {
@@ -19,10 +20,14 @@ export function BottomSheet({ open, onClose, title, subtitle, children }: Props)
 
   if (!open) return null
 
-  return (
+  // Portal al body: si la hoja vive dentro de un contenedor con transform
+  // (las animaciones de página), ese contenedor se vuelve el marco de
+  // referencia del position:fixed y la hoja aparece corrida hacia arriba.
+  return createPortal(
     <SheetPanel onClose={onClose} title={title} subtitle={subtitle}>
       {children}
-    </SheetPanel>
+    </SheetPanel>,
+    document.body,
   )
 }
 

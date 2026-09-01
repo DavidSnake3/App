@@ -1,17 +1,18 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
-  AnimationPrefs, AppSettings, Budget, Debt, DebtPayment, Expense, FundConfig, Loan,
-  MonthData, NotificationPrefs, PayrollConfig, PaySchedule, SavingsConfig,
-  SavingsEnvelope, SubItem, TabId, ThemeSettings, UsageState, UserProfile, ViewMode,
-  WidgetConf,
+  Account, AnimationPrefs, AppSettings, Budget, Category, Debt, DebtPayment, Expense,
+  FundConfig, Installment, Loan, MonthData, Movement, NotificationPrefs, PayrollConfig,
+  PaySchedule, SavingsConfig, SavingsEnvelope, SubItem, TabId, ThemeSettings, UsageState,
+  UserProfile, ViewMode, WidgetConf,
 } from '../types/finance'
 import { currentMonthId, todayISO } from '../lib/dates'
+import { DEFAULT_CATEGORIES, guessCategory } from '../lib/categories'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
 import {
   DEFAULT_CCSS_PCT, DEFAULT_STATUTORY_NAME, convertPeriod, countryPreset, payrollBreakdown,
 } from '../lib/payroll'
-import { makeFundConfig } from '../lib/fund'
+import { generalFlow, makeFundConfig, realBalance } from '../lib/fund'
 
 // ─── Valores por defecto ─────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ export const DEFAULT_PROFILE: UserProfile = {
 
 /** Widgets del inicio por defecto (el usuario los personaliza a su gusto) */
 export const DEFAULT_WIDGETS: WidgetConf[] = [
+  { id: 'cuentas', size: 'lg' },
   { id: 'comprobante', size: 'lg' },
   { id: 'ahorro', size: 'lg' },
   { id: 'estado', size: 'sm' },
@@ -139,6 +141,10 @@ export const EMPTY_USAGE: UsageState = {
 
 interface FinanceState {
   months: Record<string, MonthData>
+  /** cuentas contables: efectivo, banco, ahorros, tarjetas de credito */
+  accounts: Account[]
+  /** compras a cuotas con tarjeta de credito */
+  installments: Installment[]
   /** consumo de Snake (mensajes y tokens reales) */
   usage: UsageState
   debts: Debt[]
@@ -150,11 +156,14 @@ interface FinanceState {
   settings: AppSettings
   activeMonthId: string
   activeTab: TabId
+  /** submenu activo dentro de cada seccion (navegacion de 2 niveles) */
+  subs: Record<string, string>
   updatedAt: number
 }
 
 interface FinanceActions {
   setActiveTab(tab: TabId): void
+  setSub(tab: TabId, sub: string): void
   setActiveMonth(monthId: string): void
   ensureMonthExists(monthId: string): void
   deleteMonth(monthId: string): void
@@ -204,8 +213,33 @@ interface FinanceActions {
   setFundNow(baseAmount: number): void
   disableFund(): void
 
+  /** LEGADO: crea un movimiento (los gastos hormiga son movimientos desde v9) */
   addHormiga(monthId: string, h: { name: string; amount: number; budgetId?: string }): void
   deleteHormiga(monthId: string, id: string): void
+
+  // ── Cuentas ──────────────────────────────────────────────────────────────
+  addAccount(a: Omit<Account, 'id' | 'createdAt'>): string
+  updateAccount(id: string, patch: Partial<Omit<Account, 'id'>>): void
+  deleteAccount(id: string): void
+  setMainAccount(id: string): void
+  /** ajusta el saldo de una cuenta a lo que el usuario dice que tiene hoy */
+  setAccountBalance(id: string, amount: number, currentBalance: number): void
+
+  // ── Movimientos del mes ──────────────────────────────────────────────────
+  addMovement(mv: Omit<Movement, 'id' | 'createdAt'>): void
+  updateMovement(id: string, patch: Partial<Omit<Movement, 'id'>>): void
+  deleteMovement(id: string): void
+
+  // ── Compras a cuotas con tarjeta ─────────────────────────────────────────
+  addInstallment(i: Omit<Installment, 'id' | 'createdAt' | 'payments'>): void
+  updateInstallment(id: string, patch: Partial<Omit<Installment, 'id' | 'payments'>>): void
+  deleteInstallment(id: string): void
+  toggleInstallmentPaid(id: string, monthId: string): void
+
+  // ── Categorias ───────────────────────────────────────────────────────────
+  addCategory(c: Omit<Category, 'id'>): void
+  updateCategory(id: string, patch: Partial<Omit<Category, 'id'>>): void
+  deleteCategory(id: string): void
 
   /** préstamos propios: le presté plata a alguien (mejora 1) */
   addLoan(l: Omit<Loan, 'id' | 'createdAt' | 'payments'>): void
@@ -234,7 +268,11 @@ interface FinanceActions {
 }
 
 export interface PersistedShape {
+  /** versión del esquema (9 = cuentas, movimientos y cuotas) */
+  schema?: number
   months: Record<string, MonthData>
+  accounts?: Account[]
+  installments?: Installment[]
   debts: Debt[]
   loans?: Loan[]
   budgets?: Budget[]
@@ -247,6 +285,46 @@ export interface PersistedShape {
 
 function touch() {
   return { updatedAt: Date.now() }
+}
+
+function round2(v: number): number {
+  return Math.round(v * 100) / 100
+}
+
+/**
+ * Meses sanos: los gastos hormiga viejos se convierten en MOVIMIENTOS con su
+ * categoria adivinada, para que nadie pierda lo que ya habia anotado.
+ */
+function healMonths(
+  months: Record<string, MonthData>,
+  accounts: Account[] = [],
+): Record<string, MonthData> {
+  const cuenta = accounts.find((a) => a.isMain && !a.archived)
+    ?? accounts.find((a) => a.type !== 'credito' && !a.archived)
+  let cambio = false
+  const out: Record<string, MonthData> = {}
+  for (const [id, m] of Object.entries(months)) {
+    const viejas = m.hormigas ?? []
+    if (!viejas.length) { out[id] = m; continue }
+    const yaMigradas = new Set((m.movements ?? []).map((x) => x.id))
+    const nuevos: Movement[] = viejas
+      .filter((h) => !yaMigradas.has(h.id))
+      .map((h) => ({
+        id: h.id,
+        name: h.name,
+        amount: h.amount,
+        kind: 'gasto' as const,
+        categoryId: guessCategory(h.name, 'gasto'),
+        accountId: cuenta?.id ?? '',
+        dateISO: h.dateISO || `${id}-15`,
+        budgetId: h.budgetId,
+        createdAt: h.dateISO || `${id}-15`,
+      }))
+    if (!nuevos.length) { out[id] = m; continue }
+    cambio = true
+    out[id] = { ...m, hormigas: [], movements: [...(m.movements ?? []), ...nuevos] }
+  }
+  return cambio ? out : months
 }
 
 /**
@@ -371,6 +449,8 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
   persist(
     (set, get) => ({
       months: {},
+      accounts: [],
+      installments: [],
       debts: [],
       loans: [],
       budgets: [],
@@ -379,9 +459,11 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       settings: DEFAULT_SETTINGS,
       activeMonthId: currentMonthId(),
       activeTab: 'home',
+      subs: {},
       updatedAt: 0,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
+      setSub: (tab, sub) => set((s) => ({ subs: { ...s.subs, [tab]: sub } })),
 
       setActiveMonth: (monthId) => {
         get().ensureMonthExists(monthId)
@@ -683,19 +765,257 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           ...touch(),
         })),
 
+      /**
+       * "Hoy tengo X": ajusta el EFECTIVO REAL a ese monto. Si ya hay cuentas,
+       * corrige la principal; si no hay ninguna, crea la cuenta principal.
+       */
       setFundNow: (baseAmount) =>
-        set((s) => ({
-          settings: { ...s.settings, fund: makeFundConfig(baseAmount, s.months, s.debts, s.settings, s.loans) },
-          ...touch(),
-        })),
+        set((s) => {
+          const principal = s.accounts.find((a) => a.isMain && !a.archived && a.type !== 'credito')
+          const fund = { ...s.settings.fund, enabled: true }
+          if (principal) {
+            const actual = realBalance(
+              s.months, s.debts, s.settings, new Date(), s.loans, s.accounts, s.installments,
+            ) ?? 0
+            const delta = baseAmount - actual
+            return {
+              accounts: s.accounts.map((a) => (a.id === principal.id
+                ? { ...a, openingBalance: round2(a.openingBalance + delta) }
+                : a)),
+              settings: { ...s.settings, fund },
+              ...touch(),
+            }
+          }
+          // primera vez: la cuenta principal nace con ese saldo
+          const anchor = currentMonthId()
+          const id = uid()
+          const cuenta: Account = {
+            id,
+            name: 'Cuenta principal',
+            type: 'corriente',
+            icon: 'banco',
+            openingBalance: baseAmount,
+            openingISO: `${anchor}-01`,
+            includeInTotal: true,
+            isMain: true,
+            flowSnapshot: generalFlow(s.months, s.debts, s.settings, anchor, new Date(), s.loans, s.accounts),
+            createdAt: todayISO(),
+          }
+          // los movimientos que no tenían cuenta pasan a ser de esta
+          const months = Object.fromEntries(Object.entries(s.months).map(([mid, m]) => [mid, {
+            ...m,
+            movements: (m.movements ?? []).map((mv) => (mv.accountId ? mv : { ...mv, accountId: id })),
+          }]))
+          return {
+            accounts: [...s.accounts, cuenta],
+            months,
+            settings: {
+              ...s.settings,
+              fund: makeFundConfig(baseAmount, s.months, s.debts, s.settings, s.loans, s.accounts),
+            },
+            ...touch(),
+          }
+        }),
       disableFund: () =>
         set((s) => ({ settings: { ...s.settings, fund: { ...s.settings.fund, enabled: false } }, ...touch() })),
 
-      addHormiga: (monthId, h) =>
-        set((s) => patchMonth(s, monthId, (m) => ({
-          ...m,
-          hormigas: [...(m.hormigas ?? []), { ...h, id: uid(), dateISO: todayISO().slice(0, 10) }],
-        }))),
+      addHormiga: (monthId, h) => {
+        const s = get()
+        const cuenta = s.accounts.find((a) => a.isMain && !a.archived)
+          ?? s.accounts.find((a) => a.type !== 'credito' && !a.archived)
+        get().addMovement({
+          name: h.name,
+          amount: h.amount,
+          kind: 'gasto',
+          categoryId: guessCategory(h.name, 'gasto'),
+          accountId: cuenta?.id ?? '',
+          dateISO: monthId === currentMonthId() ? todayISO().slice(0, 10) : `${monthId}-15`,
+          budgetId: h.budgetId,
+        })
+      },
+
+      // ── Cuentas contables ────────────────────────────────────────────────
+      addAccount: (a) => {
+        const id = uid()
+        set((s) => {
+          const esPrimeraDeEfectivo = !s.accounts.some((x) => !x.archived && x.type !== 'credito')
+          const cuenta: Account = {
+            ...a,
+            id,
+            isMain: a.type === 'credito' ? false : (a.isMain ?? esPrimeraDeEfectivo),
+            createdAt: todayISO(),
+          }
+          const accounts = cuenta.isMain
+            ? [...s.accounts.map((x) => ({ ...x, isMain: false })), cuenta]
+            : [...s.accounts, cuenta]
+          // movimientos viejos sin cuenta (migrados de gastos hormiga): se
+          // adoptan en la primera cuenta principal para que el total cuadre
+          const huerfanos = cuenta.isMain
+          const months = huerfanos
+            ? Object.fromEntries(Object.entries(s.months).map(([mid, m]) => [mid, {
+                ...m,
+                movements: (m.movements ?? []).map((mv) => (
+                  mv.accountId ? mv : { ...mv, accountId: id }
+                )),
+              }]))
+            : s.months
+          return { accounts, months, ...touch() }
+        })
+        return id
+      },
+      updateAccount: (id, patch) =>
+        set((s) => ({
+          accounts: s.accounts.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+          ...touch(),
+        })),
+      deleteAccount: (id) =>
+        set((s) => {
+          const quedan = s.accounts.filter((a) => a.id !== id)
+          const candidata = quedan.find((a) => a.type !== 'credito' && !a.archived)
+          const hayPrincipal = quedan.some((a) => a.isMain && a.type !== 'credito' && !a.archived)
+          const accounts = hayPrincipal || !candidata
+            ? quedan
+            : quedan.map((a) => (a.id === candidata.id ? { ...a, isMain: true } : a))
+          // los movimientos de esa cuenta pasan a la principal para no perderlos
+          const destino = accounts.find((a) => a.isMain)?.id
+          const months = destino
+            ? Object.fromEntries(Object.entries(s.months).map(([mid, m]) => [mid, {
+                ...m,
+                movements: (m.movements ?? [])
+                  .filter((mv) => !(mv.kind === 'transferencia' && mv.toAccountId === id))
+                  .map((mv) => (mv.accountId === id ? { ...mv, accountId: destino } : mv)),
+              }]))
+            : s.months
+          return {
+            accounts,
+            months,
+            installments: s.installments.filter((i) => i.accountId !== id),
+            ...touch(),
+          }
+        }),
+      setMainAccount: (id) =>
+        set((s) => ({
+          accounts: s.accounts.map((a) => ({ ...a, isMain: a.id === id && a.type !== 'credito' })),
+          ...touch(),
+        })),
+      setAccountBalance: (id, amount, currentBalance) =>
+        set((s) => ({
+          accounts: s.accounts.map((a) => (a.id === id
+            ? { ...a, openingBalance: round2(a.openingBalance + (amount - currentBalance)) }
+            : a)),
+          ...touch(),
+        })),
+
+      // ── Movimientos del mes ──────────────────────────────────────────────
+      addMovement: (mv) =>
+        set((s) => {
+          const monthId = mv.dateISO.slice(0, 7)
+          const mes = s.months[monthId] ?? makeMonth(monthId, s.settings)
+          const nuevo: Movement = { ...mv, id: uid(), createdAt: todayISO() }
+          return {
+            months: {
+              ...s.months,
+              [monthId]: { ...mes, movements: [...(mes.movements ?? []), nuevo] },
+            },
+            ...touch(),
+          }
+        }),
+      updateMovement: (id, patch) =>
+        set((s) => {
+          let encontrado: Movement | undefined
+          const months: Record<string, MonthData> = {}
+          for (const [mid, m] of Object.entries(s.months)) {
+            const hit = (m.movements ?? []).find((x) => x.id === id)
+            if (hit) {
+              encontrado = { ...hit, ...patch }
+              months[mid] = { ...m, movements: (m.movements ?? []).filter((x) => x.id !== id) }
+            } else {
+              months[mid] = m
+            }
+          }
+          if (!encontrado) return {}
+          const destinoId = encontrado.dateISO.slice(0, 7)
+          const destino = months[destinoId] ?? makeMonth(destinoId, s.settings)
+          return {
+            months: {
+              ...months,
+              [destinoId]: { ...destino, movements: [...(destino.movements ?? []), encontrado] },
+            },
+            ...touch(),
+          }
+        }),
+      deleteMovement: (id) =>
+        set((s) => ({
+          months: Object.fromEntries(Object.entries(s.months).map(([mid, m]) => [mid, {
+            ...m,
+            movements: (m.movements ?? []).filter((x) => x.id !== id),
+          }])),
+          ...touch(),
+        })),
+
+      // ── Compras a cuotas con tarjeta ─────────────────────────────────────
+      addInstallment: (i) =>
+        set((s) => ({
+          installments: [...s.installments, { ...i, id: uid(), payments: {}, createdAt: todayISO() }],
+          ...touch(),
+        })),
+      updateInstallment: (id, patch) =>
+        set((s) => ({
+          installments: s.installments.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+          ...touch(),
+        })),
+      deleteInstallment: (id) =>
+        set((s) => ({ installments: s.installments.filter((i) => i.id !== id), ...touch() })),
+      toggleInstallmentPaid: (id, monthId) =>
+        set((s) => ({
+          installments: s.installments.map((i) => {
+            if (i.id !== id) return i
+            const actual = i.payments[monthId]
+            const paid = !actual?.paid
+            return {
+              ...i,
+              payments: {
+                ...i.payments,
+                [monthId]: {
+                  paid,
+                  amount: actual?.amount ?? i.monthly,
+                  paidAt: paid ? todayISO() : undefined,
+                },
+              },
+            }
+          }),
+          ...touch(),
+        })),
+
+      // ── Categorias de movimientos ────────────────────────────────────────
+      addCategory: (c) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            categories: [...(s.settings.categories ?? DEFAULT_CATEGORIES), { ...c, id: uid() }],
+          },
+          ...touch(),
+        })),
+      updateCategory: (id, patch) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            categories: (s.settings.categories ?? DEFAULT_CATEGORIES).map((c) => (
+              c.id === id ? { ...c, ...patch } : c
+            )),
+          },
+          ...touch(),
+        })),
+      deleteCategory: (id) =>
+        set((s) => {
+          const lista = s.settings.categories ?? DEFAULT_CATEGORIES
+          const cat = lista.find((c) => c.id === id)
+          // las de la app solo se ocultan; las propias se borran
+          const categories = cat?.builtin
+            ? lista.map((c) => (c.id === id ? { ...c, hidden: true } : c))
+            : lista.filter((c) => c.id !== id)
+          return { settings: { ...s.settings, categories }, ...touch() }
+        }),
 
       // ── Préstamos propios ────────────────────────────────────────────────
       addLoan: (l) =>
@@ -772,6 +1092,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set((s) => patchMonth(s, monthId, (m) => ({
           ...m,
           hormigas: (m.hormigas ?? []).filter((x) => x.id !== id),
+          movements: (m.movements ?? []).filter((x) => x.id !== id),
         }))),
       setDefaultSalaryEverywhere: (v) =>
         set((s) => {
@@ -790,8 +1111,15 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set((s) => patchMonth(s, monthId, (m) => ({ ...m, celebrated: true }))),
 
       hydrateFrom: (data) =>
-        set({
-          months: data.months ?? {},
+        set((prev) => {
+          // Un cliente viejo (v8) no manda `accounts`: en ese caso se conservan
+          // las cuentas locales para no perderlas al sincronizar o importar.
+          const accounts = data.accounts ?? prev.accounts ?? []
+          const installments = data.installments ?? prev.installments ?? []
+          return {
+          months: healMonths(data.months ?? {}, accounts),
+          accounts,
+          installments,
           debts: healDebts(data.debts),
           loans: data.loans ?? [],
           budgets: data.budgets ?? [],
@@ -807,15 +1135,19 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...data.settings?.paySchedule },
             savings: { ...DEFAULT_SAVINGS, ...data.settings?.savings, envelopes: data.settings?.savings?.envelopes ?? [] },
             fund: { ...DEFAULT_FUND, ...data.settings?.fund },
+            categories: data.settings?.categories?.length ? data.settings.categories : DEFAULT_CATEGORIES,
             homeWidgets: data.settings?.homeWidgets ?? DEFAULT_WIDGETS,
           },
           activeMonthId: data.activeMonthId ?? currentMonthId(),
           updatedAt: data.updatedAt ?? Date.now(),
+          }
         }),
 
       resetAll: () =>
         set({
           months: {},
+          accounts: [],
+          installments: [],
           debts: [],
           loans: [],
           budgets: [],
@@ -824,12 +1156,13 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           settings: DEFAULT_SETTINGS,
           activeMonthId: currentMonthId(),
           activeTab: 'home',
+          subs: {},
           ...touch(),
         }),
     }),
     {
       name: 'finance-app-state',
-      version: 8,
+      version: 9,
       // Merge profundo de settings: cualquier estado guardado sin los campos
       // nuevos (clientes viejos, nube) recibe los defaults sin romper nada
       merge: (persisted, current) => {
@@ -837,6 +1170,9 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         return {
           ...current,
           ...p,
+          months: healMonths(p.months ?? {}, p.accounts ?? []),
+          accounts: p.accounts ?? [],
+          installments: p.installments ?? [],
           debts: healDebts(p.debts),
           loans: p.loans ?? [],
           budgets: p.budgets ?? [],
@@ -852,80 +1188,49 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...p.settings?.paySchedule },
             savings: { ...DEFAULT_SAVINGS, ...p.settings?.savings, envelopes: p.settings?.savings?.envelopes ?? [] },
             fund: { ...DEFAULT_FUND, ...p.settings?.fund },
+            categories: p.settings?.categories?.length ? p.settings.categories : DEFAULT_CATEGORIES,
           },
         }
       },
       migrate: (persisted, version) => {
+        // Cadena ASCENDENTE: cada paso se aplica en orden y el `merge` de
+        // arriba se encarga después de completar los campos nuevos con sus
+        // valores por defecto (por eso aquí solo van los cambios de forma).
+        let st = (persisted ?? {}) as FinanceState
+
         if (version < 2) {
-          const migrated = migrateV1((persisted ?? {}) as V1State)
-          return {
+          st = {
             months: {},
+            accounts: [],
+            installments: [],
             debts: [],
+            loans: [],
+            budgets: [],
+            usage: EMPTY_USAGE,
             profile: DEFAULT_PROFILE,
             settings: DEFAULT_SETTINGS,
             activeMonthId: currentMonthId(),
             activeTab: 'home',
             updatedAt: Date.now(),
-            ...migrated,
-          } as FinanceState & FinanceActions
+            ...migrateV1((persisted ?? {}) as V1State),
+          } as FinanceState
         }
+
         if (version < 4) {
-          // v2/v3 → v4: nuevos campos (planilla por período, tour, sonidos, widgets)
-          const s = persisted as FinanceState
-          return {
-            ...s,
+          // v2/v3 → v4: quien ya usaba la app no repite el recorrido
+          st = {
+            ...st,
             profile: {
               ...DEFAULT_PROFILE,
-              ...s.profile,
-              // quien ya usaba la app no necesita el recorrido de bienvenida
-              tourDone: (s.profile as Partial<UserProfile>)?.tourDone ?? Boolean(s.profile?.onboarded),
+              ...st.profile,
+              tourDone: (st.profile as Partial<UserProfile>)?.tourDone ?? Boolean(st.profile?.onboarded),
             },
-            settings: {
-              ...DEFAULT_SETTINGS,
-              ...s.settings,
-              animations: { ...DEFAULT_ANIMATIONS, ...s.settings?.animations },
-              payroll: { ...DEFAULT_PAYROLL, ...(s.settings as Partial<AppSettings>)?.payroll },
-              paySchedule: { ...DEFAULT_PAY_SCHEDULE, ...(s.settings as Partial<AppSettings>)?.paySchedule },
-              savings: { ...DEFAULT_SAVINGS, ...(s.settings as Partial<AppSettings>)?.savings },
-              homeWidgets: s.settings?.homeWidgets ?? DEFAULT_WIDGETS,
-            },
-          } as FinanceState & FinanceActions
+          }
         }
-        if (version < 8) {
-          // v7 → v8: préstamos propios, presupuestos y plan financiero
-          const s = persisted as FinanceState
-          return {
-            ...s,
-            loans: s.loans ?? [],
-            budgets: s.budgets ?? [],
-            profile: { ...DEFAULT_PROFILE, ...s.profile },
-            settings: {
-              ...DEFAULT_SETTINGS,
-              ...s.settings,
-              payroll: healPayroll((s.settings as Partial<AppSettings>)?.payroll),
-            },
-          } as FinanceState & FinanceActions
-        }
-        if (version < 7) {
-          // v6 → v7: planilla universal (deducciones de ley, tramos, extras)
-          const s = persisted as FinanceState
-          const sav = { ...DEFAULT_SAVINGS, ...(s.settings as Partial<AppSettings>)?.savings }
-          return {
-            ...s,
-            profile: { ...DEFAULT_PROFILE, ...s.profile },
-            settings: {
-              ...DEFAULT_SETTINGS,
-              ...s.settings,
-              payroll: healPayroll((s.settings as Partial<AppSettings>)?.payroll),
-              savings: { ...sav, envelopes: sav.envelopes ?? [] },
-              fund: { ...DEFAULT_FUND, ...(s.settings as Partial<AppSettings>)?.fund },
-            },
-          } as FinanceState & FinanceActions
-        }
+
         if (version < 6) {
           // v5 → v6: los aportes sueltos pasan a ser un sobre de ahorro
-          const s = persisted as FinanceState
-          const sav = { ...DEFAULT_SAVINGS, ...(s.settings as Partial<AppSettings>)?.savings }
+          const sav = { ...DEFAULT_SAVINGS, ...(st.settings as Partial<AppSettings>)?.savings }
           const envelopes = sav.envelopes?.length
             ? sav.envelopes
             : (sav.deposits?.length || sav.goal > 0
@@ -938,31 +1243,44 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
                   createdAt: todayISO(),
                 }]
               : [])
-          return {
-            ...s,
-            profile: { ...DEFAULT_PROFILE, ...s.profile },
-            settings: {
-              ...DEFAULT_SETTINGS,
-              ...s.settings,
-              payroll: { ...DEFAULT_PAYROLL, ...(s.settings as Partial<AppSettings>)?.payroll },
-              savings: { ...sav, envelopes },
-              fund: { ...DEFAULT_FUND, ...(s.settings as Partial<AppSettings>)?.fund },
-            },
-          } as FinanceState & FinanceActions
+          st = { ...st, settings: { ...st.settings, savings: { ...sav, envelopes } } }
         }
-        if (version < 5) {
-          // v4 → v5: saldo real, gastos hormiga y aportes reales de ahorro
-          const s = persisted as FinanceState
-          return {
-            ...s,
+
+        if (version < 9) {
+          // v8 → v9: cuentas contables. El saldo real que el usuario ya tenía
+          // se convierte en su CUENTA PRINCIPAL, con el mismo monto base y el
+          // mismo mes ancla, para que el total no cambie ni un colón.
+          const f = (st.settings as Partial<AppSettings>)?.fund
+          const accounts: Account[] = st.accounts ?? []
+          if (!accounts.length && f?.enabled && f.anchorMonthId) {
+            accounts.push({
+              id: uid(),
+              name: 'Cuenta principal',
+              type: 'corriente',
+              icon: 'banco',
+              openingBalance: f.baseAmount ?? 0,
+              openingISO: `${f.anchorMonthId}-01`,
+              includeInTotal: true,
+              isMain: true,
+              flowSnapshot: f.snapshot ?? 0,
+              createdAt: todayISO(),
+            })
+          }
+          st = {
+            ...st,
+            accounts,
+            installments: st.installments ?? [],
+            months: healMonths(st.months ?? {}, accounts),
             settings: {
-              ...s.settings,
-              savings: { ...DEFAULT_SAVINGS, ...s.settings?.savings },
-              fund: { ...DEFAULT_FUND, ...(s.settings as Partial<AppSettings>)?.fund },
+              ...st.settings,
+              categories: (st.settings as Partial<AppSettings>)?.categories?.length
+                ? (st.settings as AppSettings).categories
+                : DEFAULT_CATEGORIES,
             },
-          } as FinanceState & FinanceActions
+          }
         }
-        return persisted as FinanceState & FinanceActions
+
+        return st as FinanceState & FinanceActions
       },
     },
   ),
@@ -972,7 +1290,10 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
 export function exportState(): PersistedShape {
   const s = useFinanceStore.getState()
   return {
+    schema: 9,
     months: s.months,
+    accounts: s.accounts,
+    installments: s.installments,
     debts: s.debts,
     loans: s.loans,
     budgets: s.budgets,

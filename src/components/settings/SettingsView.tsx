@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import {
-  AlarmClock, ArrowLeft, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
+  AlarmClock, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
   Briefcase, Camera, Database, Download, FileText, HandCoins, Image as ImageIcon,
   Landmark, LifeBuoy, LogOut, Mail, MessageCircleQuestion, Moon, Palette,
   PartyPopper, PiggyBank, Play, Plus, Sparkles, Sun, Trash2, Upload,
@@ -23,6 +23,7 @@ import { realBalance } from '../../lib/fund'
 import { debtIsSettled, uid } from '../../lib/finance'
 import { celebrate, payBurst } from '../../lib/fx'
 import { applyBackup, exportBackup, readBackup } from '../../lib/backup'
+import { exportState } from '../../store/useFinanceStore'
 import { withLoading } from '../../store/useLoading'
 import { buildWorkbook, downloadWorkbook } from '../../lib/excel'
 import type { AuthState } from '../../hooks/useAuth'
@@ -31,6 +32,10 @@ import { Toggle } from '../ui/Toggle'
 import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AlarmOverlay } from '../overlays/AlarmOverlay'
+import { HubHeader, HubMenu, HubTitle, type HubItem } from '../layout/HubMenu'
+import { payrollBreakdown as breakdown } from '../../lib/payroll'
+import { savingsTotal } from '../../lib/fund'
+import { plan as snakePlanOf } from '../../lib/plans'
 import { SavingsSection } from './SavingsSection'
 import { SnakeSection } from './SnakeSection'
 import { ExtraPaysEditor, LegalNotice, StatutoryEditor, TaxEditor } from './PayrollEditors'
@@ -43,18 +48,88 @@ const SUPPORT_EMAIL = 'davidjosuevillegassalas@gmail.com'
 
 /** Ajustes organizado por submenús (mejora 16) */
 export function SettingsView({ auth }: { auth: AuthState }) {
-  const [section, setSection] = useState<SectionId | null>(null)
+  const section = (useFinanceStore((s) => s.subs.settings) ?? '') as SectionId | ''
+  const setSub = useFinanceStore((s) => s.setSub)
+  const setSection = (id: SectionId | null) => setSub('settings', id ?? '')
 
-  const items: { id: SectionId; icon: React.ReactNode; title: string; desc: string }[] = [
-    { id: 'cuenta', icon: <UserIcon size={17} />, title: 'Cuenta y perfil', desc: 'Sesión, nombre, moneda y foto' },
-    { id: 'ingresos', icon: <Wallet size={17} />, title: 'Ingresos y planilla', desc: 'Cómo recibes tu dinero, deducciones, plan de pago y saldo real' },
-    { id: 'ahorros', icon: <PiggyBank size={17} />, title: 'Ahorros', desc: 'Sobres de ahorro, metas y aportes' },
-    { id: 'snake', icon: <Sparkles size={17} />, title: 'Snake y planes', desc: 'Tu plan, consumo del asistente y capacidad' },
-    { id: 'apariencia', icon: <Palette size={17} />, title: 'Tema y apariencia', desc: 'Claro/oscuro, paletas, acento y fondo' },
-    { id: 'animaciones', icon: <PartyPopper size={17} />, title: 'Animaciones y sonidos', desc: 'Confeti, sonidos de pago y de alarma, pruebas' },
-    { id: 'notificaciones', icon: <Bell size={17} />, title: 'Notificaciones y alarmas', desc: 'Recordatorios, modo alarma y pruebas' },
-    { id: 'datos', icon: <Database size={17} />, title: 'Datos y respaldo', desc: 'Excel, exportar/importar respaldo, borrar todo' },
-    { id: 'ayuda', icon: <LifeBuoy size={17} />, title: 'Ayuda y soporte', desc: '¿Necesitas ayuda? Reporta un error o contáctanos' },
+  const profile = useFinanceStore((s) => s.profile)
+  const settings = useFinanceStore((s) => s.settings)
+  const bd = breakdown(settings.payroll)
+  const ahorrado = savingsTotal(settings)
+
+  const items: HubItem<SectionId>[] = [
+    {
+      id: 'cuenta',
+      title: 'Cuenta y perfil',
+      desc: 'Sesión, nombre, moneda y foto',
+      icon: <UserIcon size={19} />,
+      stat: profile.name || auth.user?.email || 'Sin nombre',
+      tone: 'accent',
+    },
+    {
+      id: 'ingresos',
+      title: 'Ingresos y planilla',
+      desc: 'Deducciones, plan de pago y salario',
+      icon: <Wallet size={19} />,
+      stat: bd.monthlyNet > 0 ? formatMoney(Math.round(bd.monthlyNet)) : 'Configurar',
+      tone: 'income',
+    },
+    {
+      id: 'ahorros',
+      title: 'Ahorros',
+      desc: 'Sobres, metas y aportes',
+      icon: <PiggyBank size={19} />,
+      stat: ahorrado > 0 ? formatMoney(Math.round(ahorrado)) : 'Crear un sobre',
+      tone: 'warning',
+    },
+    {
+      id: 'snake',
+      title: 'Snake y planes',
+      desc: 'Capacidad del asistente y consumo',
+      icon: <Sparkles size={19} />,
+      stat: `Plan ${snakePlanOf(profile.snakePlan).name}`,
+      tone: 'accent',
+    },
+    {
+      id: 'apariencia',
+      title: 'Tema y apariencia',
+      desc: 'Claro/oscuro, paletas y fondo',
+      icon: <Palette size={19} />,
+      stat: settings.theme.mode === 'dark' ? 'Oscuro' : 'Claro',
+      tone: 'accent',
+    },
+    {
+      id: 'animaciones',
+      title: 'Animaciones y sonidos',
+      desc: 'Confeti, sonidos y vibración',
+      icon: <PartyPopper size={19} />,
+      stat: settings.animations.transitions ? 'Activadas' : 'Reducidas',
+      tone: 'warning',
+    },
+    {
+      id: 'notificaciones',
+      title: 'Notificaciones',
+      desc: 'Recordatorios y modo alarma',
+      icon: <Bell size={19} />,
+      stat: settings.notifications.enabled ? 'Activadas' : 'Apagadas',
+      tone: settings.notifications.enabled ? 'income' : 'danger',
+    },
+    {
+      id: 'datos',
+      title: 'Datos y respaldo',
+      desc: 'Excel, respaldo y borrar todo',
+      icon: <Database size={19} />,
+      stat: 'Exportar / importar',
+      tone: 'accent',
+    },
+    {
+      id: 'ayuda',
+      title: 'Ayuda y soporte',
+      desc: 'Reporta un error o escríbenos',
+      icon: <LifeBuoy size={19} />,
+      stat: 'Estamos para ayudarte',
+      tone: 'income',
+    },
   ]
 
   if (section) {
@@ -62,19 +137,11 @@ export function SettingsView({ auth }: { auth: AuthState }) {
     return (
       <div className="flex-1 overflow-y-auto overscroll-contain">
         <div className="px-4 pb-28 pt-2 flex flex-col gap-4 anim-page">
-          <header className="flex items-center gap-3">
-            <button
-              onClick={() => setSection(null)}
-              aria-label="Volver a Ajustes"
-              className="pressable w-10 h-10 rounded-full bg-card border border-edge flex items-center justify-center text-muted shrink-0"
-            >
-              <ArrowLeft size={17} />
-            </button>
-            <div>
-              <h2 className="font-display text-[19px] font-bold text-ink leading-tight">{meta?.title}</h2>
-              <p className="text-[12px] text-muted">{meta?.desc}</p>
-            </div>
-          </header>
+          <HubHeader
+            title={meta?.title ?? 'Ajustes'}
+            subtitle={meta?.desc}
+            onBack={() => setSection(null)}
+          />
           {section === 'cuenta' && <CuentaSection auth={auth} />}
           {section === 'ingresos' && <IngresosSection />}
           {section === 'ahorros' && <SavingsSection />}
@@ -92,29 +159,10 @@ export function SettingsView({ auth }: { auth: AuthState }) {
   return (
     <div className="flex-1 overflow-y-auto overscroll-contain">
       <div className="px-4 pb-28 pt-2 flex flex-col gap-4 anim-page">
-        <header>
-          <h2 className="font-display text-[22px] font-bold text-ink">Ajustes</h2>
-          <p className="text-[13px] text-muted mt-0.5">Personaliza SNFinance a tu manera</p>
-        </header>
+        <HubTitle title="Ajustes" subtitle="Personaliza SNFinance a tu manera" />
 
-        {/* Menu en cuadros: icono + titulo (mejora 20) */}
-        <div className="grid grid-cols-2 gap-3">
-          {items.map((i) => (
-            <button
-              key={i.id}
-              onClick={() => setSection(i.id)}
-              className="pressable card px-3 py-4 flex flex-col items-center justify-center gap-2 text-center min-h-[104px]"
-            >
-              <span
-                className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
-                style={{ background: 'color-mix(in oklab, var(--app-accent) 14%, transparent)', color: 'var(--app-accent-soft)' }}
-              >
-                {i.icon}
-              </span>
-              <span className="text-[12.5px] font-semibold text-ink leading-tight">{i.title}</span>
-            </button>
-          ))}
-        </div>
+        {/* Menú en cuadros con el dato de cada sección */}
+        <HubMenu items={items} onPick={(id) => setSection(id)} />
 
         <VersionFooter />
       </div>
@@ -662,7 +710,7 @@ function IngresosSection() {
         </Field>
         <p className="text-[11px] text-muted">
           Desde ese momento la app lo lleva en vivo: suma tus pagos de salario al llegar y resta
-          cada pago, gasto hormiga y aporte al ahorro. El sobrante del mes se arrastra solo al
+          cada pago, movimiento y aporte al ahorro. El sobrante del mes se arrastra solo al
           siguiente (aparte del ahorro). Lo ves en la pestaña Mes y en el widget «Saldo real».
         </p>
         {settings.fund?.enabled && (
@@ -979,8 +1027,31 @@ function DatosSection() {
     if (importRef.current) importRef.current.value = ''
   }
 
+    // cuánto pesa el estado que se sincroniza (el documento de la nube ~1 MB)
+  const pesoKB = Math.round(new Blob([JSON.stringify(exportState())]).size / 1024)
+  const pesoPct = Math.min(100, Math.round((pesoKB / 950) * 100))
+
   return (
     <>
+      {pesoPct >= 55 && (
+        <div className="card p-4" style={{ borderColor: pesoPct >= 85 ? 'color-mix(in oklab, var(--c-danger) 55%, var(--c-border))' : undefined }}>
+          <p className="text-[13px] font-semibold text-ink">Espacio en la nube</p>
+          <p className="text-[11.5px] text-muted mt-0.5 leading-snug">
+            Tus datos ocupan <span className="num font-semibold">{pesoKB} KB</span> de los ~950 KB que
+            caben en la nube. Si se llena, exporta un respaldo y borra meses viejos.
+          </p>
+          <div className="h-1.5 rounded-full bg-elevated overflow-hidden mt-2">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${pesoPct}%`,
+                background: pesoPct >= 85 ? 'var(--c-danger)' : 'var(--c-warning)',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <Card title="Exportar" icon={<Download size={14} />}>
         <button onClick={() => void exportExcel()} disabled={exporting} className="pressable btn-ghost w-full flex items-center justify-center gap-2 disabled:opacity-60">
           <Download size={15} /> {exporting ? 'Generando…' : 'Excel con plantilla (.xlsx)'}

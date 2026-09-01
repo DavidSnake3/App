@@ -36,8 +36,8 @@ export interface BudgetStatus {
 }
 
 /**
- * Estado del presupuesto: suma sus movimientos propios más los gastos
- * hormiga y los pagos del mes que el usuario le asignó.
+ * Estado del presupuesto: suma sus aportes propios, los movimientos del mes
+ * asignados a él y los pagos del mes que el usuario le cargó.
  */
 export function budgetStatus(
   b: Budget,
@@ -48,7 +48,11 @@ export function budgetStatus(
   const own = b.entries.filter((e) => e.dateISO >= from)
   let spent = own.reduce((s, e) => s + e.amount, 0)
 
-  // hormigas asignadas a este presupuesto
+  // movimientos asignados a este presupuesto (solo salidas)
+  for (const mv of month?.movements ?? []) {
+    if (mv.budgetId === b.id && mv.kind === 'gasto' && mv.dateISO >= from) spent += mv.amount
+  }
+  // gastos hormiga viejos que aún no se migraron
   for (const h of month?.hormigas ?? []) {
     if (h.budgetId === b.id && h.dateISO >= from) spent += h.amount
   }

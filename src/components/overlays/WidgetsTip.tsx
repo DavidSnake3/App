@@ -15,7 +15,12 @@ export function WidgetsTip({ onClose }: { onClose: () => void }) {
   const widgets = homeWidgets ?? []
   const yaEsta = widgets.some((w) => w.id === 'calendario')
 
-  const ctx: WidgetCtx = { setActiveTab, exporting: false, exportExcel: () => {} }
+  const ctx: WidgetCtx = {
+    setActiveTab,
+    goto: (t) => setActiveTab(t),
+    exporting: false,
+    exportExcel: () => {},
+  }
 
   const agregar = () => {
     if (!yaEsta) setSettings({ homeWidgets: [...widgets, { id: 'calendario', size: 'lg' }] })

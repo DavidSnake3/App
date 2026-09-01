@@ -1,24 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CalendarDays, ChartGantt, ChevronLeft, ChevronRight, LayoutGrid,
-  List, Plus, Share2, Table2, Trash2,
+  CalendarDays, ChartGantt, ChevronLeft, ChevronRight, CreditCard, LayoutGrid,
+  List, PiggyBank, Plus, Receipt, Share2, Table2, Target, Trash2,
 } from 'lucide-react'
-import type { Expense, ExpenseKind, PayableItem, ViewMode } from '../../types/finance'
+import type { Expense, ExpenseKind, MonthSub, PayableItem, ViewMode } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { buildPayables, getMonthSummary, recurringCandidates } from '../../lib/finance'
 import { addMonthsToId, isCurrentMonth, monthLabel } from '../../lib/dates'
+import { formatMoney } from '../../lib/format'
 import { celebrate } from '../../lib/fx'
 import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddExpenseSheet } from './AddExpenseSheet'
 import { ExpenseDetailSheet } from './ExpenseDetailSheet'
-import { HormigasCard } from './FundCards'
+import { MovementsCard } from './FundCards'
 import { BalanceCard } from './BalanceCard'
 import { PlanCard } from './PlanCard'
 import { BudgetsCard } from './BudgetsCard'
 import { buildMonthCardBlob } from '../../lib/shareCard'
 import { downloadWorkbook } from '../../lib/excel'
 import { withLoading } from '../../store/useLoading'
+import { HubHeader, HubMenu, HubTitle, type HubItem } from '../layout/HubMenu'
+import { DebtsView } from '../debts/DebtsView'
 import { CardsView } from './views/CardsView'
 import { ListView } from './views/ListView'
 import { TableView } from './views/TableView'
@@ -33,7 +36,16 @@ const VIEW_OPTIONS: { value: ViewMode; label: React.ReactNode; ariaLabel: string
   { value: 'gantt', label: <ChartGantt size={16} />, ariaLabel: 'Gantt' },
 ]
 
+const TITULOS: Record<MonthSub, { title: string; subtitle: string }> = {
+  pagos: { title: 'Pagos del mes', subtitle: 'Servicios, gastos, personales y cuotas' },
+  deudas: { title: 'Deudas', subtitle: 'Tus cuotas y el camino a cero' },
+  presupuestos: { title: 'Presupuestos', subtitle: 'Límites por categoría y avisos' },
+  plan: { title: 'Mi plan del mes', subtitle: 'Balance, reparto y sobrante' },
+}
+
 export function MonthView() {
+  const sub = (useFinanceStore((s) => s.subs.month) ?? '') as MonthSub | ''
+  const setSub = useFinanceStore((s) => s.setSub)
   const monthId = useFinanceStore((s) => s.activeMonthId)
   const month = useFinanceStore((s) => s.months[monthId])
   const debts = useFinanceStore((s) => s.debts)
@@ -66,6 +78,7 @@ export function MonthView() {
     month && month.expenses.length === 0 && !month.carryAsked && prevMonth && carryCandidates > 0,
   )
 
+  const budgets = useFinanceStore((s) => s.budgets)
   const items = useMemo(() => (month ? buildPayables(month, debts) : []), [month, debts])
   const summary = useMemo(
     () => (month ? getMonthSummary(month, debts) : null),
@@ -96,9 +109,58 @@ export function MonthView() {
   const groupedView = viewMode === 'cards' || viewMode === 'list'
   const ViewComp = viewMode === 'cards' ? CardsView : ListView
 
+  const pendientes = items.filter((i) => !i.paid).length
+  const deudasActivas = debts.filter((d) => !d.viaPlanilla)
+  const subItems: HubItem<MonthSub>[] = [
+    {
+      id: 'pagos',
+      title: 'Pagos',
+      desc: 'Servicios, gastos y cuotas del mes',
+      icon: <Receipt size={19} />,
+      stat: items.length ? (pendientes ? `${pendientes} sin pagar` : 'Todo pagado') : 'Agregar el primero',
+      tone: pendientes ? 'warning' : 'income',
+      badge: pendientes || undefined,
+    },
+    {
+      id: 'deudas',
+      title: 'Deudas',
+      desc: 'Cuotas, abonos y camino a cero',
+      icon: <CreditCard size={19} />,
+      stat: deudasActivas.length ? formatMoney(Math.round(deudasActivas.reduce((t, d) => t + d.monthlyPayment, 0))) : 'Sin deudas',
+      tone: 'danger',
+      badge: deudasActivas.length || undefined,
+    },
+    {
+      id: 'presupuestos',
+      title: 'Presupuestos',
+      desc: 'Límites por categoría con avisos',
+      icon: <Target size={19} />,
+      stat: budgets.length ? `${budgets.length} ${budgets.length === 1 ? 'activo' : 'activos'}` : 'Crear uno',
+      tone: 'accent',
+      badge: budgets.length || undefined,
+    },
+    {
+      id: 'plan',
+      title: 'Mi plan',
+      desc: 'Balance, reparto y sobrante',
+      icon: <PiggyBank size={19} />,
+      stat: summary ? formatMoney(Math.round(summary.savings)) : undefined,
+      tone: 'income',
+    },
+  ]
+
   return (
     <div className="flex-1 overflow-y-auto overscroll-contain" style={{ scrollbarGutter: 'stable' }}>
       <div className="px-4 pb-32 pt-2 flex flex-col gap-4">
+        {sub
+          ? (
+            <HubHeader
+              title={TITULOS[sub].title}
+              subtitle={TITULOS[sub].subtitle}
+              onBack={() => setSub('month', '')}
+            />
+          )
+          : <HubTitle title="Mi mes" subtitle="Todo lo que pagas, debes y presupuestas" />}
 
         {/* Navegación de mes + borrar mes (punto 1) */}
         <div className="flex items-center justify-between">
@@ -140,15 +202,35 @@ export function MonthView() {
           </button>
         </div>
 
-        <BalanceCard />
+        {!sub && (
+          <div className="flex flex-col gap-4 anim-page">
+            <BalanceCard compact />
+            <HubMenu items={subItems} onPick={(id) => setSub('month', id)} />
+          </div>
+        )}
 
-        {/* Plan financiero y presupuestos (mejoras 3 y 4) */}
-        <PlanCard />
-        <BudgetsCard />
+        {sub === 'plan' && (
+          <div className="flex flex-col gap-4 anim-page">
+            <BalanceCard />
+            <PlanCard />
+          </div>
+        )}
 
-        {/* Gastos hormiga */}
-        <HormigasCard />
+        {sub === 'presupuestos' && (
+          <div className="flex flex-col gap-4 anim-page">
+            <BudgetsCard />
+            <MovementsCard />
+          </div>
+        )}
 
+        {sub === 'deudas' && (
+          <div className="flex flex-col gap-4 anim-page">
+            <DebtsView embedded />
+          </div>
+        )}
+
+        {sub === 'pagos' && (
+        <div className="flex flex-col gap-4 anim-page">
         {/* Selector de vista (punto 10) */}
         <Segmented value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
 
@@ -192,9 +274,12 @@ export function MonthView() {
         ) : (
           <GanttView items={items} monthId={monthId} onOpen={openDetail} />
         )}
+        </div>
+        )}
       </div>
 
       {/* FAB agregar (el tipo gasto/servicio/personal se elige dentro) */}
+      {sub === 'pagos' && (
       <button
         onClick={() => { setEditingExpense(null); setAddOpen(true) }}
         aria-label="Agregar pago"
@@ -203,6 +288,7 @@ export function MonthView() {
       >
         <Plus size={26} />
       </button>
+      )}
 
       {/* Felicitación pequeña (punto 22) */}
       {showCongrats && (

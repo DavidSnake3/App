@@ -7,8 +7,11 @@ import { formatMoney, formatMoneyShort } from '../../lib/format'
 import { LineChart } from './LineChart'
 import { FinancialReport, YearCharts } from './YearInsights'
 
-/** Vista Año: calendario anual (punto 2), proyecciones P/G (punto 13) y Gantt de deudas */
-export function YearView() {
+/**
+ * Vista Año: calendario anual, proyecciones P/G y Gantt de deudas.
+ * `embedded` = va dentro del hub de Reportes (sin contenedor de scroll propio).
+ */
+export function YearView({ embedded = false, showReport = true }: { embedded?: boolean; showReport?: boolean }) {
   const months = useFinanceStore((s) => s.months)
   const debts = useFinanceStore((s) => s.debts)
   const settings = useFinanceStore((s) => s.settings)
@@ -33,10 +36,8 @@ export function YearView() {
 
   const activeDebts = debts.filter((d) => !debtIsSettled(d))
 
-  return (
-    <div className="flex-1 overflow-y-auto overscroll-contain">
-      <div className="px-4 pb-28 pt-2 flex flex-col gap-4">
-
+  const cuerpo = (
+    <>
         {/* Selector de año */}
         <div className="flex items-center justify-between">
           <button
@@ -102,7 +103,7 @@ export function YearView() {
         </div>
 
         {/* Reporte financiero por período (mejora 16) */}
-        <FinancialReport year={year} />
+        {showReport && <FinancialReport year={year} />}
 
         {/* Dashboards del año: dona, barras y comparación (mejora 15) */}
         <YearCharts year={year} />
@@ -189,7 +190,13 @@ export function YearView() {
             </div>
           </section>
         )}
-      </div>
+    </>
+  )
+
+  if (embedded) return cuerpo
+  return (
+    <div className="flex-1 overflow-y-auto overscroll-contain">
+      <div className="px-4 pb-28 pt-2 flex flex-col gap-4">{cuerpo}</div>
     </div>
   )
 }

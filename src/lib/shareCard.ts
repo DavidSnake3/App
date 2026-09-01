@@ -2,6 +2,7 @@
 import type { AppSettings, Debt, MonthData } from '../types/finance'
 import { buildPayables, getMonthSummary } from './finance'
 import { hormigasTotal, realBalance } from './fund'
+import { movementsExpense } from './accounts'
 import { monthLabel } from './dates'
 import { formatMoney } from './format'
 import { SN_GRADIENT } from './logo'
@@ -34,7 +35,7 @@ export async function buildMonthCardBlob(
   if (!ctx) throw new Error('canvas')
 
   const s = getMonthSummary(month, debts)
-  const hormigas = hormigasTotal(month)
+  const movimientos = movementsExpense(month) + hormigasTotal(month)
   const saldo = realBalance(months, debts, settings)
   const top = buildPayables(month, debts).slice().sort((a, b) => b.amount - a.amount).slice(0, 3)
 
@@ -80,7 +81,7 @@ export async function buildMonthCardBlob(
     ['Ingresos', formatMoney(s.totalIncome), '#3fc3ae'],
     ['Pagado', `${formatMoney(s.paidAmount)}  (${s.countPaid}/${s.countTotal})`, '#f4f6fb'],
     ['Pendiente', formatMoney(s.pendingAmount), s.pendingAmount > 0 ? '#f5a524' : '#8b93a7'],
-    ['Gastos hormiga', formatMoney(Math.round(hormigas)), hormigas > 0 ? '#f5a524' : '#8b93a7'],
+    ['Movimientos', formatMoney(Math.round(movimientos)), movimientos > 0 ? '#f5a524' : '#8b93a7'],
   ]
   if (saldo != null) rows.push(['Saldo real (banco)', formatMoney(Math.round(saldo)), saldo >= 0 ? '#3fc3ae' : '#f4587a'])
 

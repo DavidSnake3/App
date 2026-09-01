@@ -2,16 +2,17 @@
 // 14, 17, 18, 19). Todo se puede ver en semanal, quincenal o mensual.
 import { useMemo, useState } from 'react'
 import {
-  ChevronRight, Coffee, CreditCard, Heart, Landmark, Pencil, PiggyBank, Receipt,
-  ShieldCheck, TrendingDown, TrendingUp, Wallet,
+  ArrowLeftRight, ChevronRight, CreditCard, Heart, Landmark, Pencil, PiggyBank,
+  Receipt, ShieldCheck, TrendingDown, TrendingUp, Wallet,
 } from 'lucide-react'
 import type { PayPeriod } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { getMonthSummary } from '../../lib/finance'
 import {
-  carryOver, depositsInMonth, envelopeTotal, hormigasTotal, kindTotals,
+  carryOver, depositsInMonth, envelopeTotal, kindTotals,
   prevMonthLeftover, realBalance, receivedInMonth, savingsTotal,
 } from '../../lib/fund'
+import { cashMovementsNet, movementsExpense, movementsIncome } from '../../lib/accounts'
 import { PERIOD_LABEL, PERIOD_UNIT, convertPeriod } from '../../lib/payroll'
 import { isCurrentMonth, monthLabel } from '../../lib/dates'
 import { formatMoney, formatSecond } from '../../lib/format'
@@ -57,6 +58,9 @@ function useBalanceData(view: PayPeriod) {
   const months = useFinanceStore((s) => s.months)
   const debts = useFinanceStore((s) => s.debts)
   const settings = useFinanceStore((s) => s.settings)
+  const accounts = useFinanceStore((s) => s.accounts)
+  const installments = useFinanceStore((s) => s.installments)
+  const loans = useFinanceStore((s) => s.loans)
 
   return useMemo(() => {
     if (!month) return null
@@ -64,29 +68,35 @@ function useBalanceData(view: PayPeriod) {
     const kinds = kindTotals(month, debts)
     const deudas = kinds.find((k) => k.kind === 'deuda')?.total ?? 0
     const otros = kinds.filter((k) => k.kind !== 'deuda').reduce((t, k) => t + k.total, 0)
-    const hormigas = hormigasTotal(month)
+    // movimientos del mes (antes "gastos hormiga"): lo que salió y lo que entró
+    const movSalidas = movementsExpense(month)
+    const movEntradas = movementsIncome(month)
+    const movNeto = -cashMovementsNet(month, accounts)
     const ahorroMes = depositsInMonth(settings, monthId)
-    const prevLeft = prevMonthLeftover(months, debts, settings, monthId)
-    const saldo = isCurrentMonth(monthId) ? realBalance(months, debts, settings) : null
+    const prevLeft = prevMonthLeftover(months, debts, settings, monthId, loans, accounts)
+    const saldo = isCurrentMonth(monthId)
+      ? realBalance(months, debts, settings, new Date(), loans, accounts, installments)
+      : null
     const v = (n: number) => convertPeriod(n, 'monthly', view)
     return {
       monthId, month, settings, debts, months, kinds, saldo, v,
-      raw: { ...s, deudas, otros, hormigas, ahorroMes, prevLeft },
+      raw: { ...s, deudas, otros, movSalidas, movEntradas, movNeto, ahorroMes, prevLeft },
       view: {
         salario: v(month.income.salary),
         adicional: v(month.income.additional),
         deudas: v(deudas),
         otros: v(otros),
-        hormigas: v(hormigas),
+        movSalidas: v(movSalidas),
+        movEntradas: v(movEntradas),
         sobrante: v(month.income.salary - deudas),
-        balance: v(s.savings - hormigas),
+        balance: v(s.savings - movNeto),
         prevLeft: v(prevLeft),
       },
     }
-  }, [month, months, debts, settings, monthId, view])
+  }, [month, months, debts, settings, monthId, view, accounts, installments, loans])
 }
 
-export function BalanceCard() {
+export function BalanceCard({ compact = false }: { compact?: boolean }) {
   const viewPeriod = useFinanceStore((s) => s.settings.payroll.viewPeriod)
   const setPayroll = useFinanceStore((s) => s.setPayroll)
   const [open, setOpen] = useState(false)
@@ -120,6 +130,7 @@ export function BalanceCard() {
         </div>
 
         {/* El cálculo en el orden pedido: deudas, salario, sobrante, anterior */}
+        {!compact && (
         <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-edge/60">
           <Row label="Total deudas" value={-view.deudas} icon={<CreditCard size={12} />} />
           <Row label="Salario neto" value={view.salario} icon={<Wallet size={12} />} positive />
@@ -149,10 +160,11 @@ export function BalanceCard() {
           {view.otros > 0 && (
             <Row label="Servicios, gastos y personales" value={-view.otros} icon={<Receipt size={12} />} />
           )}
-          {view.hormigas > 0 && (
-            <Row label="Gastos hormiga" value={-view.hormigas} icon={<Coffee size={12} />} />
+          {view.movSalidas > 0 && (
+            <Row label="Movimientos" value={-view.movSalidas} icon={<ArrowLeftRight size={12} />} />
           )}
         </div>
+        )}
 
         {saldo != null && (
           <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-edge/60">
@@ -183,7 +195,7 @@ export function BalanceCard() {
             <span className="num font-semibold text-ink">{raw.countPaid}/{raw.countTotal}</span> pagados
           </span>
           <span className="font-semibold flex items-center gap-0.5" style={{ color: 'var(--app-accent-soft)' }}>
-            Ver desglose completo <ChevronRight size={13} />
+            {compact ? 'Ver mi plan del mes' : 'Ver desglose completo'} <ChevronRight size={13} />
           </span>
         </button>
       </div>
@@ -218,9 +230,9 @@ function BalanceDetailSheet({ open, onClose, view }: { open: boolean; onClose: (
 
   const { kinds, raw, saldo, settings, monthId, month, months, debts, v } = d
   const disponible = raw.totalIncome + raw.prevLeft
-  const salidas = raw.totalExpenses + raw.hormigas + raw.ahorroMes
+  const salidas = raw.totalExpenses + raw.movSalidas + raw.ahorroMes
   const comprometido = disponible > 0 ? Math.min(100, Math.round((salidas / disponible) * 100)) : 0
-  const balance = raw.savings - raw.hormigas
+  const balance = raw.savings - raw.movNeto
   const envelopes = settings.savings.envelopes ?? []
   const ahorrado = savingsTotal(settings)
   const recibido = receivedInMonth(month, settings)
@@ -299,12 +311,12 @@ function BalanceDetailSheet({ open, onClose, view }: { open: boolean; onClose: (
               </div>
             </div>
           ))}
-          {raw.hormigas > 0 && (
+          {raw.movSalidas > 0 && (
             <div className="flex items-center justify-between py-1.5">
               <span className="text-[12.5px] text-ink flex items-center gap-1.5">
-                <Coffee size={13} style={{ color: 'var(--c-warning)' }} /> Gastos hormiga
+                <ArrowLeftRight size={13} style={{ color: 'var(--c-warning)' }} /> Movimientos
               </span>
-              <span className="num text-[13px] font-bold text-ink">{formatMoney(Math.round(v(raw.hormigas)))}</span>
+              <span className="num text-[13px] font-bold text-ink">{formatMoney(Math.round(v(raw.movSalidas)))}</span>
             </div>
           )}
           {raw.ahorroMes > 0 && (
@@ -323,7 +335,8 @@ function BalanceDetailSheet({ open, onClose, view }: { open: boolean; onClose: (
           <Block title="Tu dinero hoy" icon={<Landmark size={13} />} color="var(--c-income)">
             <DetailRow label="Recibido este mes" value={v(recibido)} />
             <DetailRow label="Pagado" value={-v(raw.paidAmount)} />
-            {raw.hormigas > 0 && <DetailRow label="Gastos hormiga" value={-v(raw.hormigas)} />}
+            {raw.movSalidas > 0 && <DetailRow label="Movimientos del mes" value={-v(raw.movSalidas)} />}
+            {raw.movEntradas > 0 && <DetailRow label="Ingresos extra" value={v(raw.movEntradas)} />}
             {raw.ahorroMes > 0 && <DetailRow label="Apartado al ahorro" value={-v(raw.ahorroMes)} />}
             {Math.abs(arrastre) >= 1 && <DetailRow label="Sobrante arrastrado" value={v(arrastre)} />}
             <DetailRow

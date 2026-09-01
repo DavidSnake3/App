@@ -10,9 +10,9 @@ import { currentMonthId } from './lib/dates'
 import { recompressDataUrl } from './lib/themes'
 import { BottomNav } from './components/layout/BottomNav'
 import { HomeView } from './components/home/HomeView'
+import { MoneyView } from './components/money/MoneyView'
 import { MonthView } from './components/month/MonthView'
-import { DebtsView } from './components/debts/DebtsView'
-import { YearView } from './components/year/YearView'
+import { ReportsView } from './components/reports/ReportsView'
 import { SettingsView } from './components/settings/SettingsView'
 import { Onboarding } from './components/onboarding/Onboarding'
 import { AuthScreen } from './components/auth/AuthScreen'
@@ -167,9 +167,9 @@ function App() {
           onTouchEnd={swipe.onTouchEnd}
         >
           {activeTab === 'home' && <HomeView auth={auth} />}
+          {activeTab === 'money' && <MoneyView />}
           {activeTab === 'month' && <MonthView />}
-          {activeTab === 'debts' && <DebtsView />}
-          {activeTab === 'year' && <YearView />}
+          {activeTab === 'reports' && <ReportsView />}
           {activeTab === 'settings' && <SettingsView auth={auth} />}
           <ChatLauncher />
         </main>

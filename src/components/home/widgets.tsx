@@ -18,6 +18,7 @@ import { LineChart } from '../year/LineChart'
 import { AhorroWidget, ComprobanteWidget } from './payrollWidgets'
 import { DonaGastosWidget, PilaresWidget } from './chartWidgets'
 import { SaldoWidget } from './fundWidget'
+import { CuentasWidget, TarjetasWidget } from './accountWidgets'
 import { DivisasWidget } from './ratesWidget'
 
 export function RenderWidget({ id, size, ctx }: { id: WidgetId; size: WidgetSize; ctx: WidgetCtx }) {
@@ -28,6 +29,8 @@ export function RenderWidget({ id, size, ctx }: { id: WidgetId; size: WidgetSize
     case 'resumen': return <ResumenWidget />
     case 'consejo': return <ConsejoWidget />
     case 'acciones': return <AccionesWidget ctx={ctx} />
+    case 'cuentas': return <CuentasWidget size={size} ctx={ctx} />
+    case 'tarjetas': return <TarjetasWidget ctx={ctx} />
     case 'pendientes': return <PendientesWidget size={size} ctx={ctx} />
     case 'proyeccion': return <ProyeccionWidget size={size} />
     case 'flujo': return <FlujoWidget size={size} />
@@ -170,7 +173,7 @@ function AccionesWidget({ ctx }: { ctx: WidgetCtx }) {
   return (
     <div className="grid grid-cols-4 gap-2.5 h-full">
       <Accion icon={<Plus size={19} />} label="Gasto" onClick={() => ctx.setActiveTab('month')} primary />
-      <Accion icon={<CreditCard size={18} />} label="Deudas" onClick={() => ctx.setActiveTab('debts')} />
+      <Accion icon={<CreditCard size={18} />} label="Deudas" onClick={() => ctx.goto('month', 'deudas')} />
       <Accion icon={<Sparkles size={18} />} label="Snake" onClick={() => openChat()} />
       <Accion
         icon={<FileSpreadsheet size={18} className={ctx.exporting ? 'animate-pulse' : ''} />}
@@ -279,7 +282,7 @@ function DeudasWidget({ ctx }: { ctx: WidgetCtx }) {
   const totalRemaining = active.reduce((s, d) => s + debtRemaining(d), 0)
   const monthlyLoad = active.filter((d) => debtIsActiveInMonth(d, monthId)).reduce((s, d) => s + d.monthlyPayment, 0)
   return (
-    <button onClick={() => ctx.setActiveTab('debts')} className="pressable card p-3.5 h-full w-full text-left flex flex-col justify-between gap-2">
+    <button onClick={() => ctx.goto('month', 'deudas')} className="pressable card p-3.5 h-full w-full text-left flex flex-col justify-between gap-2">
       <span className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wider text-muted">
         <CreditCard size={13} /> Deudas
       </span>

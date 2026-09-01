@@ -3,11 +3,13 @@
 // por quincenas − lo pagado − gastos hormiga − aportes al ahorro. El sobrante
 // de cada mes se arrastra solo al siguiente (no es ahorro: es lo que sobró).
 import type {
-  AppSettings, Debt, FundConfig, Loan, MonthData, SavingsDeposit, SavingsEnvelope,
+  Account, AppSettings, Debt, FundConfig, Installment, Loan, MonthData,
+  SavingsDeposit, SavingsEnvelope,
 } from '../types/finance'
 import { loanFlowInMonth } from './loans'
 import { currentMonthId, daysInMonth, parseMonthId } from './dates'
 import { buildPayables, getMonthSummary } from './finance'
+import { accountById, cashMovementsNet, isCredit, totalCash } from './accounts'
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100
@@ -81,9 +83,37 @@ export function receivedInMonth(m: MonthData, settings: AppSettings, today = new
   return round2(received + m.income.additional)
 }
 
-/** Total de gastos hormiga del mes */
+/**
+ * LEGADO: total de gastos hormiga del mes. Desde la v9 los gastos hormiga son
+ * movimientos; se mantiene para leer datos viejos que no se hayan migrado.
+ */
 export function hormigasTotal(m: MonthData): number {
   return round2((m.hormigas ?? []).reduce((s, h) => s + h.amount, 0))
+}
+
+/**
+ * Lo PAGADO del mes que salio de efectivo. Un pago hecho con tarjeta de
+ * credito no baja el banco: se convierte en deuda de la tarjeta.
+ */
+export function paidInCash(m: MonthData, debts: Debt[], accounts: Account[] = []): number {
+  const conTarjeta = (accountId?: string) => {
+    const a = accountById(accounts, accountId)
+    return Boolean(a && isCredit(a))
+  }
+  let total = 0
+  for (const e of m.expenses) {
+    if (!e.paid) continue
+    if (conTarjeta(e.accountId)) continue
+    total += e.children.length ? e.children.reduce((s, c) => s + c.amount, 0) : e.amount
+  }
+  for (const d of debts) {
+    if (d.viaPlanilla) continue
+    const p = d.payments[m.id]
+    if (!p?.paid) continue
+    if (conTarjeta(p.accountId)) continue
+    total += p.amount
+  }
+  return round2(total)
 }
 
 /** Todos los aportes de ahorro (sobres + legado) */
@@ -125,12 +155,58 @@ export function monthFlow(
   settings: AppSettings,
   today = new Date(),
   loans: Loan[] = [],
+  accounts: Account[] = [],
 ): number {
-  const s = getMonthSummary(m, debts)
+  const pagado = accounts.length ? paidInCash(m, debts, accounts) : getMonthSummary(m, debts).paidAmount
+  // los movimientos reemplazaron a los gastos hormiga (v9)
+  const movs = cashMovementsNet(m, accounts)
   return round2(
-    receivedInMonth(m, settings, today) - s.paidAmount - hormigasTotal(m)
+    receivedInMonth(m, settings, today) - pagado - hormigasTotal(m) + movs
     - depositsInMonth(settings, m.id) + loanFlowInMonth(loans, m.id),
   )
+}
+
+/**
+ * Flujo general que alimenta la CUENTA PRINCIPAL: igual que monthFlow pero sin
+ * los movimientos, porque esos ya estan atribuidos a su propia cuenta.
+ */
+export function generalMonthFlow(
+  m: MonthData,
+  debts: Debt[],
+  settings: AppSettings,
+  today = new Date(),
+  loans: Loan[] = [],
+  accounts: Account[] = [],
+): number {
+  return round2(
+    receivedInMonth(m, settings, today) - paidInCash(m, debts, accounts) - hormigasTotal(m)
+    - depositsInMonth(settings, m.id) + loanFlowInMonth(loans, m.id),
+  )
+}
+
+/** Flujo general acumulado desde un mes ancla (para la cuenta principal) */
+export function generalFlow(
+  months: Record<string, MonthData>,
+  debts: Debt[],
+  settings: AppSettings,
+  anchorMonthId: string,
+  today = new Date(),
+  loans: Loan[] = [],
+  accounts: Account[] = [],
+): number {
+  const nowId = currentMonthId()
+  let flow = 0
+  const covered = new Set<string>()
+  for (const m of Object.values(months)) {
+    if (m.id < anchorMonthId || m.id > nowId) continue
+    covered.add(m.id)
+    flow += generalMonthFlow(m, debts, settings, today, loans, accounts)
+  }
+  for (const d of allDeposits(settings)) {
+    const mid = monthOfISO(d.dateISO)
+    if (mid >= anchorMonthId && mid <= nowId && !covered.has(mid)) flow -= d.amount
+  }
+  return round2(flow)
 }
 
 /**
@@ -144,6 +220,7 @@ export function fundFlow(
   anchorMonthId: string,
   today = new Date(),
   loans: Loan[] = [],
+  accounts: Account[] = [],
 ): number {
   const nowId = currentMonthId()
   let flow = 0
@@ -151,7 +228,7 @@ export function fundFlow(
   for (const m of Object.values(months)) {
     if (m.id < anchorMonthId || m.id > nowId) continue
     covered.add(m.id)
-    flow += monthFlow(m, debts, settings, today, loans)
+    flow += monthFlow(m, debts, settings, today, loans, accounts)
   }
   // aportes en meses sin registro (no quedaron cubiertos arriba)
   for (const d of allDeposits(settings)) {
@@ -161,18 +238,42 @@ export function fundFlow(
   return round2(flow)
 }
 
-/** Saldo real ahora (null si el usuario no lo ha activado) */
+/**
+ * Efectivo real ahora: lo que de verdad tienes.
+ *
+ * Si ya hay CUENTAS creadas, el total sale de ellas (efectivo + cuentas de
+ * banco + ahorros marcados, nunca tarjetas). Si el usuario todavia no tiene
+ * cuentas, se usa el calculo clasico del saldo real (base + flujo).
+ * Devuelve null si el control no esta activado.
+ */
 export function realBalance(
   months: Record<string, MonthData>,
   debts: Debt[],
   settings: AppSettings,
   today = new Date(),
   loans: Loan[] = [],
+  accounts: Account[] = [],
+  installments: Installment[] = [],
 ): number | null {
   const f = settings.fund
+  const usables = accounts.filter((a) => !a.archived && !isCredit(a) && a.includeInTotal)
+  if (usables.length) {
+    const principal = usables.find((a) => a.isMain) ?? usables[0]
+    const anchor = (principal.openingISO || '').slice(0, 7) || currentMonthId()
+    return totalCash({
+      months,
+      accounts,
+      installments,
+      debts,
+      settings,
+      loans,
+      today,
+      generalFlow: generalFlow(months, debts, settings, anchor, today, loans, accounts),
+    })
+  }
   if (!f?.enabled || !f.anchorMonthId) return null
   return round2(
-    f.baseAmount + fundFlow(months, debts, settings, f.anchorMonthId, today, loans) - f.snapshot,
+    f.baseAmount + fundFlow(months, debts, settings, f.anchorMonthId, today, loans, accounts) - f.snapshot,
   )
 }
 
@@ -183,13 +284,14 @@ export function makeFundConfig(
   debts: Debt[],
   settings: AppSettings,
   loans: Loan[] = [],
+  accounts: Account[] = [],
 ): FundConfig {
   const anchorMonthId = currentMonthId()
   return {
     enabled: true,
     baseAmount,
     anchorMonthId,
-    snapshot: fundFlow(months, debts, settings, anchorMonthId, new Date(), loans),
+    snapshot: fundFlow(months, debts, settings, anchorMonthId, new Date(), loans, accounts),
     setAtISO: new Date().toISOString(),
   }
 }
@@ -200,14 +302,17 @@ export function carryOver(
   debts: Debt[],
   settings: AppSettings,
   loans: Loan[] = [],
+  accounts: Account[] = [],
 ): number {
   const f = settings.fund
-  if (!f?.enabled || !f.anchorMonthId) return 0
+  const anchor = f?.anchorMonthId
+    || accounts.find((a) => a.isMain && !a.archived)?.openingISO?.slice(0, 7)
+  if (!anchor) return 0
   const nowId = currentMonthId()
   let flow = 0
   for (const m of Object.values(months)) {
-    if (m.id < f.anchorMonthId || m.id >= nowId) continue
-    flow += monthFlow(m, debts, settings, new Date(), loans)
+    if (m.id < anchor || m.id >= nowId) continue
+    flow += monthFlow(m, debts, settings, new Date(), loans, accounts)
   }
   return round2(flow)
 }
@@ -243,12 +348,13 @@ export function prevMonthLeftover(
   settings: AppSettings,
   monthId: string,
   loans: Loan[] = [],
+  accounts: Account[] = [],
 ): number {
   const ids = Object.keys(months).filter((id) => id < monthId).sort()
   const prevId = ids[ids.length - 1]
   const prev = prevId ? months[prevId] : undefined
   if (!prev) return 0
-  return monthFlow(prev, debts, settings, new Date(), loans)
+  return monthFlow(prev, debts, settings, new Date(), loans, accounts)
 }
 
 /** Desglose por tipo de pago con subtotales (mejora 17) */

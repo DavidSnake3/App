@@ -7,6 +7,7 @@ import { ChartColumnBig, ChartPie, FileText, Landmark, Share2, TrendingUp } from
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { debtRemaining, getMonthSummary } from '../../lib/finance'
 import { hormigasTotal, depositsInMonth, kindTotals, realBalance, savingsTotal } from '../../lib/fund'
+import { movementsExpense } from '../../lib/accounts'
 import { MONTH_SHORT, addMonthsToId, currentMonthId, monthIdOf, monthLabel } from '../../lib/dates'
 import { formatMoney, formatMoneyShort } from '../../lib/format'
 import { buildStatementBlob } from '../../lib/shareCard'
@@ -33,23 +34,24 @@ export function YearCharts({ year }: { year: number }) {
       const m = months[id]
       if (!m) return { id, label: MONTH_SHORT[i], income: 0, expenses: 0, has: false }
       const s = getMonthSummary(m, debts)
-      return { id, label: MONTH_SHORT[i], income: s.totalIncome, expenses: s.totalExpenses + hormigasTotal(m), has: true }
+      const movs = movementsExpense(m) + hormigasTotal(m)
+      return { id, label: MONTH_SHORT[i], income: s.totalIncome, expenses: s.totalExpenses + movs, has: true }
     })
     // dona: distribución del año por tipo
     const acc: Record<string, number> = { servicio: 0, gasto: 0, personal: 0, deuda: 0 }
-    let hormigas = 0
+    let movimientos = 0
     for (const id of ids) {
       const m = months[id]
       if (!m) continue
       for (const k of kindTotals(m, debts)) acc[k.kind] += k.total
-      hormigas += hormigasTotal(m)
+      movimientos += movementsExpense(m) + hormigasTotal(m)
     }
     const parts = [
       { key: 'servicio', label: 'Servicios', value: acc.servicio },
       { key: 'gasto', label: 'Gastos', value: acc.gasto },
       { key: 'personal', label: 'Personales', value: acc.personal },
       { key: 'deuda', label: 'Deudas', value: acc.deuda },
-      { key: 'hormiga', label: 'Hormiga', value: hormigas },
+      { key: 'movimiento', label: 'Movimientos', value: movimientos },
     ].filter((p) => p.value > 0)
     const totalGasto = parts.reduce((s, p) => s + p.value, 0)
     // offsets de la dona ya calculados (sin mutar nada durante el render)
@@ -233,7 +235,7 @@ export function FinancialReport({ year }: { year: number }) {
     const ids = Object.keys(months).filter((id) => id >= period.from && id <= period.to).sort()
     const acc = {
       salario: 0, adicional: 0,
-      servicio: 0, gasto: 0, personal: 0, deuda: 0, hormiga: 0, ahorro: 0,
+      servicio: 0, gasto: 0, personal: 0, deuda: 0, movimiento: 0, ahorro: 0,
       pagado: 0, pendiente: 0, meses: ids.length,
     }
     for (const id of ids) {
@@ -243,12 +245,12 @@ export function FinancialReport({ year }: { year: number }) {
       acc.adicional += m.income.additional
       acc.pagado += s.paidAmount
       acc.pendiente += s.pendingAmount
-      acc.hormiga += hormigasTotal(m)
+      acc.movimiento += movementsExpense(m) + hormigasTotal(m)
       acc.ahorro += depositsInMonth(settings, id)
       for (const k of kindTotals(m, debts)) acc[k.kind] += k.total
     }
     const ingresos = acc.salario + acc.adicional
-    const egresos = acc.servicio + acc.gasto + acc.personal + acc.deuda + acc.hormiga
+    const egresos = acc.servicio + acc.gasto + acc.personal + acc.deuda + acc.movimiento
     const flujo = ingresos - egresos - acc.ahorro
     // Balance personal (patrimonio) al cierre
     const banco = realBalance(months, debts, settings) ?? 0
@@ -288,7 +290,7 @@ export function FinancialReport({ year }: { year: number }) {
               ['Gastos', -report.gasto],
               ['Personales', -report.personal],
               ['Cuotas de deuda', -report.deuda],
-              ['Gastos hormiga', -report.hormiga],
+              ['Movimientos del mes', -report.movimiento],
               ['Apartado al ahorro', -report.ahorro],
             ],
             total: ['Total de egresos', -(report.egresos + report.ahorro)],
@@ -397,7 +399,7 @@ export function FinancialReport({ year }: { year: number }) {
               ['Gastos', report.gasto],
               ['Personales', report.personal],
               ['Cuotas de deuda', report.deuda],
-              ['Gastos hormiga', report.hormiga],
+              ['Movimientos del mes', report.movimiento],
               ['Apartado al ahorro', report.ahorro],
             ]}
             total={['Total de egresos', report.egresos + report.ahorro]}

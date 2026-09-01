@@ -3,6 +3,8 @@ import { AlarmClock, Heart, Receipt, ShieldCheck } from 'lucide-react'
 import type { Expense, ExpenseKind, Recurrence } from '../../types/finance'
 import { RECOMMENDED_RECURRENCES, RECURRENCE_LABEL } from '../../lib/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
+import { activeAccounts, isCredit } from '../../lib/accounts'
+import { ItemIcon } from '../../lib/icons'
 import { IconPicker } from '../ui/IconPicker'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
@@ -64,6 +66,10 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
   const [remTime, setRemTime] = useState(editing?.reminder?.time ?? globalNotif.time)
   const [remAlarm, setRemAlarm] = useState(editing?.reminder?.alarm ?? false)
   const [error, setError] = useState('')
+  const accounts = useFinanceStore((s) => s.accounts)
+  const cuentas = activeAccounts(accounts)
+  const [accountId, setAccountId] = useState(editing?.accountId ?? '')
+  const cuentaElegida = cuentas.find((a) => a.id === accountId)
 
   const save = () => {
     if (!name.trim()) { setError('Ponle un nombre al pago.'); return }
@@ -77,6 +83,7 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
       recurrence: (isRecurring ? recurrence : 'once') as Recurrence,
       dueDay: day,
       period: (day && day <= 15 ? 'q1' : 'q2') as Expense['period'],
+      accountId: accountId || undefined,
       reminder: reminderOn
         ? { enabled: true, daysBefore: remDays, time: remTime, alarm: remAlarm }
         : undefined,
@@ -119,6 +126,35 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
           ]}
         />
       </div>
+
+      {/* Con qué cuenta se paga: si es tarjeta, se vuelve deuda de la tarjeta */}
+      {cuentas.length > 0 && (
+        <div>
+          <span className="text-[13px] font-medium text-muted block mb-1.5">¿Con qué cuenta lo pagas?</span>
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            <button
+              onClick={() => setAccountId('')}
+              className={`chip shrink-0 ${accountId === '' ? 'chip-active' : ''}`}
+            >
+              La principal
+            </button>
+            {cuentas.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setAccountId(a.id)}
+                className={`chip shrink-0 ${accountId === a.id ? 'chip-active' : ''}`}
+              >
+                <ItemIcon icon={a.icon} name={a.name} size={12} /> {a.name}
+              </button>
+            ))}
+          </div>
+          {cuentaElegida && isCredit(cuentaElegida) && (
+            <p className="text-[11.5px] mt-1.5 leading-snug" style={{ color: 'var(--c-warning)' }}>
+              Al marcarlo pagado se suma a la deuda de {cuentaElegida.name}, no baja tu efectivo.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Ícono a elegir (mejoras 6 y 10) */}
       <div>

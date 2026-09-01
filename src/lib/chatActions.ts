@@ -1,9 +1,12 @@
 // Acciones que Snake puede ejecutar en la app. SIEMPRE se proponen con una
 // tarjeta de confirmación: nada se guarda sin que el usuario toque "Confirmar".
-import type { ExpenseKind, Recurrence } from '../types/finance'
+import type { AccountType, ExpenseKind, MovementKind, Recurrence } from '../types/finance'
 import { useFinanceStore } from '../store/useFinanceStore'
 import { buildPayables, uid } from './finance'
 import { countryPreset, presetExtraPays, presetStatutory } from './payroll'
+import { activeAccounts, isCredit, mainAccount } from './accounts'
+import { guessCategory } from './categories'
+import { currentMonthId, todayISO } from './dates'
 import { FINANCIAL_PLANS } from './financialPlans'
 import { formatMoney } from './format'
 import { PERIOD_LABEL } from './payroll'
@@ -49,6 +52,50 @@ function st() {
 
 function activeMonth(): string {
   return st().activeMonthId
+}
+
+/** Busca una cuenta por nombre (aproximado); si no, la principal */
+function findAccount(nombre: unknown, soloCredito = false): string {
+  const cuentas = activeAccounts(st().accounts).filter((a) => (soloCredito ? isCredit(a) : true))
+  const q = str(nombre).toLowerCase()
+  if (q) {
+    const hit = cuentas.find((a) => a.name.toLowerCase() === q)
+      ?? cuentas.find((a) => a.name.toLowerCase().includes(q) || q.includes(a.name.toLowerCase()))
+    if (hit) return hit.id
+  }
+  if (soloCredito) return cuentas[0]?.id ?? ''
+  return mainAccount(st().accounts)?.id ?? cuentas[0]?.id ?? ''
+}
+
+function accountName(id: string): string {
+  return st().accounts.find((a) => a.id === id)?.name ?? 'tu cuenta'
+}
+
+function movementKindOf(v: unknown): MovementKind {
+  const k = str(v, 'gasto').toLowerCase()
+  if (k.startsWith('ingr') || k.startsWith('entr')) return 'ingreso'
+  if (k.startsWith('trans')) return 'transferencia'
+  return 'gasto'
+}
+
+function accountTypeOf(v: unknown): AccountType {
+  const t = str(v, 'efectivo').toLowerCase()
+  if (t.startsWith('cred') || t.includes('tarjeta')) return 'credito'
+  if (t.startsWith('corr') || t.includes('banco') || t.includes('debito') || t.includes('débito')) return 'corriente'
+  if (t.startsWith('ahor')) return 'ahorros'
+  if (t.startsWith('inv')) return 'inversion'
+  return 'efectivo'
+}
+
+/** Fecha válida 'yyyy-MM-dd' o hoy */
+function dateOf(v: unknown): string {
+  const d = str(v)
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayISO().slice(0, 10)
+}
+
+function dayOf(v: unknown, fallback: number): number {
+  const n = Math.round(num(v))
+  return n >= 1 && n <= 31 ? n : fallback
 }
 
 function kindOf(v: unknown): ExpenseKind {
@@ -272,16 +319,121 @@ export const ACTIONS: Record<string, ActionSpec> = {
     },
   },
 
-  agregar_hormiga: {
-    title: 'Gasto hormiga',
-    cta: 'Anotarlo',
-    done: 'Gasto hormiga anotado',
+  agregar_movimiento: {
+    title: 'Registrar movimiento',
+    cta: 'Registrarlo',
+    done: 'Movimiento registrado',
     valid: (d) => num(d.amount ?? d.monto) > 0,
-    summary: (d) => `${str(d.name, 'Hormiga')} · ${money(d.amount ?? d.monto)}`,
-    run: (d) => st().addHormiga(activeMonth(), {
-      name: str(d.name, 'Hormiga').slice(0, 40),
-      amount: Math.round(num(d.amount ?? d.monto)),
-    }),
+    summary: (d) => {
+      const tipo = movementKindOf(d.tipo ?? d.kind)
+      const cuenta = findAccount(d.cuenta ?? d.account)
+      return `${tipo === 'ingreso' ? 'Entrada' : 'Salida'} · ${str(d.name, 'Movimiento')} · ` +
+        `${money(d.amount ?? d.monto)} · ${accountName(cuenta)} · ${dateOf(d.fecha ?? d.date)}`
+    },
+    run: (d) => {
+      const tipo = movementKindOf(d.tipo ?? d.kind)
+      const name = str(d.name, tipo === 'ingreso' ? 'Ingreso' : 'Gasto').slice(0, 40)
+      st().addMovement({
+        name,
+        amount: Math.round(num(d.amount ?? d.monto)),
+        kind: tipo === 'transferencia' ? 'gasto' : tipo,
+        categoryId: str(d.categoria ?? d.category) || guessCategory(name, tipo === 'ingreso' ? 'ingreso' : 'gasto'),
+        accountId: findAccount(d.cuenta ?? d.account),
+        dateISO: dateOf(d.fecha ?? d.date),
+      })
+    },
+  },
+
+  crear_cuenta: {
+    title: 'Nueva cuenta',
+    cta: 'Crearla',
+    done: 'Cuenta creada',
+    valid: (d) => str(d.name).length > 0,
+    summary: (d) => {
+      const tipo = accountTypeOf(d.tipo ?? d.type)
+      if (tipo === 'credito') {
+        return `Tarjeta ${str(d.name)} · corte día ${dayOf(d.corte ?? d.cutoffDay, 20)} · ` +
+          `pago día ${dayOf(d.pago ?? d.dueDay, 5)} · interés ${num(d.interes ?? d.rate)}% ` +
+          `${str(d.interesPeriodo, 'annual') === 'monthly' ? 'mensual' : 'anual'}`
+      }
+      return `${str(d.name)} (${tipo}) · saldo ${money(d.saldo ?? d.balance ?? 0)}`
+    },
+    run: (d) => {
+      const tipo = accountTypeOf(d.tipo ?? d.type)
+      const esCredito = tipo === 'credito'
+      st().addAccount({
+        name: str(d.name).slice(0, 30),
+        type: tipo,
+        openingBalance: esCredito ? 0 : Math.round(num(d.saldo ?? d.balance)),
+        openingISO: todayISO().slice(0, 10),
+        includeInTotal: !esCredito,
+        credit: esCredito
+          ? {
+              limit: Math.round(num(d.limite ?? d.limit)),
+              cutoffDay: dayOf(d.corte ?? d.cutoffDay, 20),
+              dueDay: dayOf(d.pago ?? d.dueDay, 5),
+              rate: num(d.interes ?? d.rate),
+              ratePeriod: str(d.interesPeriodo, 'annual') === 'monthly' ? 'monthly' : 'annual',
+              openingDebt: Math.round(num(d.deuda ?? d.openingDebt)),
+            }
+          : undefined,
+      })
+    },
+  },
+
+  pagar_tarjeta: {
+    title: 'Pagar la tarjeta',
+    cta: 'Registrar el pago',
+    done: 'Pago registrado',
+    valid: (d) => num(d.monto ?? d.amount) > 0 && Boolean(findAccount(d.tarjeta ?? d.card, true)),
+    summary: (d) => {
+      const tarjeta = findAccount(d.tarjeta ?? d.card, true)
+      const origen = findAccount(d.cuenta ?? d.from)
+      return `${money(d.monto ?? d.amount)} de ${accountName(origen)} a ${accountName(tarjeta)}`
+    },
+    run: (d) => {
+      const tarjeta = findAccount(d.tarjeta ?? d.card, true)
+      st().addMovement({
+        name: `Pago ${accountName(tarjeta)}`,
+        amount: Math.round(num(d.monto ?? d.amount)),
+        kind: 'transferencia',
+        categoryId: 'pago-tarjeta',
+        accountId: findAccount(d.cuenta ?? d.from),
+        toAccountId: tarjeta,
+        dateISO: dateOf(d.fecha ?? d.date),
+      })
+    },
+  },
+
+  compra_cuotas: {
+    title: 'Compra a cuotas',
+    cta: 'Agregarla',
+    done: 'Compra a cuotas agregada',
+    valid: (d) => str(d.name).length > 0
+      && Math.round(num(d.cuotas ?? d.count)) >= 1
+      && (num(d.mensualidad ?? d.monthly) > 0 || num(d.total) > 0)
+      && Boolean(findAccount(d.tarjeta ?? d.card, true)),
+    summary: (d) => {
+      const cuotas = Math.max(1, Math.round(num(d.cuotas ?? d.count)))
+      const mensual = num(d.mensualidad ?? d.monthly) || Math.round(num(d.total) / cuotas)
+      const tarjeta = findAccount(d.tarjeta ?? d.card, true)
+      return `${str(d.name)} · ${cuotas} cuotas de ${money(mensual)} · ${accountName(tarjeta)}`
+    },
+    run: (d) => {
+      const cuotas = Math.max(1, Math.round(num(d.cuotas ?? d.count)))
+      const mensual = Math.round(num(d.mensualidad ?? d.monthly) || num(d.total) / cuotas)
+      const tarjeta = findAccount(d.tarjeta ?? d.card, true)
+      const dueDay = dayOf(d.dia ?? d.dueDay, st().accounts.find((a) => a.id === tarjeta)?.credit?.dueDay ?? 5)
+      st().addInstallment({
+        name: str(d.name).slice(0, 40),
+        accountId: tarjeta,
+        total: Math.round(num(d.total)) || mensual * cuotas,
+        monthly: mensual,
+        count: cuotas,
+        dueDay,
+        startMonthId: currentMonthId(),
+      })
+    },
   },
 
   fijar_saldo: {

@@ -83,6 +83,10 @@ export function HomeView({ auth }: { auth: AuthState }) {
   )
 
   const ctx: WidgetCtx = {
+    goto: (t, sub) => {
+      if (sub) useFinanceStore.getState().setSub(t, sub)
+      setActiveTab(t)
+    },
     setActiveTab,
     exporting,
     exportExcel: async () => {

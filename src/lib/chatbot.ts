@@ -7,10 +7,15 @@ import { actionSpec } from './chatActions'
 import { geminiChat, getLastUsage, type GeminiTurn } from './ai'
 import { BASIC_ACTIONS, planLimits } from './plans'
 import { buildPayables, debtEndMonthId, debtPaidCount, debtRemaining, getMonthSummary } from './finance'
-import { carryOver, envelopeTotal, hormigasTotal, realBalance, savingsTotal } from './fund'
+import { carryOver, envelopeTotal, realBalance, savingsTotal } from './fund'
 import { PERIOD_LABEL, WORKER_LABEL, formatPayday, nextPaydays, payrollBreakdown, statutoryLabel } from './payroll'
 import { addMonthsToId, currentMonthId, monthLabel, todayDay } from './dates'
 import { useFinanceStore } from '../store/useFinanceStore'
+import { makeLedger } from '../hooks/useLedger'
+import {
+  accountBalance, activeAccounts, cardStatement, installmentIsDone, installmentPaidCount,
+  installmentRemaining, isCredit, monthMovements, movementsExpense, movementsIncome, totalCash,
+} from './accounts'
 
 export interface ChatMsg {
   id: string
@@ -42,20 +47,24 @@ Personalidad: cercano, claro, breve y motivador. SIEMPRE en español. Sin emojis
 Formato: párrafos cortos; usa **negritas** para montos/nombres y listas con "- " cuando ayuden.
 
 CONOCES LA APP COMPLETA (guía para el usuario):
-- Pestañas: Inicio (widgets personalizables: mantener presionado ~1s para editar tamaño S/M/L, mover, quitar o agregar), Mes, Deudas, Año, Ajustes. Se puede deslizar entre pestañas.
+- Pestañas (5, con submenús): Inicio (widgets personalizables: mantener presionado ~1s para editar tamaño S/M/L, mover, quitar o agregar) · DINERO (submenús: Cuentas, Movimientos, Tarjetas, Ahorros, Presté) · MES (submenús: Pagos, Deudas, Presupuestos, Mi plan) · REPORTES (submenús: El año, Categorías, Reporte) · Ajustes. Se puede deslizar entre pestañas y los submenús son las píldoras de arriba.
 - Mes: pagos del mes en 5 vistas (tarjetas, lista, tabla, calendario, gantt). Botón + para agregar gasto/servicio/personal con ícono, recurrencia y recordatorio. Los pagos se ponen rojos al acercarse su fecha límite. Al entrar a un mes nuevo la app PREGUNTA si copiar los recurrentes (nunca copia sola); las deudas siguen solas. El salario NO se edita aquí: viene de Ajustes → Ingresos y planilla (los "Adicionales" del mes sí se editan en línea). Botón "Compartir" para generar una imagen-resumen del mes.
-- SALDO REAL: el usuario escribe cuánto tiene HOY en el banco (se configura en Ajustes → Ingresos) y desde entonces la app lo lleva en vivo: suma los pagos de salario al llegar y resta cada pago, gasto hormiga y aporte al ahorro. Se muestra junto al Balance en la tarjeta principal de Mes. El sobrante del mes se arrastra solo al siguiente (NO es ahorro, es lo que sobró). El ahorro va aparte.
-- GASTOS HORMIGA (en Mes): anotar al instante gastos pequeños (café, uber…); se restan del saldo real y se ve el total del mes y de la semana.
-- Deudas: cada deuda tiene estado de cuenta estilo recibo (saldo anterior, aporte capital/intereses, nuevo saldo, cuotas pagadas/pendientes, próximo pago, monto al día), historial de abonos y registro de abono con desglose. Una deuda puede pagarse "por planilla" (se deduce del salario y no aparece en el mes). Arriba hay una gráfica "camino a cero deudas" con la fecha en que quedará libre.
-- PRÉSTAMOS PROPIOS (Deudas → "Me deben"): plata que el usuario le prestó a alguien, con cuánto le prestó, desde cuándo y los abonos recibidos. Lo prestado sale de su saldo real y cada abono vuelve.
-- PRESUPUESTOS (en Mes): límites por categoría (ej. "Comida de la U: 30 000 al mes"), con avisos al llegar al 80% y al pasarse.
-- PLAN FINANCIERO (en Mes): reglas 50/30/20, 40/30/20/10, 60/20/20, 70/20/10 y 80/20. La app compara el reparto real del mes contra la regla elegida.
+- CUENTAS (Dinero → Cuentas): el usuario registra sus cuentas contables: efectivo, cuenta corriente, cuenta de ahorros, inversión y TARJETAS DE CRÉDITO. La suma de las cuentas que no son de crédito es su EFECTIVO REAL (lo que de verdad tiene hoy). Cada cuenta tiene su saldo, se puede marcar como principal (ahí cae el salario y de ahí salen los pagos sin cuenta asignada) y se puede excluir del total.
+- TARJETAS DE CRÉDITO (Dinero → Tarjetas): cada tarjeta tiene límite, día de CORTE, día de PAGO e interés (anual o mensual). REGLA CLAVE: lo que se gasta con tarjeta NO baja el efectivo, sube la deuda de la tarjeta; pagar la tarjeta baja el efectivo y baja la deuda. Si paga el saldo del corte antes de la fecha de pago no hay intereses; si se pasa, la app calcula el interés por los días de atraso y lo suma a lo que debe. También hay COMPRAS A CUOTAS: nombre, monto total, mensualidad, número de cuotas y día de pago; cada cuota se suma a la deuda de la tarjeta en su mes y se marca como pagada.
+- MOVIMIENTOS (Dinero → Movimientos; antes "gastos hormiga"): cada entrada o salida real con CATEGORÍA (con ícono), CUENTA usada y FECHA. Tipos: gasto, ingreso y transferencia entre cuentas (así se paga la tarjeta). Se agrupan por día y se pueden buscar y filtrar.
+- EFECTIVO REAL: sale de las cuentas. El salario suma al llegar y se restan los pagos, los movimientos en efectivo y los aportes al ahorro. El sobrante del mes se arrastra solo al siguiente (NO es ahorro, es lo que sobró). El ahorro va aparte.
+- REPORTES → Categorías: dashboard de movimientos por tipo con rango mensual, anual o a la medida (fecha inicio y fecha fin), con dona por categoría, detalle, totales por cuenta y barras mes a mes.
+- Deudas (Mes → Deudas): cada deuda tiene estado de cuenta estilo recibo (saldo anterior, aporte capital/intereses, nuevo saldo, cuotas pagadas/pendientes, próximo pago, monto al día), historial de abonos y registro de abono con desglose. Una deuda puede pagarse "por planilla" (se deduce del salario y no aparece en el mes). Arriba hay una gráfica "camino a cero deudas" con la fecha en que quedará libre.
+- PRÉSTAMOS PROPIOS (Dinero → "Presté"): plata que el usuario le prestó a alguien, con cuánto le prestó, desde cuándo y los abonos recibidos. Lo prestado sale de su saldo real y cada abono vuelve.
+- PRESUPUESTOS (Mes → Presupuestos): límites por categoría (ej. "Comida de la U: 30 000 al mes"), con avisos al llegar al 80% y al pasarse.
+- PLAN FINANCIERO (Mes → Mi plan): reglas 50/30/20, 40/30/20/10, 60/20/20, 70/20/10 y 80/20. La app compara el reparto real del mes contra la regla elegida.
 - Ahorro por SOBRES: el usuario crea varios ahorros (ej. Emergencias, Viaje), cada uno con su meta, con el dinero que ya tenía guardado y con aportes/retiros con fecha. El progreso usa el dinero real del sobre. Hay meta sugerida de FONDO DE EMERGENCIA = 3 meses de gastos promedio.
 - La app es UNIVERSAL: al elegir el país se cargan sus deducciones de ley (una o varias: seguro social, pensión, salud), con techo de cotización opcional, los tramos del impuesto sobre la renta y sus pagos extraordinarios (aguinaldo, 13.º, 14.º, primas). Todo es editable en Ajustes → Ingresos. Nunca asumas Costa Rica: usa los nombres, % y tramos de los datos del usuario. Hay formato de números por región y una segunda moneda opcional con tipo de cambio manual.
 - El usuario declara CÓMO recibe su dinero: asalariado, independiente, ambos, pensionado o sin ingreso fijo. Si NO es asalariado la app no resta deducciones de ley: lo que escribe es lo que recibe, y el control es más simple. Nunca le hables de planilla ni de deducciones si es independiente.
 - El comprobante puede ser diario, semanal, cada 14 días, quincenal o mensual; la vista del dinero (semanal/quincenal/mensual) se cambia en la tarjeta de Balance.
 - Ingresos y planilla (Ajustes): el usuario configura su comprobante REAL como semanal, quincenal o mensual: su país, salario bruto, nombre y % de la deducción de ley (se calcula automático), deducciones (créditos/embargos) y ADELANTOS (un adelanto es su pago de la 1ª quincena, NO es plata perdida). El neto mensual se usa automáticamente como salario del mes actual y futuros. También configura cuándo le pagan (días, ajuste si cae en fin de semana) y su plan de ahorro (% o monto fijo, con meta).
-- Año: calendario anual, proyección de ingresos/ahorro/gastos y gantt de deudas.
+- Reportes → El año: calendario anual, proyección de ingresos/ahorro/gastos y gantt de deudas. Reportes → Reporte: reporte financiero del período.
+- Ajustes → Snake y planes: plan del asistente (Gratis/Plus/Premium) con su consumo de mensajes y tokens del día.
 - Ajustes: cuenta (correo/Google, sincronización en la nube), tema (claro/oscuro, paletas, fondo propio), animaciones y 3+3 sonidos a elegir con pruebas, notificaciones y alarmas (con pruebas), exportar Excel, respaldo JSON, borrar datos.
 
 REGLAS:
@@ -67,12 +76,16 @@ El usuario ve una tarjeta y decide: nada se guarda sin que él toque el botón. 
 Tipos y datos disponibles:
 - agregar_deuda: {name, total, monthlyPayment, installments, dueDay, account}
 - agregar_gasto: {name, amount, kind:"gasto|servicio|personal", dueDay, recurrencia:"once|monthly|weekly|biweekly|annual"}
+  (un GASTO es un pago del mes con fecha límite; un MOVIMIENTO es plata que ya salió. Si el usuario dice "gasté", usa agregar_movimiento)
 - marcar_pagado: {nombre}
 - configurar_planilla: {bruto, periodo:"daily|weekly|fortnightly|biweekly|monthly", paisId:"cr|mx|co|...", deduccionNombre, deduccionPct}
 - agregar_deduccion: {name, amount, esAdelanto:true|false}
 - crear_sobre: {name, meta, actual}
 - aportar_ahorro: {monto, sobre}
-- agregar_hormiga: {name, amount}
+- agregar_movimiento: {name, amount, tipo:"gasto|ingreso", categoria:"comida|super|cafe|transporte|gasolina|casa|servicios|salud|educacion|ropa|ocio|tecnologia|mascotas|regalos|belleza|deudas|otros|salario|extra|venta|reembolso", cuenta:"<nombre de la cuenta>", fecha:"yyyy-MM-dd"}  (registra una salida o entrada real; si no das cuenta se usa la principal)
+- crear_cuenta: {name, tipo:"efectivo|corriente|ahorros|credito|inversion", saldo, limite, corte, pago, interes, interesPeriodo:"annual|monthly"}  (para tarjetas: corte = día de corte, pago = día de pago)
+- pagar_tarjeta: {tarjeta:"<nombre>", monto, cuenta:"<de dónde sale>"}
+- compra_cuotas: {name, tarjeta:"<nombre>", total, mensualidad, cuotas, dia}
 - fijar_saldo: {monto}
 - ingreso_extra: {monto}
 - prestar: {persona, monto, fecha, nota}  (plata que el usuario le prestó a alguien)
@@ -119,12 +132,46 @@ export function buildUserContext(): string {
     )
   }
 
-  // Saldo real y gastos hormiga (control total del dinero)
-  const saldo = realBalance(months, debts, settings)
+  // Cuentas, efectivo real y tarjetas de crédito
+  const { accounts, installments, loans } = s
+  const ledger = makeLedger({ months, accounts, installments, debts, loans, settings })
+  const cuentasEfectivo = activeAccounts(accounts).filter((a) => !isCredit(a))
+  if (cuentasEfectivo.length) {
+    lines.push(
+      `CUENTAS: ${cuentasEfectivo.map((a) => `${a.name} (${a.type}${a.isMain ? ', principal' : ''}) ${Math.round(accountBalance(a, ledger))}`).join(' · ')}. ` +
+      `EFECTIVO REAL total: ${Math.round(totalCash(ledger))}.`,
+    )
+  }
+  const tarjetas = activeAccounts(accounts).filter(isCredit)
+  for (const t of tarjetas) {
+    const st = cardStatement(t, ledger)
+    lines.push(
+      `TARJETA ${t.name}: debe ${Math.round(st.debt)}${t.credit?.limit ? ` de un límite de ${t.credit.limit} (${Math.round(st.usage * 100)}% usado, disponible ${Math.round(st.available)})` : ''}. ` +
+      `Corte ${st.cutoffISO || '—'}, pago ${st.dueISO || '—'} (${st.overdue ? `VENCIDO hace ${Math.abs(st.daysToDue)} días` : `en ${st.daysToDue} días`}). ` +
+      `Del corte hay que pagar ${Math.round(st.statementBalance)}, ya abonó ${Math.round(st.paidAfterCutoff)}, falta ${Math.round(st.pending)}. ` +
+      `Interés ${st.monthlyRate.toFixed(2)}% mensual${st.interest > 0 ? `, interés acumulado por atraso ${Math.round(st.interest)}` : ''}.`,
+    )
+  }
+  const cuotasActivas = installments.filter((i) => !installmentIsDone(i))
+  if (cuotasActivas.length) {
+    lines.push(
+      `COMPRAS A CUOTAS: ${cuotasActivas.map((i) => {
+        const tarjeta = accounts.find((a) => a.id === i.accountId)?.name ?? 'tarjeta'
+        return `${i.name} en ${tarjeta}: ${i.monthly} x ${i.count} cuotas (día ${i.dueDay}), pagadas ${installmentPaidCount(i)}, falta ${Math.round(installmentRemaining(i))}`
+      }).join(' · ')}.`,
+    )
+  }
+
+  // Efectivo real y movimientos del mes
+  const saldo = realBalance(months, debts, settings, new Date(), loans, accounts, installments)
   if (saldo != null) {
     const mesNow = months[nowId]
-    const horm = mesNow ? hormigasTotal(mesNow) : 0
-    lines.push(`SALDO REAL en el banco ahora: ${Math.round(saldo)} (incluye sobrante arrastrado ${Math.round(carryOver(months, debts, settings))}). Gastos hormiga de este mes: ${Math.round(horm)}${mesNow?.hormigas?.length ? ` (${mesNow.hormigas.slice(-8).map((h) => `${h.name} ${h.amount}`).join(', ')})` : ''}.`)
+    const movs = mesNow ? monthMovements(mesNow) : []
+    lines.push(
+      `EFECTIVO REAL ahora: ${Math.round(saldo)} (incluye sobrante arrastrado ${Math.round(carryOver(months, debts, settings, loans, accounts))}). ` +
+      `Movimientos de este mes: salió ${Math.round(movementsExpense(mesNow))}, entró ${Math.round(movementsIncome(mesNow))}` +
+      (movs.length ? ` (últimos: ${movs.slice(0, 8).map((m) => `${m.name} ${m.kind === 'ingreso' ? '+' : '-'}${m.amount} [${m.categoryId}]`).join(', ')})` : '') + '.',
+    )
   }
 
   // Mes activo + anterior (detalle) y totales del año
@@ -224,7 +271,7 @@ function parseAction(text: string): { clean: string; action?: ChatAction } {
     if (!spec) return { clean }
     // se acepta {datos:{}} y también la forma vieja {deuda:{}} / {gasto:{}}…
     const datos = (raw.datos ?? raw.deuda ?? raw.gasto ?? raw.planilla
-      ?? raw.sobre ?? raw.aporte ?? raw.hormiga ?? raw) as ActionData
+      ?? raw.sobre ?? raw.aporte ?? raw.hormiga ?? raw.movimiento ?? raw) as ActionData
     const action: ChatAction = { tipo, datos }
     if (spec.valid(datos)) return { clean, action }
   } catch { /* JSON inválido: ignorar la acción */ }

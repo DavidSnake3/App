@@ -84,6 +84,7 @@ export function buildPayables(month: MonthData, debts: Debt[]): PayableItem[] {
     recurrence: e.recurrence,
     children: e.children,
     icon: e.icon,
+    accountId: e.accountId,
   }))
 
   for (const d of debts) {
@@ -105,6 +106,7 @@ export function buildPayables(month: MonthData, debts: Debt[]): PayableItem[] {
       recurrence: 'monthly',
       children: [],
       icon: d.icon,
+      accountId: pay?.accountId,
       debtProgress: { current: n, total: d.installments, remaining: debtRemaining(d) },
     })
   }

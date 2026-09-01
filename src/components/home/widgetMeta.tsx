@@ -7,6 +7,8 @@ import type { TabId, WidgetId, WidgetSize } from '../../types/finance'
 
 export interface WidgetCtx {
   setActiveTab(t: TabId): void
+  /** navega a una pestaña y, si se indica, a su submenú */
+  goto(t: TabId, sub?: string): void
   exportExcel(): void
   exporting: boolean
 }
@@ -27,4 +29,6 @@ export const WIDGET_META: Record<WidgetId, { name: string; desc: string; icon: R
   pilares: { name: 'Ingresos vs gastos', desc: 'Pilares de los últimos 6 meses con tu balance', icon: <ChartColumnBig size={16} />, defaultSize: 'lg' },
   deudas: { name: 'Deudas', desc: 'Saldo pendiente y cuota del mes', icon: <CreditCard size={16} />, defaultSize: 'sm' },
   calendario: { name: 'Mini calendario', desc: 'Los pagos del mes de un vistazo', icon: <CalendarDays size={16} />, defaultSize: 'sm' },
+  cuentas: { name: 'Mis cuentas', desc: 'Efectivo real por cuenta: efectivo, banco y ahorros', icon: <Wallet size={16} />, defaultSize: 'lg' },
+  tarjetas: { name: 'Tarjetas de crédito', desc: 'Cuánto debes y cuándo hay que pagar', icon: <CreditCard size={16} />, defaultSize: 'lg' },
 }

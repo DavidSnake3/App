@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import type { TabId } from '../types/finance'
 import { useFinanceStore } from '../store/useFinanceStore'
 
-export const TAB_ORDER: TabId[] = ['home', 'month', 'debts', 'year', 'settings']
+export const TAB_ORDER: TabId[] = ['home', 'money', 'month', 'reports', 'settings']
 
 /**
  * Deslizar horizontalmente para cambiar de pestaña (como app premium).

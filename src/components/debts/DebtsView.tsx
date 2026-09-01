@@ -15,13 +15,18 @@ import { DebtDetailSheet } from './DebtDetailSheet'
 import { DebtTrend } from './DebtTrend'
 import { PaidCheck } from '../month/ItemBits'
 
-export function DebtsView() {
+/**
+ * Deudas. Cuando va dentro del hub del mes (`embedded`) no dibuja su propio
+ * contenedor con scroll ni el encabezado: eso lo pone el hub.
+ */
+export function DebtsView({ embedded = false }: { embedded?: boolean }) {
   const debts = useFinanceStore((s) => s.debts)
   const monthId = useFinanceStore((s) => s.activeMonthId)
   const month = useFinanceStore((s) => s.months[monthId])
   const deleteDebt = useFinanceStore((s) => s.deleteDebt)
 
   const [tab, setTab] = useState<'debo' | 'deben'>('debo')
+  const soloDebo = embedded
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Debt | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -36,28 +41,31 @@ export function DebtsView() {
 
   const monthItems = useMemo(() => (month ? buildPayables(month, debts) : []), [month, debts])
 
-  return (
-    <div className="flex-1 overflow-y-auto overscroll-contain">
-      <div className="px-4 pb-32 pt-2 flex flex-col gap-4">
-        <header>
-          <h2 className="font-display text-[22px] font-bold text-ink">Deudas y préstamos</h2>
-          <p className="text-[13px] text-muted mt-0.5">
-            {tab === 'debo' ? 'Controla tus cuotas y sal de deudas con estrategia' : 'Lo que le prestaste a otros y sus abonos'}
-          </p>
-        </header>
+  const cuerpo = (
+    <>
+        {!soloDebo && (
+          <>
+            <header>
+              <h2 className="font-display text-[22px] font-bold text-ink">Deudas y préstamos</h2>
+              <p className="text-[13px] text-muted mt-0.5">
+                {tab === 'debo' ? 'Controla tus cuotas y sal de deudas con estrategia' : 'Lo que le prestaste a otros y sus abonos'}
+              </p>
+            </header>
 
-        <Segmented
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: 'debo', label: 'Yo debo' },
-            { value: 'deben', label: 'Me deben' },
-          ]}
-        />
+            <Segmented
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: 'debo', label: 'Yo debo' },
+                { value: 'deben', label: 'Me deben' },
+              ]}
+            />
+          </>
+        )}
 
-        {tab === 'deben' && <LoansView />}
+        {!soloDebo && tab === 'deben' && <LoansView />}
 
-        {tab === 'debo' && (
+        {(soloDebo || tab === 'debo') && (
         <>
         {/* Resumen de deudas */}
         <div className="card p-4 grid grid-cols-2 gap-4 relative overflow-hidden">
@@ -187,10 +195,9 @@ export function DebtsView() {
         )}
         </>
         )}
-      </div>
 
       {/* Botón de agregar deuda */}
-      {tab === 'debo' && (
+      {(soloDebo || tab === 'debo') && (
       <button
         onClick={() => { setEditing(null); setAddOpen(true) }}
         aria-label="Agregar deuda"
@@ -216,6 +223,13 @@ export function DebtsView() {
         onCancel={() => setToDelete(null)}
         onConfirm={() => { if (toDelete) deleteDebt(toDelete.id); setToDelete(null) }}
       />
+    </>
+  )
+
+  if (embedded) return cuerpo
+  return (
+    <div className="flex-1 overflow-y-auto overscroll-contain">
+      <div className="px-4 pb-32 pt-2 flex flex-col gap-4">{cuerpo}</div>
     </div>
   )
 }

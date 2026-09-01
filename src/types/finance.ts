@@ -2,7 +2,12 @@
 // Modelo de datos — SNFinance
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type TabId = 'home' | 'month' | 'debts' | 'year' | 'settings'
+export type TabId = 'home' | 'money' | 'month' | 'reports' | 'settings'
+
+/** Submenú activo dentro de cada hub (navegación de 2 niveles) */
+export type MoneySub = 'cuentas' | 'movimientos' | 'tarjetas' | 'ahorros' | 'prestamos'
+export type MonthSub = 'pagos' | 'deudas' | 'presupuestos' | 'plan'
+export type ReportsSub = 'ano' | 'categorias' | 'reporte'
 
 /** Vistas configurables para el mes (punto 10) */
 export type ViewMode = 'cards' | 'list' | 'table' | 'calendar' | 'gantt'
@@ -53,6 +58,10 @@ export interface Expense {
   icon?: string          // ícono elegido por el usuario (punto: iconos)
   /** presupuesto al que se carga este pago (opcional) */
   budgetId?: string
+  /** cuenta con la que se paga (si es tarjeta de crédito, se vuelve deuda) */
+  accountId?: string
+  /** categoría del movimiento (para los reportes por tipo) */
+  categoryId?: string
   reminder?: ReminderPref
   anchorMonthId?: string // mes donde se creó (para recurrencias > 1 mes)
   createdAt: string
@@ -74,14 +83,153 @@ export interface AntExpense {
   budgetId?: string
 }
 
+// ─── Cuentas contables (bancos, efectivo, tarjetas) ──────────────────────────
+
+/**
+ * Tipo de cuenta. Las de crédito NO son efectivo: lo que se gasta con ellas
+ * se convierte en deuda con fecha de corte, fecha de pago e interés.
+ */
+export type AccountType = 'efectivo' | 'corriente' | 'ahorros' | 'credito' | 'inversion'
+
+/** Condiciones de una tarjeta de crédito */
+export interface CreditInfo {
+  /** límite de la tarjeta (0 = sin límite definido) */
+  limit: number
+  /** día del mes en que cierra el estado de cuenta */
+  cutoffDay: number
+  /** día del mes en que hay que pagar */
+  dueDay: number
+  /** interés que cobran */
+  rate: number
+  /** el interés está expresado por año o por mes */
+  ratePeriod: 'annual' | 'monthly'
+  /** saldo que ya tenía la tarjeta al registrarla (deuda arrastrada) */
+  openingDebt?: number
+}
+
+export interface Account {
+  id: string
+  name: string
+  type: AccountType
+  icon?: string
+  /** color del acento de la tarjeta/cuenta */
+  color?: string
+  /** moneda de la cuenta (por defecto, la del perfil) */
+  currency?: string
+  /** cuánto tenía la cuenta al empezar a llevarla en la app */
+  openingBalance: number
+  /** fecha de ese saldo inicial ('yyyy-MM-dd') */
+  openingISO: string
+  /** cuenta para el total de efectivo real */
+  includeInTotal: boolean
+  /**
+   * Cuenta principal: es donde cae el salario y de donde salen los pagos que
+   * no tienen cuenta asignada. Solo una cuenta puede ser la principal.
+   */
+  isMain?: boolean
+  /** flujo ya contado al fijar el saldo (evita contar dos veces el mismo mes) */
+  flowSnapshot?: number
+  /** condiciones si es tarjeta de crédito */
+  credit?: CreditInfo
+  archived?: boolean
+  note?: string
+  createdAt: string
+}
+
+// ─── Movimientos del mes (antes "gastos hormiga") ────────────────────────────
+
+/** Qué hace el movimiento con el dinero */
+export type MovementKind = 'gasto' | 'ingreso' | 'transferencia'
+
+/**
+ * Movimiento del mes: cada entrada o salida real de dinero, con su categoría,
+ * su ícono, la cuenta que usó y la fecha en que ocurrió.
+ */
+export interface Movement {
+  id: string
+  name: string
+  /** siempre positivo: el signo lo define `kind` */
+  amount: number
+  kind: MovementKind
+  /** categoría del catálogo (define ícono y color por defecto) */
+  categoryId: string
+  /** ícono propio, si el usuario eligió uno distinto al de la categoría */
+  icon?: string
+  /** cuenta de origen (de dónde salió / a dónde entró) */
+  accountId: string
+  /** cuenta de destino en transferencias (ej. pagar la tarjeta) */
+  toAccountId?: string
+  /** 'yyyy-MM-dd' del día en que se hizo */
+  dateISO: string
+  note?: string
+  /** presupuesto al que se carga */
+  budgetId?: string
+  /** cuota de una compra a plazos */
+  installmentId?: string
+  createdAt: string
+}
+
+/** Categoría de movimiento, con ícono elegible */
+export interface Category {
+  id: string
+  name: string
+  /** id del catálogo de íconos (lib/icons) */
+  icon: string
+  /** sirve para gastos, para ingresos o para ambos */
+  kind: 'gasto' | 'ingreso' | 'ambos'
+  color?: string
+  /** viene con la app (no se puede borrar, solo ocultar) */
+  builtin?: boolean
+  hidden?: boolean
+}
+
+// ─── Compras a cuotas con tarjeta de crédito ─────────────────────────────────
+
+/** Cuota pagada de una compra a plazos */
+export interface InstallmentPayment {
+  paid: boolean
+  paidAt?: string
+  amount: number
+}
+
+/**
+ * Compra a cuotas con tarjeta: un nombre para identificarla, la mensualidad,
+ * cuántas cuotas y desde cuándo se paga. Cada cuota es deuda de la tarjeta.
+ */
+export interface Installment {
+  id: string
+  /** nombre para identificarla (ej. "Refrigeradora Gollo") */
+  name: string
+  /** tarjeta con la que se compró */
+  accountId: string
+  /** monto total de la compra (0 si solo se conoce la mensualidad) */
+  total: number
+  /** mensualidad de cada cuota */
+  monthly: number
+  /** cuántas cuotas son */
+  count: number
+  /** día del mes en que se paga la cuota */
+  dueDay: number
+  /** mes de la primera cuota ('yyyy-MM') */
+  startMonthId: string
+  /** cuotas pagadas, por mes */
+  payments: Record<string, InstallmentPayment>
+  icon?: string
+  categoryId?: string
+  note?: string
+  createdAt: string
+}
+
 export interface MonthData {
   id: string   // 'yyyy-MM'
   year: number
   month: number // 1-12
   income: MonthlyIncome
   expenses: Expense[]
-  /** gastos hormiga del mes (control total del dinero) */
+  /** LEGADO: gastos hormiga (migrados a `movements` en la v9) */
   hormigas?: AntExpense[]
+  /** movimientos del mes: todo lo que entra y sale, con categoría y cuenta */
+  movements?: Movement[]
   celebrated: boolean // ya se mostró la felicitación de mes completado (punto 22)
   /** ya se preguntó si copiar los recurrentes del mes anterior */
   carryAsked?: boolean
@@ -96,6 +244,8 @@ export interface DebtPayment {
   capital?: number
   interest?: number
   receiptNo?: string
+  /** cuenta con la que se pagó la cuota */
+  accountId?: string
 }
 
 /** Deuda con cuotas o fecha de finalización (punto 4) */
@@ -186,6 +336,8 @@ export interface PayableItem {
   recurrence: Recurrence
   children: SubItem[]
   icon?: string
+  /** cuenta con la que se paga (tarjeta = se vuelve deuda) */
+  accountId?: string
   /** progreso de la deuda: cuota n de m */
   debtProgress?: { current: number; total: number; remaining: number }
 }
@@ -274,6 +426,8 @@ export type WidgetId =
   | 'dona'        // dona: distribución de gastos por tipo
   | 'pilares'     // pilares: ingresos vs gastos por mes
   | 'saldo'       // saldo real: lo que tienes en el banco ahora
+  | 'cuentas'     // efectivo real por cuenta (efectivo, banco, ahorros)
+  | 'tarjetas'    // tarjetas de crédito: deuda y próxima fecha de pago
   | 'divisas'     // tipo de cambio del dólar, euro y otras monedas
 
 export type WidgetSize = 'sm' | 'lg' | 'xl'
@@ -479,6 +633,8 @@ export interface AppSettings {
   savings: SavingsConfig
   /** saldo real: control total del dinero en el banco */
   fund: FundConfig
+  /** catálogo de categorías de movimientos (con íconos) */
+  categories?: Category[]
   /** regla de reparto elegida (50/30/20, 70/20/10…) */
   financialPlanId?: string
   /** porcentajes personalizados del plan (si los cambió) */

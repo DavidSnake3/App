@@ -321,3 +321,23 @@ input, select, textarea, button { font-family: inherit; }
 .widget-wiggle {
   animation: wiggle 0.35s ease-in-out infinite;
 }
+
+/* ── Menú de cuadros de cada sección (submenús) ─────────────────────────── */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.anim-rise { animation: riseIn 0.36s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+@keyframes sheenSlide {
+  from { transform: translateX(-120%); }
+  to   { transform: translateX(220%); }
+}
+.anim-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 25%, rgb(255 255 255 / 0.10) 50%, transparent 75%);
+  animation: sheenSlide 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
