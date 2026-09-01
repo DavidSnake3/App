@@ -85,6 +85,7 @@ export function buildPayables(month: MonthData, debts: Debt[]): PayableItem[] {
     children: e.children,
     icon: e.icon,
     color: e.color,
+    templateId: e.templateId,
     accountId: e.accountId,
   }))
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { CalendarX2, Pencil, Plus, Repeat2, Trash2 } from 'lucide-react'
 import type { PayableItem } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { formatMoney } from '../../lib/format'
@@ -27,13 +27,14 @@ export function ExpenseDetailSheet({ item, monthId, onClose, onEdit }: Props) {
   const [subName, setSubName] = useState('')
   const [subAmount, setSubAmount] = useState(0)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [comoQuitar, setComoQuitar] = useState(false)
 
   // Releer el gasto del store para ver sub-ítems al instante
   const live = useMemo(() => {
     if (!item) return null
     if (item.source === 'expense') {
       const e = month?.expenses.find((x) => x.id === item.refId)
-      return e ? { ...item, children: e.children, paid: e.paid, amount: e.children.length ? e.children.reduce((s, c) => s + c.amount, 0) : e.amount } : item
+      return e ? { ...item, templateId: e.templateId, children: e.children, paid: e.paid, amount: e.children.length ? e.children.reduce((s, c) => s + c.amount, 0) : e.amount } : item
     }
     return item
   }, [item, month])
@@ -59,6 +60,20 @@ export function ExpenseDetailSheet({ item, monthId, onClose, onEdit }: Props) {
           </div>
           <PaidCheck item={live} monthId={monthId} size={52} />
         </div>
+
+        {/* Es un pago fijo: sale en todos los meses de aquí en adelante */}
+        {live.templateId && (
+          <div
+            className="rounded-xl px-3.5 py-2.5 flex items-center gap-2.5"
+            style={{ background: 'color-mix(in oklab, var(--app-accent) 10%, transparent)' }}
+          >
+            <Repeat2 size={15} className="shrink-0" style={{ color: 'var(--app-accent-soft)' }} />
+            <p className="text-[11.5px] text-ink leading-snug">
+              Pago fijo: sale <span className="font-semibold">todos los meses</span> de aquí en
+              adelante sin que tengas que ponerlo.
+            </p>
+          </div>
+        )}
 
         {debt && (
           <div className="card bg-elevated/60 p-4">
@@ -137,7 +152,7 @@ export function ExpenseDetailSheet({ item, monthId, onClose, onEdit }: Props) {
                 <Pencil size={15} /> Editar
               </button>
               <button
-                onClick={() => setConfirmDelete(true)}
+                onClick={() => (live.templateId ? setComoQuitar(true) : setConfirmDelete(true))}
                 className="pressable flex-1 rounded-2xl font-semibold py-3 flex items-center justify-center gap-2"
                 style={{ background: 'color-mix(in oklab, var(--c-danger) 14%, transparent)', color: 'var(--c-danger)' }}
               >
@@ -147,6 +162,67 @@ export function ExpenseDetailSheet({ item, monthId, onClose, onEdit }: Props) {
           </>
         )}
       </div>
+
+      {/* Un pago fijo se puede quitar de este mes o dejar de repetirse */}
+      <BottomSheet
+        open={comoQuitar}
+        onClose={() => setComoQuitar(false)}
+        title="¿Cómo lo quitamos?"
+        subtitle={`"${live.name}" es un pago fijo`}
+      >
+        <div className="flex flex-col gap-2.5 pb-2">
+          <button
+            onClick={() => {
+              deleteExpense(monthId, item.refId, 'mes')
+              setComoQuitar(false)
+              onClose()
+            }}
+            className="pressable tile p-3.5 flex items-center gap-3 text-left"
+          >
+            <span
+              className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+              style={{ background: 'color-mix(in oklab, var(--app-accent) 16%, transparent)', color: 'var(--app-accent-soft)' }}
+            >
+              <CalendarX2 size={17} />
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[13.5px] font-semibold text-ink">Quitarlo solo de este mes</span>
+              <span className="block text-[11.5px] text-muted leading-snug">
+                Los demás meses lo siguen teniendo.
+              </span>
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              deleteExpense(monthId, item.refId, 'siempre')
+              setComoQuitar(false)
+              onClose()
+            }}
+            className="pressable tile p-3.5 flex items-center gap-3 text-left"
+            style={{ borderColor: 'color-mix(in oklab, var(--c-danger) 35%, var(--c-border))' }}
+          >
+            <span
+              className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+              style={{ background: 'color-mix(in oklab, var(--c-danger) 14%, transparent)', color: 'var(--c-danger)' }}
+            >
+              <Trash2 size={17} />
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[13.5px] font-semibold" style={{ color: 'var(--c-danger)' }}>
+                Dejar de repetirlo
+              </span>
+              <span className="block text-[11.5px] text-muted leading-snug">
+                Se quita de este mes y de los siguientes. Lo ya pagado no se toca.
+              </span>
+            </span>
+          </button>
+
+          <button onClick={() => setComoQuitar(false)} className="pressable btn-ghost w-full mt-1">
+            Cancelar
+          </button>
+        </div>
+      </BottomSheet>
 
       <ConfirmDialog
         open={confirmDelete}

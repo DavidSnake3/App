@@ -25,6 +25,7 @@ import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { BottomSheet } from '../ui/BottomSheet'
 import { DateField } from '../ui/DatePicker'
 import { payBurst } from '../../lib/fx'
+import { useBackClose } from '../../hooks/useBackClose'
 
 /** Color de cada dirección: lo que me deben suma, lo que debo pesa */
 function tono(kind: LoanKind): string {
@@ -124,6 +125,8 @@ function LoanCard({ loan, kind, onEdit }: { loan: Loan; kind: LoanKind; onEdit: 
   const [open, setOpen] = useState(false)
   const [masOpen, setMasOpen] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
+  // el atrás del celular cierra el detalle antes de salir del submenú
+  useBackClose(open, () => setOpen(false))
 
   const copy = LOAN_COPY[kind]
   const color = tono(kind)

@@ -299,6 +299,8 @@ export interface MonthData {
   celebrated: boolean // ya se mostró la felicitación de mes completado (punto 22)
   /** ya se preguntó si copiar los recurrentes del mes anterior */
   carryAsked?: boolean
+  /** pagos fijos que el usuario quitó SOLO en este mes (ids de plantilla) */
+  skipTemplates?: string[]
 }
 
 /** Pago de una cuota de deuda en un mes concreto (recibo estilo abono) */
@@ -443,6 +445,8 @@ export interface PayableItem {
   accountId?: string
   /** color propio del pago */
   color?: string
+  /** pago fijo del que viene (sale en todos los meses) */
+  templateId?: string
   /** progreso de la deuda: cuota n de m */
   debtProgress?: { current: number; total: number; remaining: number }
 }

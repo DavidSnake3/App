@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { SN_GRADIENT, SN_HEAD, SN_N, SN_S } from '../../lib/logo'
+import { useBackClose } from '../../hooks/useBackClose'
 
 // El splash debe reproducirse UNA sola vez por arranque de la app,
 // aunque React cambie de pantalla (login → onboarding → inicio).
@@ -24,6 +25,7 @@ export function SplashIntro({ onDone }: { onDone: () => void }) {
   }, [])
 
   const skip = () => { setLeaving(true); setTimeout(onDone, 380) }
+  useBackClose(true, skip)
 
   return (
     <div

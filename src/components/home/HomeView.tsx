@@ -8,6 +8,7 @@ import { greeting, longToday } from '../../lib/dates'
 import { buildWorkbook, downloadWorkbook } from '../../lib/excel'
 import { withLoading } from '../../store/useLoading'
 import { vibrate } from '../../lib/fx'
+import { useBackClose } from '../../hooks/useBackClose'
 import { BottomSheet } from '../ui/BottomSheet'
 import { RenderWidget } from './widgets'
 import { WIDGET_META, type WidgetCtx } from './widgetMeta'
@@ -31,6 +32,8 @@ export function HomeView({ auth }: { auth: AuthState }) {
 
   const widgets = homeWidgets ?? DEFAULT_WIDGETS
   const [editMode, setEditMode] = useState(false)
+  // el atrás sale del modo edición en vez de cambiar de pantalla
+  useBackClose(editMode, () => setEditMode(false))
   const [addOpen, setAddOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
 

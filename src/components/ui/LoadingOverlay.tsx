@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLoading } from '../../store/useLoading'
 import { Loader } from './Loader'
+import { useBackClose } from '../../hooks/useBackClose'
 
 /**
  * Cargando global (mejora 4): fondo oscuro que bloquea la interacción
@@ -16,6 +17,8 @@ export function LoadingOverlay() {
 
 function OverlayInner({ labels }: { labels: string[] }) {
   const [i, setI] = useState(0)
+  // mientras carga, el atrás no hace nada (pero tampoco se sale de la app)
+  useBackClose(true, () => { /* bloqueante a propósito */ })
 
   useEffect(() => {
     if (labels.length < 2) return

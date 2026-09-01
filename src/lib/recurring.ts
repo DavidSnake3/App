@@ -1,8 +1,8 @@
-// Pagos fijos: las plantillas de lo que sale SÍ O SÍ todos los meses.
+// Pagos fijos: lo que sale SÍ O SÍ todos los meses.
 //
-// Una plantilla se crea sola cuando marcas un gasto como recurrente, y se
-// administra en Ajustes → Ingresos y planilla → Pagos fijos. Cada mes nuevo
-// nace ya con sus pagos fijos puestos, sin tener que copiarlos a mano.
+// Cuando marcás un gasto como "se repite", nace su plantilla y desde ese
+// momento el pago aparece en TODOS los meses de ahí en adelante: en los que
+// ya existían y en los que se vayan creando. No hay que administrar nada.
 import type { Expense, MonthData, RecurringTemplate } from '../types/finance'
 import { monthDiff, todayISO } from './dates'
 import { uid } from './finance'
@@ -51,21 +51,69 @@ export function expenseFromTemplate(t: RecurringTemplate, monthId: string): Expe
 }
 
 /**
- * Pagos que le faltan a un mes según sus plantillas.
+ * Deja el mes al día con los pagos fijos. SOLO agrega y adopta, nunca borra.
  *
- * No duplica: si el mes ya tiene el pago de esa plantilla (por `templateId`,
- * o uno con el mismo nombre creado a mano antes), no lo vuelve a crear.
+ * Tres reglas, en orden:
+ *  1. lápida: el usuario quitó ese pago fijo en ESTE mes → no vuelve.
+ *  2. ya está: hay un gasto con ese templateId → no se duplica.
+ *  3. huérfano: hay un gasto sin plantilla con el mismo nombre → se ADOPTA
+ *     (se le pone el templateId) en vez de crear otro al lado. Así se reparan
+ *     solas las copias que perdieron el vínculo y los gastos hechos a mano.
  */
-export function missingFromTemplates(
-  month: MonthData,
+export function seedMonth(month: MonthData, templates: RecurringTemplate[]): MonthData {
+  const lapidas = new Set(month.skipTemplates ?? [])
+  const usados = new Set(
+    month.expenses.map((e) => e.templateId).filter(Boolean) as string[],
+  )
+  const huerfanos = new Map<string, string>() // nombre → id del gasto
+  for (const e of month.expenses) {
+    if (e.templateId) continue
+    const k = e.name.trim().toLowerCase()
+    if (!huerfanos.has(k)) huerfanos.set(k, e.id)
+  }
+
+  const adopciones = new Map<string, string>() // id del gasto → id de plantilla
+  const nuevos: Expense[] = []
+
+  for (const t of templates) {
+    if (lapidas.has(t.id) || usados.has(t.id)) continue
+    if (!templateHits(t, month.id)) continue
+    usados.add(t.id)
+    const clave = t.name.trim().toLowerCase()
+    const huerfano = huerfanos.get(clave)
+    if (huerfano) { huerfanos.delete(clave); adopciones.set(huerfano, t.id); continue }
+    nuevos.push(expenseFromTemplate(t, month.id))
+  }
+
+  if (!adopciones.size && !nuevos.length) return month // misma referencia: no re-renderiza
+  const base = adopciones.size
+    ? month.expenses.map((e) => {
+        const tid = adopciones.get(e.id)
+        return tid ? { ...e, templateId: tid } : e
+      })
+    : month.expenses
+  return { ...month, expenses: [...base, ...nuevos] }
+}
+
+/**
+ * Pone al día TODOS los meses guardados. `floorMonthId` protege el historial:
+ * los meses anteriores no se tocan. Devuelve el MISMO mapa si nada cambió.
+ */
+export function seedAllMonths(
+  months: Record<string, MonthData>,
   templates: RecurringTemplate[],
-): Expense[] {
-  const porPlantilla = new Set(month.expenses.map((e) => e.templateId).filter(Boolean))
-  const porNombre = new Set(month.expenses.map((e) => e.name.trim().toLowerCase()))
-  return templates
-    .filter((t) => templateHits(t, month.id))
-    .filter((t) => !porPlantilla.has(t.id) && !porNombre.has(t.name.trim().toLowerCase()))
-    .map((t) => expenseFromTemplate(t, month.id))
+  floorMonthId: string,
+): Record<string, MonthData> {
+  if (!templates.length) return months
+  let cambio = false
+  const out: Record<string, MonthData> = {}
+  for (const [mid, m] of Object.entries(months)) {
+    if (mid < floorMonthId) { out[mid] = m; continue }
+    const next = seedMonth(m, templates)
+    if (next !== m) cambio = true
+    out[mid] = next
+  }
+  return cambio ? out : months
 }
 
 /** Plantilla a partir de un gasto que el usuario marcó como recurrente */
@@ -77,7 +125,9 @@ export function templateFromExpense(e: Expense, monthId: string): RecurringTempl
     kind: e.kind,
     dueDay: e.dueDay,
     recurrence: e.recurrence,
-    anchorMonthId: e.anchorMonthId ?? monthId,
+    // ancla en el mes donde el usuario lo marcó como fijo: una copia traída
+    // de un mes viejo no debe sembrar hacia atrás meses ya cerrados
+    anchorMonthId: monthId,
     icon: e.icon,
     note: e.note,
     accountId: e.accountId,
@@ -87,23 +137,4 @@ export function templateFromExpense(e: Expense, monthId: string): RecurringTempl
     active: true,
     createdAt: todayISO(),
   }
-}
-
-/** Total mensual de los pagos fijos activos (para el resumen) */
-export function recurringMonthlyTotal(templates: RecurringTemplate[], monthId: string): number {
-  const total = templates
-    .filter((t) => templateHits(t, monthId))
-    .reduce((s, t) => s + t.amount, 0)
-  return Math.round(total * 100) / 100
-}
-
-/** Etiqueta de cada cuánto se repite */
-export const RECURRENCE_EVERY_LABEL: Record<string, string> = {
-  weekly: 'Cada semana',
-  biweekly: 'Cada quincena',
-  monthly: 'Todos los meses',
-  bimonthly: 'Cada 2 meses',
-  quarterly: 'Cada 3 meses',
-  semiannual: 'Cada 6 meses',
-  annual: 'Una vez al año',
 }

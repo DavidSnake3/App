@@ -7,6 +7,7 @@ import type { AppUser } from '../../lib/firebase'
 import type { PayPeriod, WorkerType } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { currentMonthId } from '../../lib/dates'
+import { useBackClose } from '../../hooks/useBackClose'
 import { CURRENCIES, formatMoney, formatMoneyExact } from '../../lib/format'
 import {
   COUNTRY_PRESETS, INPUT_PERIODS, PERIOD_LABEL, PERIOD_UNIT, countryPreset, payrollBreakdown,
@@ -97,6 +98,8 @@ export function Onboarding({ user }: { user: AppUser | null }) {
   )
 
   const [idx, setIdx] = useState(0)
+  // el atrás retrocede un paso del asistente, no cierra la app
+  useBackClose(idx > 0, () => setIdx((i) => Math.max(0, i - 1)))
   const step = steps[idx]
 
   const [name, setName] = useState(user?.name ?? '')

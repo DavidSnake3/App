@@ -9,7 +9,7 @@ import type {
 import { currentMonthId, todayISO, todayLocalISO} from '../lib/dates'
 import { DEFAULT_CATEGORIES, guessCategory, mergeCategories } from '../lib/categories'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
-import { missingFromTemplates, templateFromExpense } from '../lib/recurring'
+import { seedAllMonths, seedMonth, templateFromExpense } from '../lib/recurring'
 import {
   DEFAULT_CCSS_PCT, DEFAULT_STATUTORY_NAME, convertPeriod, countryPreset, payrollBreakdown,
 } from '../lib/payroll'
@@ -174,8 +174,10 @@ interface FinanceActions {
   updateIncome(monthId: string, patch: Partial<MonthData['income']>): void
 
   addExpense(monthId: string, e: Omit<Expense, 'id' | 'createdAt'>): void
-  updateExpense(monthId: string, id: string, patch: Partial<Expense>): void
-  deleteExpense(monthId: string, id: string): void
+  /** `scope` 'siempre' aplica el cambio tambien a los meses siguientes */
+  updateExpense(monthId: string, id: string, patch: Partial<Expense>, scope?: 'mes' | 'siempre'): void
+  /** `scope` 'mes' lo quita solo de aqui - 'siempre' deja de repetirlo */
+  deleteExpense(monthId: string, id: string, scope?: 'mes' | 'siempre'): void
   togglePaid(monthId: string, id: string): void
   addSubItem(monthId: string, expenseId: string, item: Omit<SubItem, 'id'>): void
   updateSubItem(monthId: string, expenseId: string, subId: string, patch: Partial<SubItem>): void
@@ -193,16 +195,6 @@ interface FinanceActions {
   markCarryAsked(monthId: string): void
   /** copia pagos concretos de un mes a otro */
   copyExpensesFrom(targetMonthId: string, fromMonthId: string, ids: string[]): void
-
-  // ── Pagos fijos (plantillas recurrentes) ─────────────────────────────────
-  addTemplate(t: Omit<RecurringTemplate, 'id' | 'createdAt'>): void
-  updateTemplate(id: string, patch: Partial<Omit<RecurringTemplate, 'id'>>): void
-  deleteTemplate(id: string, alsoFuture?: boolean): void
-  toggleTemplate(id: string): void
-  /** crea en un mes los pagos fijos que le falten */
-  applyTemplates(monthId: string): void
-  /** los pone en todos los meses que ya existen */
-  applyTemplatesEverywhere(): void
 
   setProfile(patch: Partial<UserProfile>): void
   setSettings(patch: Partial<AppSettings>): void
@@ -401,6 +393,26 @@ function patchMonth(
   return { months: { ...s.months, [monthId]: fn(month) }, ...touch() }
 }
 
+/** Deja todos los meses al dia con los pagos fijos, sin tocar el historial */
+function sembrarTodo(
+  months: Record<string, MonthData>,
+  recurring: RecurringTemplate[],
+): Record<string, MonthData> {
+  return seedAllMonths(months, recurring, currentMonthId())
+}
+
+/** Campos del gasto que si tienen sentido en su pago fijo */
+const CAMPOS_PLANTILLA = [
+  'name', 'amount', 'kind', 'dueDay', 'icon', 'note',
+  'accountId', 'categoryId', 'budgetId', 'reminder', 'recurrence',
+] as const
+
+function parchePlantilla(patch: Partial<Expense>): Partial<RecurringTemplate> {
+  const out: Record<string, unknown> = {}
+  for (const k of CAMPOS_PLANTILLA) if (k in patch) out[k] = (patch as Record<string, unknown>)[k]
+  return out as Partial<RecurringTemplate>
+}
+
 function patchExpense(
   s: FinanceState,
   monthId: string,
@@ -498,17 +510,12 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set({ activeMonthId: monthId })
       },
 
-      // Mes nuevo SIEMPRE vacío: copiar recurrentes solo si el usuario acepta (mejora 12)
+      /** El mes nace con sus pagos fijos ya puestos */
       ensureMonthExists: (monthId) => {
         const { months, settings, recurring } = get()
         if (months[monthId]) return
-        // el mes nuevo nace con los pagos fijos ya puestos
-        const base = makeMonth(monthId, settings)
-        const fijos = missingFromTemplates(base, recurring)
-        set((s) => ({
-          months: { ...s.months, [monthId]: { ...base, expenses: fijos } },
-          ...touch(),
-        }))
+        const mes = seedMonth(makeMonth(monthId, settings), recurring)
+        set((s) => ({ months: { ...s.months, [monthId]: mes }, ...touch() }))
       },
 
       // Borrar el mes (punto 1)
@@ -527,20 +534,21 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set((s) => patchMonth(s, monthId, (m) => ({ ...m, income: { ...m.income, ...patch } }))),
 
       /**
-       * Al agregar un gasto RECURRENTE se crea también su pago fijo, para que
-       * aparezca solo en los meses siguientes. Si ya existe uno con ese
-       * nombre, no se duplica.
+       * Al agregar un gasto que SE REPITE nace su pago fijo y se siembra de
+       * una vez en todos los meses guardados, del actual en adelante. Ahí se
+       * cumple la regla: marcado como recurrente = sale en todos los meses.
        */
       addExpense: (monthId, e) => {
-        const id = uid()
+        get().ensureMonthExists(monthId)
         const gasto: Expense = {
           ...e,
-          id,
+          id: uid(),
           anchorMonthId: e.anchorMonthId ?? monthId,
           createdAt: todayISO(),
         }
         set((s) => {
-          // si se repite, se guarda como PAGO FIJO para que salga solo cada mes
+          const mes = s.months[monthId]
+          if (!mes) return {}
           const yaExiste = s.recurring.some(
             (t) => t.name.trim().toLowerCase() === gasto.name.trim().toLowerCase(),
           )
@@ -548,21 +556,101 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             ? templateFromExpense(gasto, monthId)
             : null
           if (plantilla) gasto.templateId = plantilla.id
+
+          const recurring = plantilla ? [...s.recurring, plantilla] : s.recurring
+          const conGasto = {
+            ...s.months,
+            [monthId]: { ...mes, expenses: [...mes.expenses, gasto] },
+          }
           return {
-            ...patchMonth(s, monthId, (m) => ({ ...m, expenses: [...m.expenses, gasto] })),
-            recurring: plantilla ? [...s.recurring, plantilla] : s.recurring,
+            months: plantilla ? sembrarTodo(conGasto, recurring) : conGasto,
+            recurring,
+            ...touch(),
           }
         })
       },
 
-      updateExpense: (monthId, id, patch) =>
-        set((s) => patchExpense(s, monthId, id, (e) => ({ ...e, ...patch }))),
+      updateExpense: (monthId, id, patch, scope = 'mes') =>
+        set((s) => {
+          const mes = s.months[monthId]
+          const actual = mes?.expenses.find((e) => e.id === id)
+          if (!mes || !actual) return {}
 
-      deleteExpense: (monthId, id) =>
-        set((s) => patchMonth(s, monthId, (m) => ({
-          ...m,
-          expenses: m.expenses.filter((e) => e.id !== id),
-        }))),
+          // (a) lo acaba de marcar como "se repite": nace su pago fijo
+          const seVuelveFijo = !actual.templateId
+            && patch.recurrence !== undefined && patch.recurrence !== 'once'
+          const nombre = (patch.name ?? actual.name).trim().toLowerCase()
+          const yaExiste = s.recurring.some((t) => t.name.trim().toLowerCase() === nombre)
+          const plantilla = seVuelveFijo && !yaExiste
+            ? templateFromExpense({ ...actual, ...patch } as Expense, monthId)
+            : null
+
+          // (b) apagó "se repite": deja de repetirse de aquí en adelante
+          const apaga = patch.recurrence === 'once' && Boolean(actual.templateId)
+          const tid = plantilla?.id ?? (apaga ? undefined : actual.templateId)
+
+          let recurring = plantilla ? [...s.recurring, plantilla] : s.recurring
+          if (apaga) recurring = recurring.filter((t) => t.id !== actual.templateId)
+
+          let months: Record<string, MonthData> = {
+            ...s.months,
+            [monthId]: {
+              ...mes,
+              expenses: mes.expenses.map((e) =>
+                (e.id === id ? { ...e, ...patch, templateId: tid } : e)),
+            },
+          }
+
+          // (c) "también en los meses siguientes"
+          if (scope === 'siempre' && tid) {
+            recurring = recurring.map((t) => (t.id === tid ? { ...t, ...parchePlantilla(patch) } : t))
+            months = Object.fromEntries(Object.entries(months).map(([mid, m]) => [mid,
+              mid > monthId
+                ? { ...m, expenses: m.expenses.map((e) =>
+                    (e.templateId === tid && !e.paid ? { ...e, ...patch } : e)) }
+                : m]))
+          }
+          if (apaga) {
+            months = Object.fromEntries(Object.entries(months).map(([mid, m]) => [mid,
+              mid > monthId
+                ? { ...m, expenses: m.expenses.filter((e) => e.templateId !== actual.templateId || e.paid) }
+                : m]))
+          }
+
+          if (plantilla) months = sembrarTodo(months, recurring)
+          return { months, recurring, ...touch() }
+        }),
+
+      /** 'mes' = quitarlo solo de aquí (deja lápida) · 'siempre' = no repetirlo más */
+      deleteExpense: (monthId, id, scope = 'mes') =>
+        set((s) => {
+          const mes = s.months[monthId]
+          const gasto = mes?.expenses.find((e) => e.id === id)
+          if (!mes || !gasto) return {}
+          const tid = gasto.templateId
+
+          let months: Record<string, MonthData> = {
+            ...s.months,
+            [monthId]: {
+              ...mes,
+              expenses: mes.expenses.filter((e) => e.id !== id),
+              // lápida: en ESTE mes no se vuelve a sembrar, en los demás sí
+              skipTemplates: tid && scope === 'mes'
+                ? Array.from(new Set([...(mes.skipTemplates ?? []), tid]))
+                : mes.skipTemplates,
+            },
+          }
+          let recurring = s.recurring
+
+          if (tid && scope === 'siempre') {
+            recurring = s.recurring.filter((t) => t.id !== tid)
+            months = Object.fromEntries(Object.entries(months).map(([mid, m]) => [mid,
+              mid > monthId
+                ? { ...m, expenses: m.expenses.filter((e) => e.templateId !== tid || e.paid) }
+                : m]))
+          }
+          return { months, recurring, ...touch() }
+        }),
 
       /**
        * Marcar un pago como PAGADO crea su movimiento: queda en el historial y
@@ -752,13 +840,14 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       copyExpensesFrom: (targetMonthId, fromMonthId, ids) =>
         set((s) => {
           const from = s.months[fromMonthId]
-          const target = s.months[targetMonthId] ?? makeMonth(targetMonthId, s.settings)
+          const target = s.months[targetMonthId] ?? seedMonth(makeMonth(targetMonthId, s.settings), s.recurring)
           if (!from) return {}
           const existentes = new Set(target.expenses.map((e) => e.name.trim().toLowerCase()))
           const copias = from.expenses
             .filter((e) => ids.includes(e.id))
             .filter((e) => !existentes.has(e.name.trim().toLowerCase()))
-            .map((e) => ({ ...cloneExpenseForMonth(e), templateId: undefined }))
+            // se conserva el vínculo con su pago fijo: así la copia no se duplica
+            .map((e) => cloneExpenseForMonth(e))
           if (!copias.length) return {}
           return {
             months: {
@@ -767,65 +856,6 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             },
             ...touch(),
           }
-        }),
-
-      // ── Pagos fijos ──────────────────────────────────────────────────────
-      addTemplate: (t) =>
-        set((s) => ({
-          recurring: [...s.recurring, { ...t, id: uid(), createdAt: todayISO() }],
-          ...touch(),
-        })),
-      updateTemplate: (id, patch) =>
-        set((s) => ({
-          recurring: s.recurring.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-          ...touch(),
-        })),
-      /**
-       * Borra la plantilla. Con `alsoFuture` quita también los pagos que ya
-       * había generado en los meses que aún no empiezan (los meses pasados no
-       * se tocan: son historial).
-       */
-      deleteTemplate: (id, alsoFuture) =>
-        set((s) => {
-          const nowId = currentMonthId()
-          const months = alsoFuture
-            ? Object.fromEntries(Object.entries(s.months).map(([mid, m]) => [mid, (
-                mid >= nowId
-                  ? { ...m, expenses: m.expenses.filter((e) => e.templateId !== id || e.paid) }
-                  : m
-              )]))
-            : s.months
-          return { recurring: s.recurring.filter((t) => t.id !== id), months, ...touch() }
-        }),
-      toggleTemplate: (id) =>
-        set((s) => ({
-          recurring: s.recurring.map((t) => (t.id === id ? { ...t, active: !t.active } : t)),
-          ...touch(),
-        })),
-      applyTemplates: (monthId) =>
-        set((s) => {
-          const mes = s.months[monthId]
-          if (!mes) return {}
-          const nuevos = missingFromTemplates(mes, s.recurring)
-          if (!nuevos.length) return {}
-          return {
-            months: { ...s.months, [monthId]: { ...mes, expenses: [...mes.expenses, ...nuevos] } },
-            ...touch(),
-          }
-        }),
-      applyTemplatesEverywhere: () =>
-        set((s) => {
-          const nowId = currentMonthId()
-          let cambio = false
-          const months = Object.fromEntries(Object.entries(s.months).map(([mid, m]) => {
-            // los meses pasados son historial: no se tocan
-            if (mid < nowId) return [mid, m]
-            const nuevos = missingFromTemplates(m, s.recurring)
-            if (!nuevos.length) return [mid, m]
-            cambio = true
-            return [mid, { ...m, expenses: [...m.expenses, ...nuevos] }]
-          }))
-          return cambio ? { months, ...touch() } : {}
         }),
 
       markCarryAsked: (monthId) =>
@@ -1112,7 +1142,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         const id = uid()
         set((s) => {
           const monthId = mv.dateISO.slice(0, 7)
-          const mes = s.months[monthId] ?? makeMonth(monthId, s.settings)
+          const mes = s.months[monthId] ?? seedMonth(makeMonth(monthId, s.settings), s.recurring)
           const nuevo: Movement = { ...mv, id, createdAt: todayISO() }
           return {
             months: {
@@ -1139,7 +1169,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           }
           if (!encontrado) return {}
           const destinoId = encontrado.dateISO.slice(0, 7)
-          const destino = months[destinoId] ?? makeMonth(destinoId, s.settings)
+          const destino = months[destinoId] ?? seedMonth(makeMonth(destinoId, s.settings), s.recurring)
           return {
             months: {
               ...months,
@@ -1416,7 +1446,11 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           const accounts = data.accounts ?? prev.accounts ?? []
           const installments = data.installments ?? prev.installments ?? []
           return {
-          months: healMonths(data.months ?? {}, accounts),
+          months: seedAllMonths(
+            healMonths(data.months ?? {}, accounts),
+            data.recurring ?? prev.recurring ?? [],
+            currentMonthId(),
+          ),
           accounts,
           installments,
           recurring: data.recurring ?? prev.recurring ?? [],
@@ -1471,7 +1505,12 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         return {
           ...current,
           ...p,
-          months: healMonths(p.months ?? {}, p.accounts ?? []),
+          // los meses ya guardados se ponen al día con los pagos fijos
+          months: seedAllMonths(
+            healMonths(p.months ?? {}, p.accounts ?? []),
+            p.recurring ?? [],
+            currentMonthId(),
+          ),
           accounts: p.accounts ?? [],
           installments: p.installments ?? [],
           recurring: p.recurring ?? [],
@@ -1572,7 +1611,11 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             ...st,
             accounts,
             installments: st.installments ?? [],
-            months: healMonths(st.months ?? {}, accounts),
+            months: seedAllMonths(
+              healMonths(st.months ?? {}, accounts),
+              st.recurring ?? [],
+              currentMonthId(),
+            ),
             settings: {
               ...st.settings,
               categories: (st.settings as Partial<AppSettings>)?.categories?.length

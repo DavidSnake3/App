@@ -3,7 +3,7 @@ import {
   AlarmClock, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
   Briefcase, Camera, Database, Download, FileText, HandCoins, Image as ImageIcon,
   Landmark, LifeBuoy, LogOut, Mail, MessageCircleQuestion, Moon, Palette,
-  PartyPopper, PiggyBank, Play, Plus, Repeat2, Shapes, Sparkles, Sun, Trash2, Upload,
+  PartyPopper, PiggyBank, Play, Plus, Shapes, Sparkles, Sun, Trash2, Upload,
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
 import type {
@@ -14,6 +14,7 @@ import { useChat } from '../../store/useChat'
 import { BG_PRESETS, PALETTES, compressImage } from '../../lib/themes'
 import { CURRENCIES, LOCALES, formatMoney, formatMoneyExact } from '../../lib/format'
 import { mergeCategories } from '../../lib/categories'
+import { useBackClose } from '../../hooks/useBackClose'
 import { requestPermission, sendTestNotification } from '../../lib/notifications'
 import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm, playSuccess } from '../../lib/sound'
 import { firebaseReady, logout } from '../../lib/firebase'
@@ -42,7 +43,6 @@ import { plan as snakePlanOf } from '../../lib/plans'
 import { SavingsSection } from './SavingsSection'
 import { SnakeSection } from './SnakeSection'
 import { DeductionSheet } from './DeductionSheet'
-import { RecurringSection } from './RecurringSection'
 import { CategoriesSection } from './CategoriesSection'
 import { ExtraPaysEditor, LegalNotice, StatutoryEditor, TaxEditor } from './PayrollEditors'
 
@@ -658,11 +658,6 @@ function IngresosSection() {
         <ExtraPaysEditor />
       </Card>
 
-      {/* Pagos fijos: lo que sale sí o sí todos los meses */}
-      <Card title="Pagos fijos de cada mes" icon={<Repeat2 size={14} />}>
-        <RecurringSection />
-      </Card>
-
       <LegalNotice />
 
       {/* Plan de pago (mejora 3) */}
@@ -958,6 +953,8 @@ function NotificacionesSection() {
   const [notifMsg, setNotifMsg] = useState('')
   const [testMsg, setTestMsg] = useState('')
   const [demoAlarm, setDemoAlarm] = useState<PendingAlarm | null>(null)
+  // el atrás quita la alarma de prueba
+  useBackClose(Boolean(demoAlarm), () => setDemoAlarm(null))
 
   const enableNotifs = async (on: boolean) => {
     if (!on) { setNotifications({ enabled: false }); return }

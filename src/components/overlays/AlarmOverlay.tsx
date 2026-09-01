@@ -5,6 +5,7 @@ import { useFinanceStore } from '../../store/useFinanceStore'
 import { snoozeAlarm } from '../../lib/notifications'
 import { startAlarmSound, stopAlarmSound } from '../../lib/sound'
 import { formatMoney } from '../../lib/format'
+import { useBackClose } from '../../hooks/useBackClose'
 
 interface Props {
   alarm: PendingAlarm
@@ -16,6 +17,8 @@ export function AlarmOverlay({ alarm, onDismiss }: Props) {
   const sounds = useFinanceStore((s) => s.settings.animations.sounds)
   const haptics = useFinanceStore((s) => s.settings.animations.haptics)
   const alarmSound = useFinanceStore((s) => s.settings.animations.alarmSound)
+  // el atrás apaga la alarma en vez de navegar por debajo de ella
+  useBackClose(true, onDismiss)
 
   useEffect(() => {
     const stop = sounds ? startAlarmSound(alarmSound ?? 'clasica') : undefined

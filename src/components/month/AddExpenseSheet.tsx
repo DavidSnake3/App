@@ -62,6 +62,8 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
   // categoría: se adivina por el nombre hasta que el usuario elija una
   const [categoryId, setCategoryId] = useState(editing?.categoryId ?? '')
   const [catManual, setCatManual] = useState(Boolean(editing?.categoryId))
+  // al editar un pago fijo: aplicar el cambio solo aquí o también más adelante
+  const [aplicarATodos, setAplicarATodos] = useState(true)
   const [isRecurring, setIsRecurring] = useState(
     editing ? editing.recurrence !== 'once' : defaultKind === 'servicio',
   )
@@ -98,7 +100,7 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
         ? { enabled: true, daysBefore: remDays, time: remTime, alarm: remAlarm }
         : undefined,
     }
-    if (editing) updateExpense(monthId, editing.id, payload)
+    if (editing) updateExpense(monthId, editing.id, payload, aplicarATodos ? 'siempre' : 'mes')
     else addExpense(monthId, { ...payload, paid: false, children: [] })
     onDone()
   }
@@ -197,7 +199,9 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
           <div>
             <p className="text-[14px] font-medium text-ink">¿Es recurrente?</p>
             <p className="text-[12px] text-muted mt-0.5">
-              {isRecurring ? 'Se copiará automáticamente a los meses siguientes' : 'Pago único al contado, solo este mes'}
+              {isRecurring
+                ? 'Sale en todos los meses de aquí en adelante, sin que lo pongas'
+                : 'Pago único, solo este mes'}
             </p>
           </div>
           <Toggle checked={isRecurring} onChange={setIsRecurring} label="Recurrente" />
@@ -213,6 +217,21 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
                 {RECURRENCE_LABEL[r]}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Al editar un pago fijo: hasta donde llega el cambio */}
+        {editing?.templateId && (
+          <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-edge/60">
+            <div>
+              <p className="text-[13px] font-medium text-ink">Aplicar a los meses siguientes</p>
+              <p className="text-[11.5px] text-muted mt-0.5">
+                {aplicarATodos
+                  ? 'El cambio se copia a los meses que vienen'
+                  : 'El cambio queda solo en este mes'}
+              </p>
+            </div>
+            <Toggle checked={aplicarATodos} onChange={setAplicarATodos} label="Meses siguientes" />
           </div>
         )}
       </div>
