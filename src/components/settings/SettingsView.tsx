@@ -6,7 +6,9 @@ import {
   PartyPopper, PiggyBank, Play, Plus, Sparkles, Sun, Trash2, Upload,
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
-import type { AlarmSoundId, Debt, PayPeriod, PaySoundId, PendingAlarm, WorkerType } from '../../types/finance'
+import type {
+  AlarmSoundId, Debt, PayPeriod, PayrollDeduction, PaySoundId, PendingAlarm, WorkerType,
+} from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { useChat } from '../../store/useChat'
 import { BG_PRESETS, PALETTES, compressImage } from '../../lib/themes'
@@ -16,8 +18,8 @@ import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm, playSuccess } from '../../lib/s
 import { firebaseReady, logout } from '../../lib/firebase'
 import {
   COUNTRY_PRESETS, INPUT_PERIODS, PERIOD_LABEL, PERIOD_UNIT, WORKER_LABEL, convertPeriod,
-  countryPreset, formatPayday, hasPayrollDeductions, nextPaydays, payrollBreakdown,
-  presetExtraPays, presetLabel, presetPct, presetStatutory,
+  countryPreset, deductionLabel, formatPayday, hasPayrollDeductions, nextPaydays,
+  payrollBreakdown, presetExtraPays, presetLabel, presetPct, presetStatutory,
 } from '../../lib/payroll'
 import { realBalance } from '../../lib/fund'
 import { debtIsSettled, uid } from '../../lib/finance'
@@ -38,6 +40,7 @@ import { savingsTotal } from '../../lib/fund'
 import { plan as snakePlanOf } from '../../lib/plans'
 import { SavingsSection } from './SavingsSection'
 import { SnakeSection } from './SnakeSection'
+import { DeductionSheet } from './DeductionSheet'
 import { ExtraPaysEditor, LegalNotice, StatutoryEditor, TaxEditor } from './PayrollEditors'
 
 const ACCENT_CHOICES = ['#7c5cff', '#10b981', '#0ea5e9', '#f43f5e', '#d97706', '#ec4899', '#14b8a6', '#8b5cf6']
@@ -171,7 +174,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNFinance v3.3</p>
+  return <p className="text-[11px] text-muted text-center">SNFinance v3.4</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -370,24 +373,27 @@ function IngresosSection() {
   const p = settings.payroll
   const sch = settings.paySchedule
   const bd = payrollBreakdown(p)
-  const [newDedName, setNewDedName] = useState('')
-  const [newDedAmount, setNewDedAmount] = useState(0)
-  const [newDedAdvance, setNewDedAdvance] = useState(false)
   const [fundAmount, setFundAmount] = useState(0)
   const saldoReal = realBalance(months, debts, settings)
 
   const linkableDebts = debts.filter((d) => !debtIsSettled(d) && !d.viaPlanilla && !p.deductions.some((x) => x.debtId === d.id))
+  const [dedSheet, setDedSheet] = useState<{ open: boolean; editing: PayrollDeduction | null }>({
+    open: false, editing: null,
+  })
+
+  const guardarDed = (datos: Omit<PayrollDeduction, 'id'>) => {
+    if (dedSheet.editing) {
+      setPayroll({
+        deductions: p.deductions.map((x) => (x.id === dedSheet.editing?.id ? { ...x, ...datos } : x)),
+      })
+    } else {
+      setPayroll({ deductions: [...p.deductions, { ...datos, id: uid() } as PayrollDeduction] })
+    }
+  }
 
   const inputPeriod = p.inputPeriod ?? 'monthly'
   const salaried = hasPayrollDeductions(profile.workerType)
 
-  const addManualDed = () => {
-    if (!newDedName.trim() || newDedAmount <= 0) return
-    setPayroll({ deductions: [...p.deductions, { id: uid(), name: newDedName.trim(), amount: newDedAmount, isAdvance: inputPeriod === 'monthly' && newDedAdvance }] })
-    setNewDedName(''); setNewDedAmount(0); setNewDedAdvance(false)
-  }
-  const toggleAdvance = (id: string) =>
-    setPayroll({ deductions: p.deductions.map((d) => d.id === id ? { ...d, isAdvance: !d.isAdvance } : d) })
   const addDebtDed = (d: Debt) => {
     // La cuota de la deuda es MENSUAL; la deducción vive en el período del comprobante
     setPayroll({ deductions: [...p.deductions, { id: uid(), name: d.name, amount: convertPeriod(d.monthlyPayment, 'monthly', inputPeriod), debtId: d.id }] })
@@ -524,49 +530,49 @@ function IngresosSection() {
           <p className="text-[12px] text-muted mb-1.5">Otras deducciones (créditos, adelantos, embargos…)</p>
           {p.deductions.length > 0 && (
             <div className="card overflow-hidden divide-y divide-[var(--c-border)] mb-2">
-              {p.deductions.map((d) => (
-                <div key={d.id} className="flex items-center gap-2 px-3 py-2">
-                  {d.debtId ? <HandCoins size={13} className="text-accent-soft shrink-0" /> : <Landmark size={13} className="text-muted shrink-0" />}
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-[13px] text-ink truncate">{d.name}{d.debtId ? ' · deuda vinculada' : ''}</span>
-                    {/* una cuota de deuda nunca es adelanto; el adelanto solo aplica al comprobante mensual */}
-                    {!d.debtId && inputPeriod === 'monthly' && (
-                      <button
-                        onClick={() => toggleAdvance(d.id)}
-                        className={`pressable chip !py-0 !px-1.5 !text-[9.5px] mt-0.5 ${d.isAdvance ? 'chip-active' : ''}`}
-                      >
-                        {d.isAdvance ? 'Es un adelanto de mi salario' : '¿Es un adelanto de mi salario?'}
-                      </button>
-                    )}
-                  </span>
-                  <span className="num text-[13px] font-semibold shrink-0" style={{ color: d.isAdvance ? 'var(--c-income)' : 'var(--c-danger)' }}>
-                    {d.isAdvance ? '' : '−'}{formatMoney(d.amount)}
-                  </span>
-                  <button onClick={() => removeDed(d.id)} aria-label={`Quitar ${d.name}`} className="pressable w-7 h-7 rounded-full flex items-center justify-center text-muted shrink-0">
-                    <X size={13} />
-                  </button>
-                </div>
-              ))}
+              {p.deductions.map((d) => {
+                const valor = bd.deductions.find((x) => x.name === d.name)?.amount
+                  ?? bd.advances.find((x) => x.name === d.name)?.amount
+                  ?? d.amount
+                return (
+                  <div key={d.id} className="flex items-center gap-2 px-3 py-2">
+                    {d.debtId ? <HandCoins size={13} className="text-accent-soft shrink-0" /> : <Landmark size={13} className="text-muted shrink-0" />}
+                    <button
+                      onClick={() => !d.debtId && setDedSheet({ open: true, editing: d })}
+                      className={`flex-1 min-w-0 text-left ${d.debtId ? '' : 'pressable'}`}
+                    >
+                      <span className="block text-[13px] text-ink truncate">
+                        {d.name}{d.debtId ? ' · deuda vinculada' : ''}
+                      </span>
+                      <span className="block text-[10.5px] text-muted truncate">
+                        {d.isAdvance && <span style={{ color: 'var(--c-income)' }}>Adelanto</span>}
+                        {d.isAdvance && d.advanceDay ? ` · día ${d.advanceDay}` : ''}
+                        {deductionLabel(d) ? `${d.isAdvance ? ' · ' : ''}${deductionLabel(d)}` : ''}
+                        {!d.debtId && !d.isAdvance && !deductionLabel(d) ? 'Monto fijo · toca para editar' : ''}
+                      </span>
+                    </button>
+                    <span className="num text-[13px] font-semibold shrink-0" style={{ color: d.isAdvance ? 'var(--c-income)' : 'var(--c-danger)' }}>
+                      {d.isAdvance ? '' : '−'}{formatMoney(Math.round(valor))}
+                    </span>
+                    <button onClick={() => removeDed(d.id)} aria-label={`Quitar ${d.name}`} className="pressable w-7 h-7 rounded-full flex items-center justify-center text-muted shrink-0">
+                      <X size={13} />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
-          <div className="flex gap-2">
-            <input className="input-base flex-1" placeholder="Nombre (ej. Préstamo banco)" value={newDedName} onChange={(e) => setNewDedName(e.target.value)} />
-            <CurrencyInput value={newDedAmount} onChange={setNewDedAmount} className="w-32" />
-            <button onClick={addManualDed} aria-label="Agregar deducción" className="pressable w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-white" style={{ background: 'var(--app-accent)' }}>
-              <Plus size={18} />
-            </button>
-          </div>
-          {inputPeriod === 'monthly' && (
-            <label className="flex items-center gap-2 mt-2 text-[12px] text-muted cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={newDedAdvance}
-                onChange={(e) => setNewDedAdvance(e.target.checked)}
-                className="w-4 h-4 accent-[var(--app-accent)]"
-              />
-              Es un adelanto de mi salario
-            </label>
-          )}
+          <button
+            onClick={() => setDedSheet({ open: true, editing: null })}
+            className="pressable w-full rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 py-3 text-[13px] font-semibold"
+            style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 50%, var(--c-border))', color: 'var(--app-accent-soft)' }}
+          >
+            <Plus size={16} /> Agregar deducción o adelanto
+          </button>
+          <p className="text-[11px] text-muted mt-1.5">
+            Puede ser un monto fijo o un porcentaje de tu salario. Si es un adelanto, indicas
+            qué día te lo depositan.
+          </p>
           {linkableDebts.length > 0 && (
             <div className="mt-2">
               <p className="text-[11.5px] text-muted mb-1">O vincula una deuda existente (se pagará por planilla):</p>
@@ -579,17 +585,44 @@ function IngresosSection() {
               </div>
             </div>
           )}
+
+          <DeductionSheet
+            open={dedSheet.open}
+            onClose={() => setDedSheet({ open: false, editing: null })}
+            editing={dedSheet.editing}
+            inputPeriod={inputPeriod}
+            gross={p.gross}
+            onSave={guardarDed}
+          />
         </div>
 
         {p.gross > 0 ? (
           <div className="card bg-elevated/60 p-3.5">
             <Row2 label={`Salario bruto (${PERIOD_UNIT[bd.period]})`} value={formatMoneyExact(bd.gross)} />
             {bd.statutoryRows.map((r, i) => (
-              <Row2 key={`s${i}`} label={`${r.name} (${r.pct}%)`} value={`−${formatMoneyExact(r.amount)}`} danger />
+              <Row2
+                key={`s${i}`}
+                label={r.fixed ? `${r.name} (monto fijo)` : `${r.name} (${r.pct}%)`}
+                value={`−${formatMoneyExact(r.amount)}`}
+                danger
+              />
             ))}
             {bd.tax > 0 && <Row2 label="Impuesto sobre la renta" value={`−${formatMoneyExact(bd.tax)}`} danger />}
-            {bd.deductions.map((d, i) => <Row2 key={i} label={d.name} value={`−${formatMoneyExact(d.amount)}`} danger />)}
-            {bd.advances.map((a, i) => <Row2 key={`a${i}`} label={a.name} value={formatMoneyExact(a.amount)} />)}
+            {bd.deductions.map((d, i) => (
+              <Row2
+                key={i}
+                label={d.detail ? `${d.name} (${d.detail})` : d.name}
+                value={`−${formatMoneyExact(d.amount)}`}
+                danger
+              />
+            ))}
+            {bd.advances.map((a, i) => (
+              <Row2
+                key={`a${i}`}
+                label={`${a.name}${a.detail ? ` (${a.detail})` : ''}${a.day ? ` · día ${a.day}` : ''}`}
+                value={formatMoneyExact(a.amount)}
+              />
+            ))}
             <div className="border-t border-dashed my-1.5" style={{ borderColor: 'var(--c-border)' }} />
             <Row2 label={`LÍQUIDO ${PERIOD_LABEL[bd.period].toUpperCase()}`} value={formatMoneyExact(bd.net)} strong />
             {bd.period !== 'monthly' && (
@@ -1107,7 +1140,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNFinance v3.3 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNFinance v3.4 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

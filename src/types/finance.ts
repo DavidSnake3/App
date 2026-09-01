@@ -520,7 +520,14 @@ export interface AnimationPrefs {
 export interface PayrollDeduction {
   id: string
   name: string
+  /** monto fijo del período (cuando `mode` es 'fixed') */
   amount: number
+  /** cómo se calcula: un monto fijo o un porcentaje */
+  mode?: 'fixed' | 'percent'
+  /** porcentaje (cuando `mode` es 'percent'), ej. 45.11 */
+  pct?: number
+  /** sobre qué se calcula el porcentaje: el bruto o el neto */
+  base?: 'gross' | 'net'
   /** deuda vinculada: se paga por planilla y no aparece en el mes */
   debtId?: string
   /**
@@ -528,6 +535,10 @@ export interface PayrollDeduction {
    * resta en la liquidación, pero NO es plata perdida — es parte de tu pago.
    */
   isAdvance?: boolean
+  /** día del mes en que te depositan el adelanto */
+  advanceDay?: number
+  /** si ese día cae fin de semana: pagan antes, después o el día exacto */
+  advanceAdjust?: 'before' | 'after' | 'none'
 }
 
 /**
@@ -543,6 +554,10 @@ export interface StatutoryDeduction {
   pct: number
   /** techo de cotización: solo se cobra sobre esta parte del bruto MENSUAL */
   cap?: number
+  /** algunas deducciones de ley son un monto fijo, no un porcentaje */
+  mode?: 'percent' | 'fixed'
+  /** monto fijo MENSUAL (cuando `mode` es 'fixed') */
+  amount?: number
 }
 
 /** Tramo del impuesto sobre la renta (sobre el ingreso MENSUAL gravable) */

@@ -26,7 +26,7 @@ export function StatutoryEditor() {
 
   const save = (next: StatutoryDeduction[]) => setPayroll({
     statutory: next,
-    ccssPct: Math.round(next.reduce((t, d) => t + d.pct, 0) * 100) / 100,
+    ccssPct: Math.round(next.reduce((t, d) => t + (d.mode === 'fixed' ? 0 : d.pct), 0) * 100) / 100,
     statutoryName: next.length === 1 ? next[0].name : 'Deducciones de ley',
   })
 
@@ -59,15 +59,25 @@ export function StatutoryEditor() {
                 value={d.name}
                 onChange={(e) => update(d.id, { name: e.target.value })}
               />
-              <div className="relative w-24 shrink-0">
-                <input
-                  type="number" min={0} max={60} step="0.01" inputMode="decimal"
-                  className="input-base num !py-2 !text-[13px] !pr-7"
-                  value={d.pct}
-                  onChange={(e) => update(d.id, { pct: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })}
-                />
-                <Percent size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted" />
-              </div>
+              {d.mode === 'fixed' ? (
+                <div className="w-28 shrink-0">
+                  <CurrencyInput
+                    value={d.amount ?? 0}
+                    onChange={(v) => update(d.id, { amount: v })}
+                    className="[&_input]:!py-2 [&_input]:!text-[13px]"
+                  />
+                </div>
+              ) : (
+                <div className="relative w-24 shrink-0">
+                  <input
+                    type="number" min={0} max={60} step="0.01" inputMode="decimal"
+                    className="input-base num !py-2 !text-[13px] !pr-7"
+                    value={d.pct}
+                    onChange={(e) => update(d.id, { pct: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })}
+                  />
+                  <Percent size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted" />
+                </div>
+              )}
               {list.length > 1 && (
                 <button
                   onClick={() => save(list.filter((x) => x.id !== d.id))}
@@ -78,7 +88,28 @@ export function StatutoryEditor() {
                 </button>
               )}
             </div>
-            {openCaps && (
+            {/* algunas deducciones de ley son un monto fijo, no un porcentaje */}
+            <div className="flex rounded-xl bg-elevated border border-edge p-0.5 gap-0.5">
+              {([
+                { id: 'percent' as const, label: 'Porcentaje' },
+                { id: 'fixed' as const, label: 'Monto fijo' },
+              ]).map((m) => {
+                const activo = (d.mode ?? 'percent') === m.id
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => update(d.id, { mode: m.id })}
+                    className={`pressable flex-1 min-h-7 rounded-lg text-[11px] font-semibold ${
+                      activo ? 'bg-card text-ink border border-edge' : 'text-muted'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {openCaps && d.mode !== 'fixed' && (
               <div className="anim-fade">
                 <label className="text-[11px] text-muted block mb-1">
                   Techo de cotización mensual (0 = sin techo)

@@ -79,7 +79,14 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
         ))}
         {bd.advances.map((a, i) => (
           <div key={`a${i}`} className="flex items-center justify-between text-[12.5px]">
-            <span className="text-muted truncate pr-2">{a.name}</span>
+            <span className="text-muted truncate pr-2">
+              {a.name}
+              {(a.detail || a.day) && (
+                <span className="text-[10.5px] block leading-tight">
+                  {a.detail}{a.detail && a.day ? ' · ' : ''}{a.day ? `día ${a.day}` : ''}
+                </span>
+              )}
+            </span>
             <span className="num font-semibold shrink-0" style={{ color: 'var(--c-income)' }}>
               {formatMoneyExact(inView(bd, a.amount, p))}
             </span>

@@ -9,6 +9,7 @@ import type {
 import { loanFlowInMonth } from './loans'
 import { currentMonthId, daysInMonth, parseMonthId } from './dates'
 import { buildPayables, getMonthSummary } from './finance'
+import { payrollBreakdown } from './payroll'
 import { accountById, cashMovementsNet, isCredit, totalCash } from './accounts'
 
 function round2(v: number): number {
@@ -70,13 +71,34 @@ export function receivedInMonth(m: MonthData, settings: AppSettings, today = new
     return round2(count * perPay + m.income.additional)
   }
 
-  // Cada pago = parte igual del neto (quincenal: mitad y mitad, con las
-  // deducciones repartidas entre las dos quincenas)
-  const paydays = (sch.paydays.length ? sch.paydays : [30]).slice().sort((a, b) => a - b)
-  const amounts = paydays.map(() => salary / paydays.length)
-
   const max = daysInMonth(m.id)
+  const paydays = (sch.paydays.length ? sch.paydays : [30]).slice().sort((a, b) => a - b)
+
+  /**
+   * Adelantos con día propio: si te adelantan parte del salario a mitad de
+   * mes, esa plata YA entró ese día. El resto llega el día de pago.
+   */
+  const bd = payrollBreakdown(settings.payroll)
+  const adelantos = bd.advances.filter((a) => a.day && a.day >= 1 && a.day <= 31)
+  const adelantoTotal = Math.min(salary, round2(adelantos.reduce((s, a) => s + a.amount, 0)))
+
   let received = 0
+  if (adelantoTotal > 0) {
+    for (const a of adelantos) {
+      if (Math.min(a.day ?? 1, max) <= day) {
+        received += Math.min(a.amount, salary)
+      }
+    }
+    const resto = Math.max(0, salary - adelantoTotal)
+    paydays.forEach((pd) => {
+      if (Math.min(pd, max) <= day) received += resto / paydays.length
+    })
+    return round2(received + m.income.additional)
+  }
+
+  // Sin adelantos: cada pago es una parte igual del neto (quincenal: mitad y
+  // mitad, con las deducciones repartidas entre las dos quincenas)
+  const amounts = paydays.map(() => salary / paydays.length)
   paydays.forEach((pd, i) => {
     if (Math.min(pd, max) <= day) received += amounts[i] ?? 0
   })

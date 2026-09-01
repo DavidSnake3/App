@@ -3,7 +3,7 @@
 // quincenal o mensual: todos los montos se guardan en ese período
 // (inputPeriod) y se convierten con exactitud de céntimos.
 import type {
-  PayPeriod, PayrollConfig, PaySchedule, StatutoryDeduction, TaxBracket,
+  PayPeriod, PayrollConfig, PayrollDeduction, PaySchedule, StatutoryDeduction, TaxBracket,
 } from '../types/finance'
 import { daysInMonth } from './dates'
 
@@ -57,6 +57,35 @@ export function statutoryLabel(p: { statutoryName?: string; statutory?: Statutor
   return p.statutoryName?.trim() || DEFAULT_STATUTORY_NAME
 }
 
+/**
+ * Cuánto vale una deducción de ley sobre una base mensual.
+ * Puede ser un % (con techo de cotización) o un monto fijo.
+ */
+export function statutoryValue(d: StatutoryDeduction, monthlyGross: number): { amount: number; capped: boolean } {
+  if (d.mode === 'fixed') return { amount: Math.max(0, d.amount ?? 0), capped: false }
+  const cap = d.cap && d.cap > 0 ? d.cap : 0
+  const base = cap > 0 ? Math.min(monthlyGross, cap) : monthlyGross
+  return { amount: base * (d.pct / 100), capped: cap > 0 && monthlyGross > cap }
+}
+
+/**
+ * Cuánto vale una deducción del comprobante: monto fijo o porcentaje del
+ * bruto (o del neto, si así lo cobra el patrono).
+ */
+export function deductionValue(d: PayrollDeduction, gross: number, netBeforeOthers = gross): number {
+  if (d.mode === 'percent') {
+    const base = d.base === 'net' ? netBeforeOthers : gross
+    return round2(Math.max(0, base) * ((d.pct ?? 0) / 100))
+  }
+  return round2(Math.max(0, d.amount))
+}
+
+/** Texto de cómo se calcula la deducción, para mostrarlo en la lista */
+export function deductionLabel(d: PayrollDeduction): string {
+  if (d.mode !== 'percent') return ''
+  return `${d.pct ?? 0}% del ${d.base === 'net' ? 'neto' : 'bruto'}`
+}
+
 export interface StatutoryRow {
   name: string
   pct: number
@@ -64,6 +93,8 @@ export interface StatutoryRow {
   amount: number
   /** true si el techo de cotización limitó la base */
   capped: boolean
+  /** true si es un monto fijo en vez de un porcentaje */
+  fixed?: boolean
 }
 
 export interface PayrollBreakdown {
@@ -77,9 +108,16 @@ export interface PayrollBreakdown {
   /** impuesto sobre la renta del período (0 si está desactivado) */
   tax: number
   /** deducciones reales (créditos, embargos…) — SIN contar adelantos */
-  deductions: { name: string; amount: number; debtId?: string }[]
+  deductions: { name: string; amount: number; debtId?: string; detail?: string }[]
   /** adelantos de salario: parte de tu pago (ej. tu 1ª quincena) */
-  advances: { name: string; amount: number }[]
+  advances: {
+    name: string
+    amount: number
+    detail?: string
+    /** día del mes en que lo depositan */
+    day?: number
+    adjust?: 'before' | 'after' | 'none'
+  }[]
   advanceTotal: number
   totalDeductions: number
   /** líquido del comprobante en su período (exacto, con céntimos) */
@@ -132,14 +170,13 @@ export function payrollBreakdown(p: PayrollConfig): PayrollBreakdown {
 
   // Deducciones de ley: el techo de cotización se aplica al bruto MENSUAL
   const rows: StatutoryRow[] = statutoryList(p).map((d) => {
-    const cap = d.cap && d.cap > 0 ? d.cap : 0
-    const base = cap > 0 ? Math.min(monthlyGross, cap) : monthlyGross
-    const monthlyAmount = base * (d.pct / 100)
+    const { amount: monthlyAmount, capped } = statutoryValue(d, monthlyGross)
     return {
       name: d.name,
-      pct: d.pct,
+      pct: d.mode === 'fixed' ? 0 : d.pct,
       amount: round2(monthlyAmount / f),
-      capped: cap > 0 && monthlyGross > cap,
+      capped,
+      fixed: d.mode === 'fixed',
     }
   })
   const ccss = round2(rows.reduce((t, r) => t + r.amount, 0))
@@ -151,13 +188,28 @@ export function payrollBreakdown(p: PayrollConfig): PayrollBreakdown {
     : 0
   const tax = round2(monthlyTax / f)
 
+  // El neto antes de las otras deducciones sirve de base cuando el patrono
+  // calcula un porcentaje "sobre el neto"
+  const netBeforeOthers = Math.max(0, round2(gross - ccss - tax))
+
   // Una deducción vinculada a deuda NUNCA es adelanto (la cuota es plata que sale)
   const deductions = p.deductions
     .filter((d) => !d.isAdvance || d.debtId)
-    .map((d) => ({ name: d.name, amount: d.amount, debtId: d.debtId }))
+    .map((d) => ({
+      name: d.name,
+      amount: deductionValue(d, gross, netBeforeOthers),
+      debtId: d.debtId,
+      detail: deductionLabel(d),
+    }))
   const advances = p.deductions
     .filter((d) => d.isAdvance && !d.debtId)
-    .map((d) => ({ name: d.name, amount: d.amount }))
+    .map((d) => ({
+      name: d.name,
+      amount: deductionValue(d, gross, netBeforeOthers),
+      detail: deductionLabel(d),
+      day: d.advanceDay,
+      adjust: d.advanceAdjust,
+    }))
   const other = round2(deductions.reduce((s, d) => s + d.amount, 0))
   const advanceTotal = round2(advances.reduce((s, d) => s + d.amount, 0))
   const totalDeductions = round2(ccss + tax + other)
@@ -313,20 +365,50 @@ export function nextPaydays(schedule: PaySchedule, bd: PayrollBreakdown, n = 4, 
 
   const paydays = (schedule.paydays.length ? schedule.paydays : [30]).slice().sort((a, b) => a - b)
   const amounts = paydayAmounts(schedule, bd)
+
+  /**
+   * Adelantos con día propio: son plata que ya te depositan antes del pago
+   * principal (ej. "cada 15 me adelantan el 45,11% del bruto"). Entran al
+   * calendario como un pago aparte y se restan de la liquidación.
+   */
+  const adelantosConDia = bd.advances.filter((a) => a.day && a.day >= 1 && a.day <= 31)
+  const adelantoDelMes = round2(adelantosConDia.reduce((s, a) => s + a.amount, 0))
+  const restante = Math.max(0, round2(bd.monthlyNet - adelantoDelMes))
+
   let y = start.getFullYear()
   let m = start.getMonth() // 0-11
   let guard = 0
   while (out.length < n && guard++ < 24) {
-    for (let i = 0; i < paydays.length; i++) {
-      const max = daysInMonth(`${y}-${String(m + 1).padStart(2, '0')}`)
-      const exact = new Date(y, m, Math.min(paydays[i], max))
-      const pay = adjustForWeekend(exact, schedule.adjustWeekend)
-      if (pay >= start && out.length < n) {
+    const mesId = `${y}-${String(m + 1).padStart(2, '0')}`
+    const max = daysInMonth(mesId)
+    // eventos del mes: primero los adelantos, luego los días de pago
+    const eventos: { day: number; amount: number; label?: string; adjust: PaySchedule['adjustWeekend'] }[] = [
+      ...adelantosConDia.map((a) => ({
+        day: Math.min(a.day ?? 1, max),
+        amount: a.amount,
+        label: 'adelanto',
+        adjust: (a.adjust ?? schedule.adjustWeekend) as PaySchedule['adjustWeekend'],
+      })),
+      ...paydays.map((d, i) => ({
+        day: Math.min(d, max),
+        amount: adelantoDelMes > 0
+          ? round2(restante / paydays.length)
+          : (amounts[i]?.amount ?? bd.monthlyNet / paydays.length),
+        label: adelantoDelMes > 0 ? 'liquidación' : amounts[i]?.label,
+        adjust: schedule.adjustWeekend,
+      })),
+    ].sort((a, b) => a.day - b.day)
+
+    for (const ev of eventos) {
+      if (out.length >= n) break
+      const exact = new Date(y, m, ev.day)
+      const pay = adjustForWeekend(exact, ev.adjust)
+      if (pay >= start) {
         out.push({
           date: pay,
-          amount: amounts[i]?.amount ?? bd.monthlyNet / paydays.length,
+          amount: ev.amount,
           adjusted: pay.getTime() !== exact.getTime(),
-          label: amounts[i]?.label,
+          label: ev.label,
         })
       }
     }
