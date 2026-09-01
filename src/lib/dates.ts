@@ -16,6 +16,20 @@ export function todayISO(): string {
   return new Date().toISOString()
 }
 
+/**
+ * Fecha de hoy 'yyyy-MM-dd' en la hora LOCAL del usuario.
+ *
+ * `new Date().toISOString()` da la fecha en UTC: en América, después de las
+ * 6 p.m. eso ya es el día siguiente, y todo lo que se anotara de noche
+ * quedaba con la fecha de mañana.
+ */
+export function todayLocalISO(): string {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${dd}`
+}
+
 export function currentMonthId(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`

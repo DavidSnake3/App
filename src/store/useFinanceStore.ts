@@ -6,7 +6,7 @@ import type {
   PaySchedule, SavingsConfig, SavingsEnvelope, SubItem, TabId, ThemeSettings, UsageState,
   UserProfile, ViewMode, WidgetConf,
 } from '../types/finance'
-import { currentMonthId, todayISO } from '../lib/dates'
+import { currentMonthId, todayISO, todayLocalISO} from '../lib/dates'
 import { DEFAULT_CATEGORIES, guessCategory, mergeCategories } from '../lib/categories'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
 import {
@@ -682,7 +682,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       addSavingsDeposit: (amount, note) =>
         set((s) => {
           const sav = s.settings.savings
-          const dep = { id: uid(), amount, dateISO: todayISO().slice(0, 10), note }
+          const dep = { id: uid(), amount, dateISO: todayLocalISO(), note }
           const envelopes = sav.envelopes.length
             ? sav.envelopes.map((e, i) => (i === 0 ? { ...e, deposits: [...e.deposits, dep] } : e))
             : [{
@@ -756,7 +756,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             savings: {
               ...s.settings.savings,
               envelopes: s.settings.savings.envelopes.map((e) => e.id === envelopeId
-                ? { ...e, deposits: [...e.deposits, { id: uid(), amount, dateISO: todayISO().slice(0, 10), note }] }
+                ? { ...e, deposits: [...e.deposits, { id: uid(), amount, dateISO: todayLocalISO(), note }] }
                 : e),
             },
           },
@@ -840,7 +840,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           kind: 'gasto',
           categoryId: guessCategory(h.name, 'gasto'),
           accountId: cuenta?.id ?? '',
-          dateISO: monthId === currentMonthId() ? todayISO().slice(0, 10) : `${monthId}-15`,
+          dateISO: monthId === currentMonthId() ? todayLocalISO() : `${monthId}-15`,
           budgetId: h.budgetId,
         })
       },
@@ -1176,7 +1176,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       addBudgetEntry: (budgetId, amount, note) =>
         set((s) => ({
           budgets: s.budgets.map((b) => b.id === budgetId
-            ? { ...b, entries: [...b.entries, { id: uid(), amount, dateISO: todayISO().slice(0, 10), note }] }
+            ? { ...b, entries: [...b.entries, { id: uid(), amount, dateISO: todayLocalISO(), note }] }
             : b),
           ...touch(),
         })),

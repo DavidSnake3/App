@@ -2,7 +2,7 @@
 // el navegador, en el idioma del usuario, y con la marca de la app.
 import { useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
-import { MONTH_NAMES, WEEKDAY_SHORT, currentMonthId, daysInMonth, firstWeekday, todayISO } from '../../lib/dates'
+import { MONTH_NAMES, WEEKDAY_SHORT, currentMonthId, daysInMonth, firstWeekday, todayLocalISO } from '../../lib/dates'
 import { BottomSheet } from './BottomSheet'
 
 /* ─── helpers ──────────────────────────────────────────────────────────── */
@@ -20,7 +20,7 @@ function isoDe(y: number, m: number, d: number): string {
 
 /** "1 de septiembre de 2026", con "Hoy" y "Ayer" cuando aplica */
 function labelFecha(iso: string): string {
-  const hoy = todayISO().slice(0, 10)
+  const hoy = todayLocalISO()
   if (iso === hoy) return 'Hoy'
   const h = partes(hoy)
   const ayer = new Date(h.y, h.m - 1, h.d - 1)
@@ -90,7 +90,7 @@ function Calendario({ value, onPick, maxToday }: {
 }) {
   const sel = partes(value)
   const [vista, setVista] = useState(`${sel.y}-${String(sel.m).padStart(2, '0')}`)
-  const hoy = todayISO().slice(0, 10)
+  const hoy = todayLocalISO()
 
   const p = partes(`${vista}-01`)
   const total = daysInMonth(vista)

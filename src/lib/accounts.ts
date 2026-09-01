@@ -133,12 +133,18 @@ export interface BalanceCtx {
   generalFlow?: number
 }
 
-/** Saldo de una cuenta que NO es de crédito */
+/**
+ * Saldo de una cuenta que NO es de crédito.
+ *
+ * Cuentan TODOS sus movimientos, también los que el usuario anota con fecha
+ * pasada (se le olvidó apuntar el café de ayer, una venta de la semana
+ * pasada…). Antes se ignoraba todo lo anterior a la fecha en que se creó la
+ * cuenta y el saldo no se movía: si lo anotas, se ve.
+ */
 export function accountBalance(a: Account, ctx: BalanceCtx): number {
   if (isCredit(a)) return -cardDebt(a, ctx)
   let saldo = a.openingBalance
   for (const mv of allMovements(ctx.months)) {
-    if (mv.dateISO < a.openingISO) continue
     saldo += movementDelta(mv, a.id, ctx.accounts)
   }
   const esPrincipal = mainAccount(ctx.accounts)?.id === a.id

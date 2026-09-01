@@ -4,7 +4,7 @@ import type { Movement, MovementKind } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { categoryList, guessCategory } from '../../lib/categories'
 import { accountById, activeAccounts, isCredit } from '../../lib/accounts'
-import { todayISO } from '../../lib/dates'
+import { todayLocalISO } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
 import { BottomSheet } from '../ui/BottomSheet'
@@ -79,7 +79,7 @@ function MovementForm({
     editing?.accountId ?? defaultAccountId ?? principal?.id ?? activas[0]?.id ?? '',
   )
   const [toAccountId, setToAccountId] = useState(editing?.toAccountId ?? defaultToAccountId ?? '')
-  const [dateISO, setDateISO] = useState(editing?.dateISO ?? todayISO().slice(0, 10))
+  const [dateISO, setDateISO] = useState(editing?.dateISO ?? todayLocalISO())
   const [budgetId, setBudgetId] = useState(editing?.budgetId ?? '')
   const [note, setNote] = useState(editing?.note ?? '')
   const [catManual, setCatManual] = useState(Boolean(editing))

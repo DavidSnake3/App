@@ -4,7 +4,7 @@ import type { Account, AccountType } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { ACCOUNT_TYPES } from '../../lib/accounts'
 import { cardRules } from '../../lib/countries'
-import { todayISO } from '../../lib/dates'
+import { todayLocalISO } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
@@ -113,7 +113,7 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
         type,
         icon: icon || undefined,
         openingBalance: esCredito ? 0 : balance,
-        openingISO: todayISO().slice(0, 10),
+        openingISO: todayLocalISO(),
         includeInTotal: esCredito ? false : includeInTotal,
         isMain: esCredito ? false : isMain,
         credit,

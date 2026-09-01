@@ -6,7 +6,7 @@ import { buildPayables, uid } from './finance'
 import { countryPreset, presetExtraPays, presetStatutory } from './payroll'
 import { activeAccounts, isCredit, mainAccount } from './accounts'
 import { guessCategory } from './categories'
-import { currentMonthId, todayISO } from './dates'
+import { currentMonthId, todayLocalISO } from './dates'
 import { FINANCIAL_PLANS } from './financialPlans'
 import { formatMoney } from './format'
 import { PERIOD_LABEL } from './payroll'
@@ -90,7 +90,7 @@ function accountTypeOf(v: unknown): AccountType {
 /** Fecha válida 'yyyy-MM-dd' o hoy */
 function dateOf(v: unknown): string {
   const d = str(v)
-  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayISO().slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayLocalISO()
 }
 
 function dayOf(v: unknown, fallback: number): number {
@@ -365,7 +365,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
         name: str(d.name).slice(0, 30),
         type: tipo,
         openingBalance: esCredito ? 0 : Math.round(num(d.saldo ?? d.balance)),
-        openingISO: todayISO().slice(0, 10),
+        openingISO: todayLocalISO(),
         includeInTotal: !esCredito,
         credit: esCredito
           ? {

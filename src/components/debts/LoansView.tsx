@@ -15,7 +15,7 @@ import {
 import { accountById, activeAccounts, isCredit } from '../../lib/accounts'
 import { formatMoney } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
-import { todayISO } from '../../lib/dates'
+import { todayLocalISO } from '../../lib/dates'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { ProgressRing } from '../ui/ProgressRing'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -309,7 +309,7 @@ function LendMoreForm({ loan, onDone }: { loan: Loan; onDone: () => void }) {
   const principal = activas.find((a) => a.isMain) ?? activas[0]
 
   const [amount, setAmount] = useState(0)
-  const [dateISO, setDateISO] = useState(todayISO().slice(0, 10))
+  const [dateISO, setDateISO] = useState(todayLocalISO())
   const [accountId, setAccountId] = useState(loan.accountId ?? principal?.id ?? '')
   const [note, setNote] = useState('')
 
@@ -420,7 +420,7 @@ function LoanForm({ loan, onClose }: { loan: Loan | null; onClose: () => void })
   const [person, setPerson] = useState(() => loan?.person ?? '')
   const [amount, setAmount] = useState(() => loan?.amount ?? 0)
   const [phone, setPhone] = useState(() => loan?.phone ?? '')
-  const [dateISO, setDateISO] = useState(() => loan?.dateISO?.slice(0, 10) ?? todayISO().slice(0, 10))
+  const [dateISO, setDateISO] = useState(() => loan?.dateISO?.slice(0, 10) ?? todayLocalISO())
   const [dueDateISO, setDue] = useState(() => loan?.dueDateISO?.slice(0, 10) ?? '')
   const [conFecha, setConFecha] = useState(() => Boolean(loan?.dueDateISO))
   const [accountId, setAccountId] = useState(() => loan?.accountId ?? principal?.id ?? '')
@@ -517,7 +517,7 @@ function LoanForm({ loan, onClose }: { loan: Loan | null; onClose: () => void })
         {conFecha && (
           <div className="mt-3 anim-fade">
             <DateField
-              value={dueDateISO || todayISO().slice(0, 10)}
+              value={dueDateISO || todayLocalISO()}
               onChange={setDue}
               title="¿Qué día quedó de pagar?"
             />
