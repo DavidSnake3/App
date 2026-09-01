@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CreditCard, Info, Trash2 } from 'lucide-react'
+import { ChevronDown, CreditCard, Info, Trash2 } from 'lucide-react'
 import type { Account, AccountType } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { ACCOUNT_TYPES } from '../../lib/accounts'
@@ -72,6 +72,12 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
   const [rate, setRate] = useState(editing?.credit?.rate ?? 0)
   const [ratePeriod, setRatePeriod] = useState<'annual' | 'monthly'>(editing?.credit?.ratePeriod ?? 'annual')
   const [openingDebt, setOpeningDebt] = useState(editing?.credit?.openingDebt ?? 0)
+  const [minMode, setMinMode] = useState<'plazo' | 'porcentaje'>(editing?.credit?.minMode ?? 'plazo')
+  const [financingMonths, setFinancingMonths] = useState(editing?.credit?.financingMonths ?? 60)
+  const [minPct, setMinPct] = useState(editing?.credit?.minPaymentPct ?? 5)
+  const [moratoryExtra, setMoratoryExtra] = useState(editing?.credit?.moratoryExtra ?? 2)
+  const [lateFeePct, setLateFeePct] = useState(editing?.credit?.lateFeePct ?? 5)
+  const [avanzado, setAvanzado] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
 
   const esCredito = type === 'credito'
@@ -80,7 +86,11 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
   const guardar = () => {
     if (!puedeGuardar) return
     const credit = esCredito
-      ? { limit, cutoffDay, dueDay, rate, ratePeriod, openingDebt }
+      ? {
+          limit, cutoffDay, dueDay, rate, ratePeriod, openingDebt,
+          minMode, financingMonths, minPaymentPct: minPct,
+          moratoryExtra, lateFeePct,
+        }
       : undefined
     if (editing) {
       updateAccount(editing.id, {
@@ -272,6 +282,113 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
               La deuda actual es lo que ya debes hoy en esa tarjeta. Los gastos que registres
               después se van sumando solos.
             </p>
+
+            {/* Pago mínimo y mora: viene en tu estado de cuenta */}
+            <button
+              onClick={() => setAvanzado((v) => !v)}
+              className="pressable w-full rounded-2xl border border-edge bg-elevated px-3.5 py-2.5 flex items-center justify-between"
+            >
+              <span className="text-left">
+                <span className="block text-[12.5px] font-semibold text-ink">Pago mínimo y mora</span>
+                <span className="block text-[10.5px] text-muted">
+                  Cómo lo calcula tu banco · opcional
+                </span>
+              </span>
+              <ChevronDown
+                size={15}
+                className="text-muted shrink-0 transition-transform"
+                style={{ transform: avanzado ? 'rotate(180deg)' : undefined }}
+              />
+            </button>
+
+            {avanzado && (
+              <div className="flex flex-col gap-3 anim-fade">
+                <div className="flex rounded-2xl bg-elevated border border-edge p-1 gap-1">
+                  {([
+                    { id: 'plazo' as const, label: 'Por plazo' },
+                    { id: 'porcentaje' as const, label: 'Por porcentaje' },
+                  ]).map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => setMinMode(m.id)}
+                      className={`pressable flex-1 min-h-9 rounded-xl text-[12px] font-semibold ${
+                        minMode === m.id ? 'bg-card text-ink border border-edge' : 'text-muted'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                {minMode === 'plazo' ? (
+                  <div>
+                    <label className="text-[12px] font-semibold text-muted">
+                      Plazo de financiamiento (meses)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      value={financingMonths}
+                      onChange={(e) => setFinancingMonths(Math.min(120, Math.max(1, Number(e.target.value) || 1)))}
+                      className="input-base mt-1.5 num text-center"
+                    />
+                    <p className="text-[11px] text-muted mt-1 leading-snug">
+                      En Costa Rica el pago mínimo es el saldo entre este plazo (los bancos usan
+                      entre 48 y 66 meses; lo normal es 60) más los intereses del período.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-[12px] font-semibold text-muted">
+                      % del saldo que piden de mínimo
+                    </label>
+                    <div className="relative mt-1.5">
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        step="0.5"
+                        value={minPct}
+                        onChange={(e) => setMinPct(Math.min(100, Math.max(0.5, Number(e.target.value) || 1)))}
+                        className="input-base num text-right pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-[13px]">%</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[12px] font-semibold text-muted">Mora (+ puntos)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={moratoryExtra}
+                      onChange={(e) => setMoratoryExtra(Math.max(0, Number(e.target.value) || 0))}
+                      className="input-base mt-1.5 num text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[12px] font-semibold text-muted">Cargo cobranza %</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={lateFeePct}
+                      onChange={(e) => setLateFeePct(Math.max(0, Number(e.target.value) || 0))}
+                      className="input-base mt-1.5 num text-center"
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted -mt-1 leading-snug">
+                  La mora se cobra sobre el capital que quedó sin pagar (no sobre todo el saldo).
+                  En Costa Rica suele ser el interés corriente más 2 puntos, y el cargo por
+                  gestión de cobro un 5% de lo que está en mora.
+                </p>
+              </div>
+            )}
           </>
         )}
 

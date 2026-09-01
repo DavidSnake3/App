@@ -105,6 +105,36 @@ export interface CreditInfo {
   ratePeriod: 'annual' | 'monthly'
   /** saldo que ya tenía la tarjeta al registrarla (deuda arrastrada) */
   openingDebt?: number
+
+  // ── Pago mínimo y mora (lo que cobra el banco si no pagas de contado) ──
+  /**
+   * Cómo calcula tu banco el pago mínimo:
+   *  · 'plazo' (Costa Rica, Decreto 35867-MEIC): saldo del principal ÷ plazo
+   *    de financiamiento + los intereses del período. El plazo típico es 60 meses.
+   *  · 'porcentaje' (México, Chile, Perú y otros): un % del saldo + intereses.
+   */
+  minMode?: 'plazo' | 'porcentaje'
+  /** meses del plazo de financiamiento (modo 'plazo'; típico 60) */
+  financingMonths?: number
+  /** % del saldo que pide como mínimo (modo 'porcentaje'; típico 5%) */
+  minPaymentPct?: number
+  /** monto mínimo absoluto del pago mínimo (si el % da menos que esto) */
+  minPaymentFloor?: number
+  /** puntos porcentuales que se suman al interés corriente por mora (CR: 2) */
+  moratoryExtra?: number
+  /** % del monto en mora que cobran por gestión de cobranza */
+  lateFeePct?: number
+  /** tope de ese cargo por cobranza (0 = sin tope) */
+  lateFeeCap?: number
+  /** desde qué día de atraso se cobra el cargo por cobranza (CR: 5) */
+  lateFeeAfterDays?: number
+  /** comisión por retirar efectivo con la tarjeta, en % */
+  cashAdvanceFeePct?: number
+  /**
+   * Día límite para el PAGO MÍNIMO, si tu banco te da más días que para el
+   * pago de contado (BCR: contado a 15 días del corte, mínimo a 29).
+   */
+  minDueDay?: number
 }
 
 export interface Account {

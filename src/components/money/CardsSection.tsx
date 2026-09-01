@@ -12,6 +12,7 @@ import {
 import { currentMonthId, monthLabel } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
+import { CardInsights } from './CardInsights'
 import { AccountSheet } from './AccountSheet'
 import { InstallmentSheet } from './InstallmentSheet'
 import { MovementSheet } from './MovementSheet'
@@ -223,8 +224,15 @@ export function CardsSection() {
                     Se te pasó la fecha por {Math.abs(st.daysToDue)} {Math.abs(st.daysToDue) === 1 ? 'día' : 'días'}
                   </p>
                   <p className="text-[11.5px] text-ink mt-1 leading-snug">
-                    Interés acumulado: <span className="num font-bold">{formatMoney(st.interest)}</span>.
-                    Debes <span className="num font-bold">{formatMoney(st.totalWithInterest)}</span> en total.
+                    Interés de mora: <span className="num font-bold">{formatMoney(st.interest)}</span>
+                    {st.lateFee > 0 && (
+                      <> · cargo por cobranza: <span className="num font-bold">{formatMoney(st.lateFee)}</span></>
+                    )}
+                    . Debes <span className="num font-bold">{formatMoney(st.totalWithInterest)}</span> en total.
+                  </p>
+                  <p className="text-[11px] text-muted mt-1 leading-snug">
+                    La mora se cobra al {st.moratoryRate.toFixed(2)}% mensual sobre el capital que
+                    quedó sin pagar, no sobre todo el saldo.
                   </p>
                   {tasa > 0 && (
                     <p className="text-[11px] text-muted mt-1">
@@ -288,6 +296,13 @@ export function CardsSection() {
                 <Banknote size={14} /> Retirar efectivo de esta tarjeta
               </button>
             </div>
+
+            {/* Cuánto pagar, qué parte del mínimo baja la deuda y el glosario */}
+            <CardInsights
+              account={account}
+              st={st}
+              onPay={(monto) => setPago({ open: true, accountId: account.id, amount: monto })}
+            />
 
             {/* Compras a cuotas de esta tarjeta */}
             {cuotas.length > 0 && (

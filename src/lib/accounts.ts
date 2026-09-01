@@ -269,6 +269,55 @@ export interface CardStatement {
   usage: number
   /** interés mensual aplicado */
   monthlyRate: number
+  /** interés mensual de mora (corriente + los puntos que cobre el banco) */
+  moratoryRate: number
+  /** pago mínimo del mes, con su desglose */
+  minimum: CardMinimum
+  /** cargo por gestión de cobranza si está en mora */
+  lateFee: number
+  /** % del límite usado medido al corte (es el que "reporta" el banco) */
+  usageAtCutoff: number
+}
+
+/**
+ * Pago mínimo del mes, desglosado como lo exige el estado de cuenta
+ * (Costa Rica: Decreto 35867-MEIC, art. 15 inciso e).
+ */
+export interface CardMinimum {
+  /** parte que baja la deuda: principal ÷ plazo, o el % del saldo */
+  amortization: number
+  /** intereses corrientes del saldo financiado */
+  interest: number
+  /** cuotas del mes de las compras a plazos */
+  installments: number
+  /** intereses de mora acumulados */
+  moratory: number
+  /** cargos por gestión de cobranza */
+  fees: number
+  /** total a pagar como mínimo */
+  total: number
+  /** qué parte del mínimo baja de verdad la deuda (0-1) */
+  toCapital: number
+  /** monto del mínimo que baja la deuda (amortización + cuotas de planes) */
+  capital: number
+}
+
+/** Simulación: qué pasa si pagas SOLO el mínimo, mes a mes */
+export interface PayoffSim {
+  /** meses que tardarías (null = no se termina en un plazo razonable) */
+  months: number | null
+  /** intereses que pagarías en total */
+  interest: number
+  /** total desembolsado */
+  paid: number
+  /** true cuando pagando el mínimo la deuda no se liquida */
+  perpetual: boolean
+  /** horizonte con el que se explica el caso perpetuo (el plazo de la tarjeta) */
+  horizonMonths: number
+  /** cuánto seguirías debiendo al final de ese horizonte */
+  balanceAtHorizon: number
+  /** cuánto habrías pagado en ese horizonte */
+  paidAtHorizon: number
 }
 
 /** Fecha (Date) de un día del mes, ajustada si el mes es más corto */
@@ -303,7 +352,9 @@ export function cardStatement(a: Account, ctx: BalanceCtx): CardStatement {
       debt, cutoffISO: '', dueISO: '', statementBalance: debt, paidAfterCutoff: 0,
       pending: debt, daysToDue: 0, overdue: false, interest: 0, interestIfUnpaid: 0,
       totalWithInterest: debt,
-      currentCycle: 0, available: 0, usage: 0, monthlyRate: rate,
+      currentCycle: 0, available: 0, usage: 0, usageAtCutoff: 0,
+      monthlyRate: rate, moratoryRate: moratoryMonthlyRate(a), lateFee: 0,
+      minimum: cardMinimum(a, debt, 0, 0),
     }
   }
 
@@ -399,6 +450,30 @@ export function cardStatement(a: Account, ctx: BalanceCtx): CardStatement {
   }
   interest = round2(interest)
 
+  // cuotas de compras a plazos que caen en el mes del corte
+  const cuotasDelMes = round2(ctx.installments
+    .filter((i) => i.accountId === a.id)
+    .filter((i) => {
+      const idx = monthDiff(i.startMonthId, nowId)
+      return idx >= 0 && idx < i.count && !i.payments[nowId]?.paid
+    })
+    .reduce((sum, i) => sum + i.monthly, 0))
+
+  // cargo por gestión de cobranza (Costa Rica: 5% del principal en mora)
+  const cfg = minSettings(a)
+  let lateFee = 0
+  if (overdue && Math.abs(daysToDue) >= cfg.lateFeeAfterDays && cfg.lateFeePct > 0) {
+    lateFee = round2(pending * (cfg.lateFeePct / 100))
+    if (cfg.lateFeeCap > 0) lateFee = Math.min(lateFee, cfg.lateFeeCap)
+  }
+
+  // intereses corrientes del período: lo que se cobraría si no paga de contado
+  const interesesDelPeriodo = round2(Math.max(0, statementBalance - cuotasDelMes) * (rate / 100))
+  const minimum = cardMinimum(a, statementBalance, interesesDelPeriodo, cuotasDelMes, {
+    interest: interest,
+    fee: lateFee,
+  })
+
   const limite = c.limit || 0
   return {
     debt,
@@ -411,12 +486,154 @@ export function cardStatement(a: Account, ctx: BalanceCtx): CardStatement {
     overdue,
     interest,
     interestIfUnpaid: round2(pending * (rate / 100)),
-    totalWithInterest: round2(pending + interest),
+    totalWithInterest: round2(pending + interest + lateFee),
     currentCycle: round2(Math.max(0, cargadoHasta(isoOf(hoy)) - cerrado)),
     available: limite > 0 ? round2(Math.max(0, limite - debt)) : 0,
     usage: limite > 0 ? Math.min(1, debt / limite) : 0,
+    usageAtCutoff: limite > 0 ? Math.min(1, statementBalance / limite) : 0,
     monthlyRate: rate,
+    moratoryRate: moratoryMonthlyRate(a),
+    lateFee,
+    minimum,
   }
+}
+
+/** Valores por defecto del pago mínimo cuando el usuario no los configuró */
+export function minSettings(a: Account) {
+  const c = a.credit
+  return {
+    mode: c?.minMode ?? 'plazo',
+    // Costa Rica: el plazo de financiamiento típico es 60 meses
+    months: Math.max(1, c?.financingMonths ?? 60),
+    pct: c?.minPaymentPct ?? 5,
+    floor: c?.minPaymentFloor ?? 0,
+    moratoryExtra: c?.moratoryExtra ?? 2,
+    lateFeePct: c?.lateFeePct ?? 5,
+    lateFeeCap: c?.lateFeeCap ?? 0,
+    lateFeeAfterDays: c?.lateFeeAfterDays ?? 5,
+  }
+}
+
+/** Interés mensual de mora: el corriente más los puntos que cobre el banco */
+export function moratoryMonthlyRate(a: Account): number {
+  const cfg = minSettings(a)
+  const anual = (a.credit?.ratePeriod === 'monthly' ? (a.credit?.rate ?? 0) * 12 : a.credit?.rate ?? 0)
+  return (anual + cfg.moratoryExtra) / 12
+}
+
+/**
+ * Pago mínimo del mes.
+ *
+ * En Costa Rica el pago mínimo NO es un porcentaje del saldo: es una cuota de
+ * plazo (saldo del principal ÷ plazo de financiamiento) más los intereses del
+ * período, las cuotas de los planes y lo que esté en mora. En otros países sí
+ * es un porcentaje del saldo; el modo se elige por tarjeta.
+ */
+export function cardMinimum(
+  a: Account,
+  statementBalance: number,
+  interesesDelPeriodo: number,
+  cuotasDelMes: number,
+  mora: { interest: number; fee: number } = { interest: 0, fee: 0 },
+): CardMinimum {
+  const cfg = minSettings(a)
+  // el principal del corte no incluye las cuotas de planes ni los intereses
+  const principal = Math.max(0, statementBalance - cuotasDelMes)
+  let amortizacion = cfg.mode === 'plazo'
+    ? principal / cfg.months
+    : principal * (cfg.pct / 100)
+  if (cfg.floor > 0) amortizacion = Math.max(amortizacion, Math.min(principal, cfg.floor))
+  const total = round2(amortizacion + interesesDelPeriodo + cuotasDelMes + mora.interest + mora.fee)
+  // la cuota de una compra a plazos también baja la deuda de la tarjeta
+  const capital = round2(amortizacion + cuotasDelMes)
+  return {
+    amortization: round2(amortizacion),
+    interest: round2(interesesDelPeriodo),
+    installments: round2(cuotasDelMes),
+    moratory: round2(mora.interest),
+    fees: round2(mora.fee),
+    // nunca se pide más de lo que se debe
+    total: round2(Math.min(total, statementBalance + mora.interest + mora.fee)),
+    toCapital: total > 0 ? Math.min(1, capital / total) : 0,
+    capital,
+  }
+}
+
+/**
+ * Si pagas SOLO el mínimo: cuánto tardarías y cuánto pagarías de intereses.
+ *
+ * Se simula mes a mes con la misma regla del banco. Los intereses NO se
+ * capitalizan (en Costa Rica está prohibido: art. 15 inciso h del decreto),
+ * así que se llevan aparte del principal. Si el mínimo no cubre ni los
+ * intereses, la deuda nunca baja: eso se reporta como `perpetual`.
+ */
+export function payoffWithMinimum(a: Account, saldo: number): PayoffSim {
+  const cfg = minSettings(a)
+  const i = monthlyRate(a) / 100
+  const horizonte = cfg.mode === 'plazo' ? cfg.months : 60
+  let principal = Math.max(0, saldo)
+  if (principal <= 0) {
+    return {
+      months: 0, interest: 0, paid: 0, perpetual: false,
+      horizonMonths: horizonte, balanceAtHorizon: 0, paidAtHorizon: 0,
+    }
+  }
+
+  const fraccion = cfg.mode === 'plazo' ? 1 / cfg.months : cfg.pct / 100
+  let meses = 0
+  let intereses = 0
+  let pagado = 0
+  let saldoEnHorizonte = principal
+  let pagadoEnHorizonte = 0
+  // Tope realista: más de 10 años pagando el mínimo es, en la práctica, no
+  // salir nunca. Sin piso de pago el saldo decae en geométrica y jamás llega a
+  // cero, así que reportar "823 meses" seria inventar precisión.
+  const MAX = 121
+  while (principal > 1 && meses < MAX) {
+    const interesMes = principal * i
+    let amort = principal * fraccion
+    if (cfg.floor > 0) amort = Math.max(amort, Math.min(principal, cfg.floor))
+    const pago = amort + interesMes
+    if (pago <= interesMes + 0.01) break
+    principal = principal - amort
+    intereses += interesMes
+    pagado += pago
+    meses++
+    if (meses === horizonte) {
+      saldoEnHorizonte = principal
+      pagadoEnHorizonte = pagado
+    }
+  }
+  const seLiquida = principal <= 1 && meses < MAX
+  if (meses < horizonte) {
+    saldoEnHorizonte = principal
+    pagadoEnHorizonte = pagado
+  }
+  return {
+    months: seLiquida ? meses : null,
+    interest: round2(intereses),
+    paid: round2(pagado),
+    perpetual: !seLiquida,
+    horizonMonths: horizonte,
+    balanceAtHorizon: round2(Math.max(0, saldoEnHorizonte)),
+    paidAtHorizon: round2(pagadoEnHorizonte),
+  }
+}
+
+/** Cuota fija necesaria para pagar un saldo en N meses (con interés) */
+export function fixedPaymentFor(a: Account, saldo: number, meses: number): number {
+  const i = monthlyRate(a) / 100
+  if (saldo <= 0 || meses <= 0) return 0
+  if (i <= 0) return round2(saldo / meses)
+  const factor = Math.pow(1 + i, meses)
+  return round2((saldo * i * factor) / (factor - 1))
+}
+
+/** Cuánto abonar antes del corte para que la tarjeta reporte ≤ pct del límite */
+export function payToReachUsage(a: Account, deuda: number, pct: number): number {
+  const limite = a.credit?.limit ?? 0
+  if (limite <= 0) return 0
+  return round2(Math.max(0, deuda - limite * pct))
 }
 
 /** Deuda total de todas las tarjetas */
