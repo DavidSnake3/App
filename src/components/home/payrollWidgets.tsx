@@ -22,7 +22,7 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
 
   if (payroll.gross <= 0) {
     return (
-      <button onClick={() => ctx.setActiveTab('settings')} className="pressable card p-4 h-full w-full text-left flex items-center gap-3">
+      <button onClick={() => ctx.setActiveTab('settings')} className="pressable widget p-4 h-full w-full text-left flex items-center gap-3">
         <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--app-accent) 16%, transparent)', color: 'var(--app-accent-soft)' }}>
           <FileText size={18} />
         </span>
@@ -47,8 +47,7 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
   ]
 
   return (
-    <div className="card p-4 h-full relative overflow-hidden">
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'var(--app-gradient)' }} />
+    <div className="widget p-4 h-full relative overflow-hidden">
       <h3 className="text-[12px] font-bold uppercase tracking-wider text-muted flex items-center gap-1.5">
         <FileText size={13} /> {salaried ? 'Comprobante salarial' : 'Mis ingresos'}
       </h3>
@@ -131,7 +130,7 @@ export function AhorroWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }
 
   if (!savings.enabled && envelopes.length === 0) {
     return (
-      <button onClick={() => ctx.setActiveTab('settings')} className="pressable card p-4 h-full w-full text-left flex items-center gap-3">
+      <button onClick={() => ctx.setActiveTab('settings')} className="pressable widget p-4 h-full w-full text-left flex items-center gap-3">
         <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--c-income) 16%, transparent)', color: 'var(--c-income)' }}>
           <PiggyBank size={18} />
         </span>
@@ -147,8 +146,7 @@ export function AhorroWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }
   const progreso = metaTotal > 0 ? Math.min(1, acumulado / metaTotal) : 0
 
   return (
-    <div className="card p-4 h-full relative overflow-hidden">
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, var(--c-income), var(--app-accent))' }} />
+    <div className="widget p-4 h-full relative overflow-hidden">
       <h3 className="text-[12px] font-bold uppercase tracking-wider text-muted flex items-center gap-1.5 mb-2.5">
         <PiggyBank size={13} /> Ahorros
       </h3>

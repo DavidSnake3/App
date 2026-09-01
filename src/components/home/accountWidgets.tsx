@@ -14,7 +14,7 @@ export function CuentasWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx 
     return (
       <button
         onClick={() => ctx.goto('money', 'cuentas')}
-        className="pressable card p-4 h-full w-full text-left flex items-center gap-3"
+        className="pressable widget p-4 h-full w-full text-left flex items-center gap-3"
       >
         <span
           className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
@@ -38,14 +38,13 @@ export function CuentasWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx 
   return (
     <button
       onClick={() => ctx.goto('money', 'cuentas')}
-      className="pressable card p-4 h-full w-full text-left relative overflow-hidden"
+      className="pressable widget p-4 h-full w-full text-left relative overflow-hidden"
     >
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'var(--app-gradient)' }} />
       <p className="text-[11.5px] font-semibold text-muted flex items-center gap-1.5">
         <Wallet size={12} /> Efectivo real
       </p>
       <p
-        className="num text-[24px] font-bold leading-tight mt-1"
+        className="display-money text-[25px] font-bold mt-1.5 anim-money"
         style={{ color: money.cash >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}
       >
         {formatMoney(Math.round(money.cash))}
@@ -90,7 +89,7 @@ export function TarjetasWidget({ ctx }: { ctx: WidgetCtx }) {
     return (
       <button
         onClick={() => ctx.goto('money', 'tarjetas')}
-        className="pressable card p-4 h-full w-full text-left flex items-center gap-3"
+        className="pressable widget p-4 h-full w-full text-left flex items-center gap-3"
       >
         <span
           className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
@@ -115,7 +114,7 @@ export function TarjetasWidget({ ctx }: { ctx: WidgetCtx }) {
   return (
     <button
       onClick={() => ctx.goto('money', 'tarjetas')}
-      className="pressable card p-4 h-full w-full text-left relative overflow-hidden"
+      className="pressable widget p-4 h-full w-full text-left relative overflow-hidden"
       style={urgente
         ? { borderColor: 'color-mix(in oklab, var(--c-danger) 50%, var(--c-border))' }
         : undefined}
@@ -123,7 +122,7 @@ export function TarjetasWidget({ ctx }: { ctx: WidgetCtx }) {
       <p className="text-[11.5px] font-semibold text-muted flex items-center gap-1.5">
         <CreditCard size={12} /> Tarjetas de crédito
       </p>
-      <p className="num text-[24px] font-bold leading-tight mt-1" style={{ color: 'var(--c-danger)' }}>
+      <p className="display-money text-[25px] font-bold mt-1.5 anim-money" style={{ color: 'var(--c-danger)' }}>
         {formatMoney(Math.round(money.cardDebt))}
       </p>
 

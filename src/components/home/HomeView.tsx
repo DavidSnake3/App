@@ -109,29 +109,31 @@ export function HomeView({ auth }: { auth: AuthState }) {
       <div className="px-4 pb-28 pt-2 flex flex-col gap-4">
 
         {/* Saludo + avatar (foto de Google) */}
-        <header className="flex items-center justify-between gap-3">
+        <header className="flex items-center justify-between gap-3 anim-rise">
           <div className="min-w-0">
-            <p className="text-[13px] text-muted capitalize truncate">{longToday()}</p>
-            <h1 className="font-display text-[24px] font-bold text-ink leading-tight truncate">
+            <span className="chip-day capitalize">{longToday()}</span>
+            <h1 className="font-display text-[25px] font-bold text-ink leading-tight truncate mt-1.5">
               {greeting()}{profile.name ? `, ${profile.name.split(' ')[0]}` : ''}
             </h1>
           </div>
-          {photo ? (
-            <img
-              src={photo}
-              alt="Foto de perfil"
-              referrerPolicy="no-referrer"
-              className="w-11 h-11 rounded-2xl object-cover border border-edge shrink-0"
-            />
-          ) : (
-            <div
-              className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-display font-bold text-[16px] shrink-0"
-              style={{ background: 'var(--app-gradient)' }}
-              aria-hidden="true"
-            >
-              {(profile.name || 'S').charAt(0).toUpperCase()}
-            </div>
-          )}
+          <div className="avatar-ring shrink-0">
+            {photo ? (
+              <img
+                src={photo}
+                alt="Foto de perfil"
+                referrerPolicy="no-referrer"
+                className="w-11 h-11 rounded-[0.85rem] object-cover block"
+              />
+            ) : (
+              <div
+                className="w-11 h-11 rounded-[0.85rem] flex items-center justify-center text-white font-display font-bold text-[16px]"
+                style={{ background: 'var(--c-card)' }}
+                aria-hidden="true"
+              >
+                {(profile.name || 'S').charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
         </header>
 
         {editMode && (
@@ -188,8 +190,11 @@ export function HomeView({ auth }: { auth: AuthState }) {
           {widgets.map((w, i) => (
             <div
               key={w.id}
-              className={`relative anim-fade ${editMode ? 'widget-wiggle' : ''}`}
-              style={{ gridColumn: w.size === 'sm' ? 'span 1' : 'span 2' }}
+              className={`relative anim-rise ${editMode ? 'widget-wiggle' : ''}`}
+              style={{
+                gridColumn: w.size === 'sm' ? 'span 1' : 'span 2',
+                animationDelay: `${Math.min(i * 50, 400)}ms`,
+              }}
             >
               {editMode && (
                 <div className="absolute -top-2.5 right-2 z-10 flex gap-1 rounded-full border border-edge bg-elevated shadow-lg px-1 py-0.5">

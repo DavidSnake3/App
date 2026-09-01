@@ -43,7 +43,7 @@ export function DivisasWidget({ size }: { size: WidgetSize }) {
     .slice(0, size === 'sm' ? 2 : 4)
 
   return (
-    <div className="card p-4 h-full">
+    <div className="widget p-4 h-full">
       <div className="flex items-center justify-between mb-2">
         <p className="text-[11.5px] font-semibold text-muted flex items-center gap-1.5">
           <TrendingUp size={12} style={{ color: 'var(--c-income)' }} /> Tipo de cambio

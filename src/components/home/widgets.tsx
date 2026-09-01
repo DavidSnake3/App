@@ -59,28 +59,29 @@ function EstadoWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }) {
   if (!summary) return null
   if (size === 'sm') {
     return (
-      <div className="card p-3.5 h-full flex flex-col items-center justify-center gap-1.5 relative overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'var(--app-gradient)' }} />
-        <ProgressRing progress={summary.progress} size={62} stroke={7}>
+      <div className="widget p-3.5 h-full flex flex-col items-center justify-center gap-1.5">
+        <ProgressRing progress={summary.progress} size={64} stroke={7}>
           <span className="num text-[13px] font-bold text-ink">{Math.round(summary.progress * 100)}%</span>
+          <span className="text-[8px] text-muted">pagado</span>
         </ProgressRing>
-        <p className="num text-[15px] font-bold leading-none" style={{ color: summary.savings >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
+        <p className="display-money text-[16px] font-bold anim-money" style={{ color: summary.savings >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
           {formatMoneyShort(summary.savings)}
         </p>
-        <p className="text-[10.5px] text-muted">{monthLabel(monthId, true)}</p>
+        <p className="text-[10px] text-muted leading-tight text-center">
+          te queda en {monthLabel(monthId, true)}
+        </p>
       </div>
     )
   }
   return (
-    <div className="card p-4 flex items-center gap-4 relative overflow-hidden">
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'var(--app-gradient)' }} />
+    <div className="widget p-4 flex items-center gap-4">
       <ProgressRing progress={summary.progress} size={86} stroke={9}>
         <span className="num text-[17px] font-bold text-ink leading-none">{Math.round(summary.progress * 100)}%</span>
         <span className="text-[9px] text-muted mt-0.5">pagado</span>
       </ProgressRing>
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <p className="text-[12px] text-muted">{monthLabel(monthId)}</p>
-        <p className="num text-[21px] font-bold leading-tight" style={{ color: summary.savings >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
+        <p className="display-money text-[23px] font-bold anim-money" style={{ color: summary.savings >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
           {formatMoney(summary.savings)}
         </p>
         <p className="text-[11.5px] text-muted mt-1">
@@ -111,7 +112,7 @@ function ResumenWidget() {
   }, [items])
 
   return (
-    <div className="card p-4 h-full">
+    <div className="widget p-4 h-full">
       <div className="flex items-center gap-2 mb-2.5">
         <CalendarClock size={16} className="text-accent-soft" />
         <h3 className="text-[13.5px] font-semibold text-muted">Tu día en pagos</h3>
@@ -154,7 +155,7 @@ function ConsejoWidget() {
   }, [])
 
   return (
-    <div className="card p-4 flex gap-3 h-full" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 40%, var(--c-border))' }}>
+    <div className="widget p-4 flex gap-3 h-full" style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 40%, var(--c-border))' }}>
       <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--app-accent) 18%, transparent)' }}>
         <Lightbulb size={17} style={{ color: 'var(--c-warning)' }} />
       </span>
@@ -188,7 +189,7 @@ function Accion({ icon, label, onClick, primary }: { icon: React.ReactNode; labe
   return (
     <button
       onClick={onClick}
-      className="pressable card flex flex-col items-center gap-1.5 py-3.5"
+      className="pressable widget flex flex-col items-center gap-1.5 py-3.5"
       style={primary ? { background: 'var(--app-gradient)', border: 'none' } : undefined}
     >
       <span style={{ color: primary ? '#fff' : 'var(--app-accent-soft)' }}>{icon}</span>
@@ -203,7 +204,7 @@ function PendientesWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }) {
   const max = size === 'sm' ? 3 : size === 'xl' ? 8 : 5
 
   return (
-    <div className="card overflow-hidden h-full">
+    <div className="widget overflow-hidden h-full">
       <div className="flex items-center justify-between px-3.5 pt-3 pb-1.5">
         <h3 className="text-[12px] font-bold uppercase tracking-wider text-muted">Pendientes</h3>
         <button onClick={() => ctx.setActiveTab('month')} className="pressable text-[11.5px] font-semibold" style={{ color: 'var(--app-accent-soft)' }}>
@@ -243,7 +244,7 @@ function ProyeccionWidget({ size }: { size: WidgetSize }) {
     [months, debts, settings, monthId],
   )
   return (
-    <div className="card p-3.5 h-full">
+    <div className="widget p-3.5 h-full">
       <h3 className="text-[12px] font-bold uppercase tracking-wider text-muted mb-2">Proyección anual</h3>
       <LineChart
         height={size === 'sm' ? 110 : size === 'xl' ? 215 : 150}
@@ -264,7 +265,7 @@ function FlujoWidget({ size }: { size: WidgetSize }) {
   const flow = useMemo(() => (month ? buildMonthFlow(month, debts, payday) : []), [month, debts, payday])
   if (!flow.length) return null
   return (
-    <div className="card p-3.5 h-full">
+    <div className="widget p-3.5 h-full">
       <h3 className="text-[12px] font-bold uppercase tracking-wider text-muted mb-2">Flujo de {monthLabel(monthId, true)}</h3>
       <LineChart
         height={size === 'xl' ? 200 : 120}
@@ -282,7 +283,7 @@ function DeudasWidget({ ctx }: { ctx: WidgetCtx }) {
   const totalRemaining = active.reduce((s, d) => s + debtRemaining(d), 0)
   const monthlyLoad = active.filter((d) => debtIsActiveInMonth(d, monthId)).reduce((s, d) => s + d.monthlyPayment, 0)
   return (
-    <button onClick={() => ctx.goto('month', 'deudas')} className="pressable card p-3.5 h-full w-full text-left flex flex-col justify-between gap-2">
+    <button onClick={() => ctx.goto('month', 'deudas')} className="pressable widget p-3.5 h-full w-full text-left flex flex-col justify-between gap-2">
       <span className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wider text-muted">
         <CreditCard size={13} /> Deudas
       </span>
@@ -325,7 +326,7 @@ function CalendarioWidget({ ctx }: { ctx: WidgetCtx }) {
   const hoyInfo = today > 0 ? byDay.get(today) : undefined
 
   return (
-    <button onClick={() => ctx.setActiveTab('month')} className="pressable card p-3 h-full w-full text-left">
+    <button onClick={() => ctx.setActiveTab('month')} className="pressable widget p-3 h-full w-full text-left">
       <span className="flex items-center justify-between mb-1.5">
         <span className="block text-[12px] font-bold uppercase tracking-wider text-muted">{monthLabel(monthId, true)}</span>
         <span className="flex items-center gap-2 text-[8.5px] text-muted">
@@ -344,14 +345,20 @@ function CalendarioWidget({ ctx }: { ctx: WidgetCtx }) {
           return (
             <span
               key={day}
-              className="relative aspect-square rounded-[4px] flex items-center justify-center text-[8px] num"
+              className="relative aspect-square rounded-[5px] flex items-center justify-center text-[8px] num"
               style={{
-                background: info
-                  ? info.paid ? 'color-mix(in oklab, var(--c-income) 30%, transparent)' : `color-mix(in oklab, var(--c-danger) ${20 + info.t * 45}%, transparent)`
-                  : 'var(--c-elevated)',
-                color: day === today ? 'var(--app-accent-soft)' : info ? 'var(--c-text)' : 'var(--c-muted)',
+                background: day === today
+                  ? 'var(--app-gradient)'
+                  : info
+                    ? info.paid
+                      ? 'color-mix(in oklab, var(--c-income) 26%, transparent)'
+                      : `color-mix(in oklab, var(--c-danger) ${18 + info.t * 42}%, transparent)`
+                    : 'var(--c-elevated)',
+                color: day === today ? '#fff' : info ? 'var(--c-text)' : 'var(--c-muted)',
                 fontWeight: day === today || info ? 800 : 500,
-                outline: day === today ? '1px solid var(--app-accent)' : undefined,
+                boxShadow: day === today
+                  ? '0 4px 12px -4px color-mix(in oklab, var(--app-accent) 70%, transparent)'
+                  : undefined,
               }}
             >
               {day}

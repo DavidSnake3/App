@@ -30,7 +30,7 @@ export function SaldoWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx })
 
   if (saldo == null) {
     return (
-      <button onClick={() => ctx.goto('money', 'cuentas')} className="pressable card p-4 h-full w-full text-left flex items-center gap-3">
+      <button onClick={() => ctx.goto('money', 'cuentas')} className="pressable widget p-4 h-full w-full text-left flex items-center gap-3">
         <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in oklab, var(--c-income) 16%, transparent)', color: 'var(--c-income)' }}>
           <Landmark size={18} />
         </span>
@@ -44,12 +44,11 @@ export function SaldoWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx })
   }
 
   return (
-    <button onClick={() => ctx.goto('money', 'cuentas')} className="pressable card p-4 h-full w-full text-left relative overflow-hidden">
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, var(--c-income), var(--app-accent))' }} />
+    <button onClick={() => ctx.goto('money', 'cuentas')} className="pressable widget p-4 h-full w-full text-left relative overflow-hidden">
       <p className="text-[11.5px] font-semibold text-muted flex items-center gap-1.5">
         <Landmark size={12} /> Efectivo real
       </p>
-      <p className="num text-[24px] font-bold leading-tight mt-1" style={{ color: saldo >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
+      <p className="display-money text-[25px] font-bold mt-1.5 anim-money" style={{ color: saldo >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
         {formatMoney(Math.round(saldo))}
       </p>
       {size !== 'sm' && (
