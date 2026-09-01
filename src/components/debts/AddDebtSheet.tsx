@@ -5,6 +5,8 @@ import { addMonthsToId, currentMonthId, monthLabel, parseMonthId } from '../../l
 import { formatMoney } from '../../lib/format'
 import { BottomSheet } from '../ui/BottomSheet'
 import { IconPicker } from '../ui/IconPicker'
+import { ColorPicker } from '../ui/ColorPicker'
+import { CategoryPicker } from '../ui/CategoryPicker'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { Segmented } from '../ui/Segmented'
 import { Toggle } from '../ui/Toggle'
@@ -43,6 +45,8 @@ function DebtForm({ editing, onDone }: { editing?: Debt | null; onDone: () => vo
   )
   const [dueDay, setDueDay] = useState(editing?.dueDay ?? 15)
   const [icon, setIcon] = useState(editing?.icon ?? '')
+  const [color, setColor] = useState(editing?.color ?? '')
+  const [categoryId, setCategoryId] = useState(editing?.categoryId ?? 'deudas')
   const [account, setAccount] = useState(editing?.account ?? '')
   const [payMethod, setPayMethod] = useState(editing?.payMethod ?? '')
   const [viaPlanilla, setViaPlanilla] = useState(editing?.viaPlanilla ?? false)
@@ -80,6 +84,8 @@ function DebtForm({ editing, onDone }: { editing?: Debt | null; onDone: () => vo
       startMonthId: startMonth,
       dueDay: Math.max(1, Math.min(31, dueDay)),
       icon: icon || undefined,
+      color: color || undefined,
+      categoryId: categoryId || 'deudas',
       account: account.trim() || undefined,
       payMethod: payMethod.trim() || undefined,
       viaPlanilla,
@@ -177,6 +183,22 @@ function DebtForm({ editing, onDone }: { editing?: Debt | null; onDone: () => vo
       <div>
         <span className="text-[13px] font-medium text-muted block mb-1.5">Ícono</span>
         <IconPicker value={icon} onChange={setIcon} name={name} kind="deuda" />
+
+        <ColorPicker
+          value={color}
+          onChange={setColor}
+          label="Color de la deuda"
+          fallback="var(--c-warning)"
+          hint="Para diferenciarla del resto en la lista."
+        />
+
+        <CategoryPicker
+          value={categoryId}
+          onChange={setCategoryId}
+          kind="gasto"
+          label="Categoría de la cuota"
+          hint="Con esta categoría entra al reporte cada vez que pagues una cuota."
+        />
       </div>
 
       {/* Datos del estado de cuenta (mejora 7) */}

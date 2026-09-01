@@ -125,6 +125,8 @@ export function paidInCash(m: MonthData, debts: Debt[], accounts: Account[] = []
   let total = 0
   for (const e of m.expenses) {
     if (!e.paid) continue
+    // si al pagarlo se creó un movimiento, ese movimiento ya movió la cuenta
+    if (e.movementId) continue
     if (conTarjeta(e.accountId)) continue
     total += e.children.length ? e.children.reduce((s, c) => s + c.amount, 0) : e.amount
   }
@@ -132,6 +134,7 @@ export function paidInCash(m: MonthData, debts: Debt[], accounts: Account[] = []
     if (d.viaPlanilla) continue
     const p = d.payments[m.id]
     if (!p?.paid) continue
+    if (p.movementId) continue
     if (conTarjeta(p.accountId)) continue
     total += p.amount
   }

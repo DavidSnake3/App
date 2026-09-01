@@ -1,5 +1,6 @@
 // Aviso de bienvenida: explica que el Inicio se personaliza, con un ejemplo
 // REAL en vivo (el mini calendario) que se puede agregar con un toque.
+import { useBackClose } from '../../hooks/useBackClose'
 import { useState } from 'react'
 import { Check, LayoutGrid, Plus, Proportions, X } from 'lucide-react'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -7,6 +8,7 @@ import { RenderWidget } from '../home/widgets'
 import type { WidgetCtx } from '../home/widgetMeta'
 
 export function WidgetsTip({ onClose }: { onClose: () => void }) {
+  useBackClose(true, onClose)
   const homeWidgets = useFinanceStore((s) => s.settings.homeWidgets)
   const setSettings = useFinanceStore((s) => s.setSettings)
   const setActiveTab = useFinanceStore((s) => s.setActiveTab)

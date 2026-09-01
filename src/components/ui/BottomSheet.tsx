@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { useBackClose } from '../../hooks/useBackClose'
 
 interface Props {
   open: boolean
@@ -11,6 +12,9 @@ interface Props {
 }
 
 export function BottomSheet({ open, onClose, title, subtitle, children }: Props) {
+  // el atrás del celular cierra la hoja, no la app
+  useBackClose(open, onClose)
+
   useEffect(() => {
     if (!open) return
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }

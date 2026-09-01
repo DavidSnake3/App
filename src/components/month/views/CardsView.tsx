@@ -4,6 +4,7 @@ import { formatMoney } from '../../../lib/format'
 import { getUrgency, urgencyColor } from '../../../lib/dates'
 import { RECURRENCE_LABEL } from '../../../lib/finance'
 import { ItemIcon } from '../../../lib/icons'
+import { itemColor } from '../../../lib/itemColors'
 import { DueBadge, KindTag, PaidCheck } from '../ItemBits'
 
 interface Props {
@@ -20,6 +21,7 @@ export function CardsView({ items, monthId, onOpen }: Props) {
       {items.map((it, i) => {
         const u = getUrgency(monthId, it.dueDay, it.paid)
         const edge = urgencyColor(u)
+        const tinte = itemColor(it)
         return (
           <div
             key={it.id}
@@ -32,6 +34,8 @@ export function CardsView({ items, monthId, onOpen }: Props) {
               animation: `fadeSlideIn 0.3s ease both`,
               animationDelay: `${Math.min(i * 35, 280)}ms`,
               opacity: it.paid ? 0.72 : 1,
+              background: `linear-gradient(150deg, color-mix(in oklab, ${tinte} 10%, var(--c-card)) 0%, var(--c-card) 58%)`,
+              borderColor: `color-mix(in oklab, ${tinte} 20%, var(--c-border))`,
             }}
           >
             {/* barra lateral de urgencia (punto 11) */}
@@ -43,7 +47,7 @@ export function CardsView({ items, monthId, onOpen }: Props) {
                 <div className="flex items-center gap-2">
                   <span
                     className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
-                    style={{ background: 'color-mix(in oklab, var(--app-accent) 14%, transparent)', color: 'var(--app-accent-soft)' }}
+                    style={{ background: `color-mix(in oklab, ${tinte} 20%, transparent)`, color: tinte }}
                   >
                     <ItemIcon icon={it.icon} name={it.name} kind={it.kind} size={12} />
                   </span>

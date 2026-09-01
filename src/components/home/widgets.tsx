@@ -1,12 +1,14 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import {
-  ArrowRight, CalendarClock, CreditCard, FileSpreadsheet,
-  Lightbulb, Plus, Sparkles,
+  ArrowLeftRight, ArrowRight, CalendarClock, CreditCard, HandCoins,
+  Lightbulb, Receipt, Wallet,
 } from 'lucide-react'
 import type { WidgetId, WidgetSize } from '../../types/finance'
 import type { WidgetCtx } from './widgetMeta'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import { useChat } from '../../store/useChat'
+import { useMoney } from '../../hooks/useLedger'
+import { monthMovements } from '../../lib/accounts'
+import { loanRemaining } from '../../lib/loans'
 import { buildAnnualProjection, buildMonthFlow, buildPayables, debtIsActiveInMonth, debtIsSettled, debtRemaining, getMonthSummary } from '../../lib/finance'
 import { getDailyTip } from '../../lib/ai'
 import { WEEKDAY_SHORT, daysInMonth, firstWeekday, getUrgency, isCurrentMonth, monthLabel, todayDay, urgencyColor, urgencyLabel } from '../../lib/dates'
@@ -170,30 +172,72 @@ function ConsejoWidget() {
 }
 
 function AccionesWidget({ ctx }: { ctx: WidgetCtx }) {
-  const openChat = useChat((s) => s.openChat)
+  const monthId = useFinanceStore((s) => s.activeMonthId)
+  const month = useFinanceStore((s) => s.months[monthId])
+  const debts = useFinanceStore((s) => s.debts)
+  const loans = useFinanceStore((s) => s.loans)
+  const money = useMoney()
+
+  const movs = monthMovements(month).length
+  const cuotas = debts.filter((d) => debtIsActiveInMonth(d, monthId) && !d.payments[monthId]?.paid).length
+  const prestados = loans.filter((l) => loanRemaining(l) > 0).length
+
+  const accesos = [
+    { label: 'Movimientos', icon: <ArrowLeftRight size={18} />, color: 'var(--app-accent)', badge: movs, go: () => ctx.goto('money', 'movimientos') },
+    { label: 'Deudas', icon: <Receipt size={18} />, color: 'var(--c-danger)', badge: cuotas, go: () => ctx.goto('month', 'deudas') },
+    { label: 'Cuentas', icon: <Wallet size={18} />, color: 'var(--c-income)', badge: money.balances.length, go: () => ctx.goto('money', 'cuentas') },
+    { label: 'Tarjeta', icon: <CreditCard size={18} />, color: '#38bdf8', badge: money.cards.length, go: () => ctx.goto('money', 'tarjetas') },
+    { label: 'Le presté', icon: <HandCoins size={18} />, color: 'var(--c-warning)', badge: prestados, go: () => ctx.goto('money', 'prestamos') },
+  ]
+
   return (
-    <div className="grid grid-cols-4 gap-2.5 h-full">
-      <Accion icon={<Plus size={19} />} label="Gasto" onClick={() => ctx.setActiveTab('month')} primary />
-      <Accion icon={<CreditCard size={18} />} label="Deudas" onClick={() => ctx.goto('month', 'deudas')} />
-      <Accion icon={<Sparkles size={18} />} label="Snake" onClick={() => openChat()} />
-      <Accion
-        icon={<FileSpreadsheet size={18} className={ctx.exporting ? 'animate-pulse' : ''} />}
-        label={ctx.exporting ? '…' : 'Excel'}
-        onClick={ctx.exportExcel}
-      />
+    <div className="grid grid-cols-5 gap-1.5 h-full">
+      {accesos.map((a, i) => (
+        <Accion key={a.label} {...a} delay={i * 45} />
+      ))}
     </div>
   )
 }
 
-function Accion({ icon, label, onClick, primary }: { icon: React.ReactNode; label: string; onClick: () => void; primary?: boolean }) {
+function Accion({ icon, label, color, badge, go, delay }: {
+  icon: React.ReactNode
+  label: string
+  color: string
+  badge?: number
+  go: () => void
+  delay: number
+}) {
   return (
     <button
-      onClick={onClick}
-      className="pressable widget flex flex-col items-center gap-1.5 py-3.5"
-      style={primary ? { background: 'var(--app-gradient)', border: 'none' } : undefined}
+      onClick={go}
+      className="pressable widget relative flex flex-col items-center justify-center gap-1.5 py-3 px-0.5 overflow-hidden anim-rise"
+      style={{
+        animationDelay: `${delay}ms`,
+        background: `linear-gradient(160deg, color-mix(in oklab, ${color} 13%, var(--c-card)) 0%, var(--c-card) 68%)`,
+        borderColor: `color-mix(in oklab, ${color} 26%, var(--c-border))`,
+      }}
     >
-      <span style={{ color: primary ? '#fff' : 'var(--app-accent-soft)' }}>{icon}</span>
-      <span className="text-[11.5px] font-semibold" style={{ color: primary ? '#fff' : 'var(--c-text)' }}>{label}</span>
+      <span
+        className="w-9 h-9 rounded-xl flex items-center justify-center"
+        style={{
+          background: `linear-gradient(145deg, ${color}, color-mix(in oklab, ${color} 52%, #000))`,
+          color: '#fff',
+          boxShadow: `0 6px 16px -9px ${color}`,
+        }}
+      >
+        {icon}
+      </span>
+      <span className="text-[9.5px] font-semibold leading-none text-center tracking-tight text-ink w-full truncate px-0.5">
+        {label}
+      </span>
+      {Boolean(badge) && (
+        <span
+          className="num absolute top-1.5 right-1.5 min-w-4 h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center"
+          style={{ background: `color-mix(in oklab, ${color} 22%, var(--c-elevated))`, color }}
+        >
+          {badge! > 99 ? '99+' : badge}
+        </span>
+      )}
     </button>
   )
 }

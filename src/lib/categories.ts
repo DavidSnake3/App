@@ -22,6 +22,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'belleza', name: 'Cuidado personal', icon: 'belleza', kind: 'gasto', builtin: true },
   { id: 'deudas', name: 'Pago de deudas', icon: 'prestamo', kind: 'gasto', builtin: true },
   { id: 'preste', name: 'Le presté', icon: 'prestamo', kind: 'gasto', builtin: true },
+  { id: 'pague-prestamo', name: 'Pagué un préstamo', icon: 'prestamo', kind: 'gasto', builtin: true },
   { id: 'otros', name: 'Otros', icon: 'efectivo', kind: 'ambos', builtin: true },
   // ingresos
   { id: 'salario', name: 'Salario', icon: 'trabajo', kind: 'ingreso', builtin: true },
@@ -29,6 +30,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'venta', name: 'Venta', icon: 'tienda', kind: 'ingreso', builtin: true },
   { id: 'reembolso', name: 'Reembolso', icon: 'recibo', kind: 'ingreso', builtin: true },
   { id: 'me-pagaron', name: 'Me pagaron', icon: 'banco', kind: 'ingreso', builtin: true },
+  { id: 'me-prestaron', name: 'Me prestaron', icon: 'prestamo', kind: 'ingreso', builtin: true },
   // movimientos entre cuentas
   { id: 'transferencia', name: 'Entre cuentas', icon: 'banco', kind: 'ambos', builtin: true },
   { id: 'pago-tarjeta', name: 'Pago de tarjeta', icon: 'tarjeta', kind: 'ambos', builtin: true },
@@ -47,14 +49,20 @@ export const CATEGORY_COLORS: Record<string, string> = {
   preste: '#8b5cf6', otros: '#94a3b8',
   salario: '#2dd4a0', extra: '#4ade80', venta: '#10b981', reembolso: '#5eead4',
   'me-pagaron': '#22c55e', transferencia: '#7c5cff', 'pago-tarjeta': '#f43f5e',
+  'me-prestaron': '#f59e0b', 'pague-prestamo': '#fb923c',
   ahorro: '#0ea5e9',
 }
 
 const EXTRA_COLORS = ['#7c5cff', '#2dd4a0', '#ffb84d', '#ff5c7a', '#38bdf8', '#a78bfa', '#f472b6', '#facc15']
 
-/** Color de una categoría (las propias del usuario reciben uno estable) */
-export function categoryColor(id?: string): string {
+/**
+ * Color de una categoría. Manda el que el usuario haya elegido; si no, el que
+ * trae la app; y las categorías propias reciben uno estable por su nombre.
+ */
+export function categoryColor(id?: string, custom?: Category[]): string {
   if (!id) return CATEGORY_COLORS.otros
+  const elegido = custom?.find((c) => c.id === id)?.color
+  if (elegido) return elegido
   const fijo = CATEGORY_COLORS[id]
   if (fijo) return fijo
   let hash = 0

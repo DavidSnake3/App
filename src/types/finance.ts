@@ -5,7 +5,7 @@
 export type TabId = 'home' | 'money' | 'month' | 'reports' | 'settings'
 
 /** Submenú activo dentro de cada hub (navegación de 2 niveles) */
-export type MoneySub = 'cuentas' | 'movimientos' | 'tarjetas' | 'ahorros' | 'prestamos'
+export type MoneySub = 'cuentas' | 'movimientos' | 'tarjetas' | 'ahorros' | 'prestamos' | 'medebo'
 export type MonthSub = 'pagos' | 'deudas' | 'presupuestos' | 'plan'
 export type ReportsSub = 'ano' | 'categorias' | 'reporte'
 
@@ -56,6 +56,8 @@ export interface Expense {
   children: SubItem[]    // sub-hijos (punto 3)
   note?: string
   icon?: string          // ícono elegido por el usuario (punto: iconos)
+  /** color propio del pago (si no, usa el de su tipo o su categoría) */
+  color?: string
   /** presupuesto al que se carga este pago (opcional) */
   budgetId?: string
   /** cuenta con la que se paga (si es tarjeta de crédito, se vuelve deuda) */
@@ -64,6 +66,40 @@ export interface Expense {
   categoryId?: string
   reminder?: ReminderPref
   anchorMonthId?: string // mes donde se creó (para recurrencias > 1 mes)
+  /** plantilla de pago fijo que lo generó (si viene de una) */
+  templateId?: string
+  /** movimiento que se creó al marcarlo pagado (historial y saldo de cuenta) */
+  movementId?: string
+  createdAt: string
+}
+
+/**
+ * Pago FIJO: lo que sale sí o sí cada mes (alquiler, luz, internet, cuotas…).
+ * De aquí nacen solos los pagos de cada mes nuevo; se administran en
+ * Ajustes → Ingresos y planilla → Pagos fijos.
+ */
+export interface RecurringTemplate {
+  id: string
+  name: string
+  amount: number
+  kind: ExpenseKind
+  /** día del mes en que vence */
+  dueDay?: number
+  /** cada cuánto se repite */
+  recurrence: Recurrence
+  /** desde qué mes aplica ('yyyy-MM') */
+  anchorMonthId: string
+  /** hasta qué mes (opcional: para los que terminan) */
+  endMonthId?: string
+  icon?: string
+  note?: string
+  /** cuenta con la que se paga */
+  accountId?: string
+  categoryId?: string
+  budgetId?: string
+  reminder?: ReminderPref
+  /** pausado = no se crea en los meses nuevos, pero no se pierde */
+  active: boolean
   createdAt: string
 }
 
@@ -276,6 +312,8 @@ export interface DebtPayment {
   receiptNo?: string
   /** cuenta con la que se pagó la cuota */
   accountId?: string
+  /** movimiento que se creó al marcarla pagada */
+  movementId?: string
 }
 
 /** Deuda con cuotas o fecha de finalización (punto 4) */
@@ -290,6 +328,10 @@ export interface Debt {
   payments: Record<string, DebtPayment> // por monthId
   note?: string
   icon?: string
+  /** color propio de la deuda */
+  color?: string
+  /** categoría con la que entra a los reportes */
+  categoryId?: string
   /** cuenta o referencia (ej. "CUENTA: 90301-0") para el estado de cuenta */
   account?: string
   /** método de pago habitual (ej. "Ventanilla GOLLO", "SINPE", "Débito") */
@@ -328,9 +370,18 @@ export interface LoanAdvance {
  * Préstamo PROPIO: plata que le presté a alguien. Es una cuenta por cobrar:
  * cuánto le presté, desde cuándo y qué me ha ido abonando.
  */
+/**
+ * Dirección del préstamo informal:
+ * - `lent`: yo le presté a alguien (me deben)
+ * - `borrowed`: alguien me prestó a mí (yo debo)
+ */
+export type LoanKind = 'lent' | 'borrowed'
+
 export interface Loan {
   id: string
-  /** a quién le presté */
+  /** hacia dónde va el préstamo (si falta, es de los viejos: le presté) */
+  kind?: LoanKind
+  /** a quién le presté / quién me prestó */
   person: string
   phone?: string
   /** cuánto le presté en total */
@@ -390,6 +441,8 @@ export interface PayableItem {
   icon?: string
   /** cuenta con la que se paga (tarjeta = se vuelve deuda) */
   accountId?: string
+  /** color propio del pago */
+  color?: string
   /** progreso de la deuda: cuota n de m */
   debtProgress?: { current: number; total: number; remaining: number }
 }

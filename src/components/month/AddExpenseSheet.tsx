@@ -6,6 +6,10 @@ import { useFinanceStore } from '../../store/useFinanceStore'
 import { activeAccounts, isCredit } from '../../lib/accounts'
 import { ItemIcon } from '../../lib/icons'
 import { IconPicker } from '../ui/IconPicker'
+import { ColorPicker } from '../ui/ColorPicker'
+import { CategoryPicker } from '../ui/CategoryPicker'
+import { guessCategory } from '../../lib/categories'
+import { KIND_COLORS } from '../../lib/itemColors'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { Segmented } from '../ui/Segmented'
@@ -54,6 +58,10 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
   const [amount, setAmount] = useState(editing?.amount ?? 0)
   const [kind, setKind] = useState<ExpenseKind>(editing?.kind ?? defaultKind)
   const [icon, setIcon] = useState(editing?.icon ?? '')
+  const [color, setColor] = useState(editing?.color ?? '')
+  // categoría: se adivina por el nombre hasta que el usuario elija una
+  const [categoryId, setCategoryId] = useState(editing?.categoryId ?? '')
+  const [catManual, setCatManual] = useState(Boolean(editing?.categoryId))
   const [isRecurring, setIsRecurring] = useState(
     editing ? editing.recurrence !== 'once' : defaultKind === 'servicio',
   )
@@ -80,6 +88,8 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
       amount,
       kind,
       icon: icon || undefined,
+      color: color || undefined,
+      categoryId: categoryId || guessCategory(name.trim(), 'gasto'),
       recurrence: (isRecurring ? recurrence : 'once') as Recurrence,
       dueDay: day,
       period: (day && day <= 15 ? 'q1' : 'q2') as Expense['period'],
@@ -105,7 +115,10 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
           className="input-base"
           placeholder="Ej. Supermercado, Internet…"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value)
+            if (!catManual) setCategoryId(guessCategory(e.target.value, 'gasto'))
+          }}
         />
       </div>
 
@@ -126,6 +139,14 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
           ]}
         />
       </div>
+
+      {/* Categoría: es la que suma en los reportes por categoría */}
+      <CategoryPicker
+        value={categoryId || guessCategory(name, 'gasto')}
+        onChange={(id) => { setCategoryId(id); setCatManual(true) }}
+        kind="gasto"
+        hint="Con esta categoría aparece en los reportes al marcarlo pagado."
+      />
 
       {/* Con qué cuenta se paga: si es tarjeta, se vuelve deuda de la tarjeta */}
       {cuentas.length > 0 && (
@@ -160,6 +181,14 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
       <div>
         <span className="text-[13px] font-medium text-muted block mb-1.5">Ícono</span>
         <IconPicker value={icon} onChange={setIcon} name={name} kind={kind} />
+
+        <ColorPicker
+          value={color}
+          onChange={setColor}
+          label="Color del pago"
+          fallback={KIND_COLORS[kind]}
+          hint="Para reconocerlo de un vistazo en la lista del mes."
+        />
       </div>
 
       {/* Recurrente vs único (punto 8) */}

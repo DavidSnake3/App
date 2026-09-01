@@ -11,6 +11,7 @@ import { CurrencyInput } from '../ui/CurrencyInput'
 import { IconPicker } from '../ui/IconPicker'
 import { Toggle } from '../ui/Toggle'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { ColorPicker } from '../ui/ColorPicker'
 import { ItemIcon } from '../../lib/icons'
 
 interface Props {
@@ -65,6 +66,7 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
   const [type, setType] = useState<AccountType>(editing?.type ?? defaultType)
   const [name, setName] = useState(editing?.name ?? '')
   const [icon, setIcon] = useState(editing?.icon ?? '')
+  const [color, setColor] = useState(editing?.color ?? '')
   const [balance, setBalance] = useState(editing ? (editing.type === 'credito' ? 0 : currentBalance) : 0)
   const [includeInTotal, setIncludeInTotal] = useState(editing?.includeInTotal ?? true)
   const [isMain, setIsMain] = useState(Boolean(editing?.isMain))
@@ -100,6 +102,7 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
         name: name.trim(),
         type,
         icon: icon || undefined,
+        color: color || undefined,
         includeInTotal: esCredito ? false : includeInTotal,
         isMain: esCredito ? false : isMain,
         credit,
@@ -112,6 +115,7 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
         name: name.trim(),
         type,
         icon: icon || undefined,
+        color: color || undefined,
         openingBalance: esCredito ? 0 : balance,
         openingISO: todayLocalISO(),
         includeInTotal: esCredito ? false : includeInTotal,
@@ -167,6 +171,14 @@ function AccountForm({ editing, defaultType, currentBalance, onDone }: {
         </div>
 
         <IconPicker value={icon} onChange={setIcon} name={name} kind={esCredito ? 'deuda' : 'gasto'} />
+
+        <ColorPicker
+          value={color}
+          onChange={setColor}
+          label="Color de la cuenta"
+          fallback={esCredito ? 'var(--c-danger)' : 'var(--app-accent)'}
+          hint="Sirve para diferenciarla de un vistazo en la lista y en los movimientos."
+        />
 
         {!esCredito ? (
           <>

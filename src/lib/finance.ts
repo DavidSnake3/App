@@ -84,6 +84,7 @@ export function buildPayables(month: MonthData, debts: Debt[]): PayableItem[] {
     recurrence: e.recurrence,
     children: e.children,
     icon: e.icon,
+    color: e.color,
     accountId: e.accountId,
   }))
 
@@ -106,6 +107,7 @@ export function buildPayables(month: MonthData, debts: Debt[]): PayableItem[] {
       recurrence: 'monthly',
       children: [],
       icon: d.icon,
+      color: d.color,
       accountId: pay?.accountId,
       debtProgress: { current: n, total: d.installments, remaining: debtRemaining(d) },
     })

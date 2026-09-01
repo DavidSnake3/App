@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useBackClose } from '../../hooks/useBackClose'
 import { ChevronRight, X } from 'lucide-react'
 import { ICON_IDS, ITEM_ICONS, ItemIcon } from '../../lib/icons'
 
@@ -14,6 +15,7 @@ interface Props {
 /** Selector de íconos en menú-cuadrícula (mejora 6): sin deslizar tedioso */
 export function IconPicker({ value, onChange, name, kind }: Props) {
   const [open, setOpen] = useState(false)
+  useBackClose(open, () => setOpen(false))
   const current = value && ITEM_ICONS[value] ? ITEM_ICONS[value] : null
 
   return (

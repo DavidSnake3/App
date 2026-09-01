@@ -3,7 +3,7 @@ import {
   AlarmClock, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
   Briefcase, Camera, Database, Download, FileText, HandCoins, Image as ImageIcon,
   Landmark, LifeBuoy, LogOut, Mail, MessageCircleQuestion, Moon, Palette,
-  PartyPopper, PiggyBank, Play, Plus, Sparkles, Sun, Trash2, Upload,
+  PartyPopper, PiggyBank, Play, Plus, Repeat2, Shapes, Sparkles, Sun, Trash2, Upload,
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
 import type {
@@ -13,6 +13,7 @@ import { useFinanceStore } from '../../store/useFinanceStore'
 import { useChat } from '../../store/useChat'
 import { BG_PRESETS, PALETTES, compressImage } from '../../lib/themes'
 import { CURRENCIES, LOCALES, formatMoney, formatMoneyExact } from '../../lib/format'
+import { mergeCategories } from '../../lib/categories'
 import { requestPermission, sendTestNotification } from '../../lib/notifications'
 import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm, playSuccess } from '../../lib/sound'
 import { firebaseReady, logout } from '../../lib/firebase'
@@ -41,11 +42,13 @@ import { plan as snakePlanOf } from '../../lib/plans'
 import { SavingsSection } from './SavingsSection'
 import { SnakeSection } from './SnakeSection'
 import { DeductionSheet } from './DeductionSheet'
+import { RecurringSection } from './RecurringSection'
+import { CategoriesSection } from './CategoriesSection'
 import { ExtraPaysEditor, LegalNotice, StatutoryEditor, TaxEditor } from './PayrollEditors'
 
 const ACCENT_CHOICES = ['#7c5cff', '#10b981', '#0ea5e9', '#f43f5e', '#d97706', '#ec4899', '#14b8a6', '#8b5cf6']
 
-type SectionId = 'cuenta' | 'ingresos' | 'ahorros' | 'snake' | 'apariencia' | 'animaciones' | 'notificaciones' | 'datos' | 'ayuda'
+type SectionId = 'cuenta' | 'ingresos' | 'ahorros' | 'categorias' | 'snake' | 'apariencia' | 'animaciones' | 'notificaciones' | 'datos' | 'ayuda'
 
 const SUPPORT_EMAIL = 'davidjosuevillegassalas@gmail.com'
 
@@ -59,6 +62,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
   const settings = useFinanceStore((s) => s.settings)
   const bd = breakdown(settings.payroll)
   const ahorrado = savingsTotal(settings)
+  const totalCategorias = mergeCategories(settings.categories).filter((c) => !c.hidden).length
 
   const items: HubItem<SectionId>[] = [
     {
@@ -84,6 +88,14 @@ export function SettingsView({ auth }: { auth: AuthState }) {
       icon: <PiggyBank size={19} />,
       stat: ahorrado > 0 ? formatMoney(Math.round(ahorrado)) : 'Crear un sobre',
       tone: 'warning',
+    },
+    {
+      id: 'categorias',
+      title: 'Categorías',
+      desc: 'Ícono y color de cada categoría',
+      icon: <Shapes size={19} />,
+      stat: `${totalCategorias} categorías`,
+      tone: 'accent',
     },
     {
       id: 'snake',
@@ -148,6 +160,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
           {section === 'cuenta' && <CuentaSection auth={auth} />}
           {section === 'ingresos' && <IngresosSection />}
           {section === 'ahorros' && <SavingsSection />}
+          {section === 'categorias' && <CategoriesSection />}
           {section === 'snake' && <SnakeSection auth={auth} />}
           {section === 'apariencia' && <AparienciaSection />}
           {section === 'animaciones' && <AnimacionesSection />}
@@ -174,7 +187,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNFinance v3.4.1</p>
+  return <p className="text-[11px] text-muted text-center">SNFinance v3.5.0</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -643,6 +656,11 @@ function IngresosSection() {
       {/* Pagos extraordinarios y aviso legal (app universal) */}
       <Card title="Pagos extraordinarios" icon={<PartyPopper size={14} />}>
         <ExtraPaysEditor />
+      </Card>
+
+      {/* Pagos fijos: lo que sale sí o sí todos los meses */}
+      <Card title="Pagos fijos de cada mes" icon={<Repeat2 size={14} />}>
+        <RecurringSection />
       </Card>
 
       <LegalNotice />
@@ -1140,7 +1158,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNFinance v3.4.1 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNFinance v3.5.0 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

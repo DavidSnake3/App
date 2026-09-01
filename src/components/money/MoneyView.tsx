@@ -1,10 +1,10 @@
-import { ArrowLeftRight, CreditCard, HandCoins, PiggyBank, Wallet } from 'lucide-react'
+import { ArrowLeftRight, CreditCard, HandCoins, Handshake, PiggyBank, Wallet } from 'lucide-react'
 import type { MoneySub } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { useMoney } from '../../hooks/useLedger'
 import { monthMovements } from '../../lib/accounts'
 import { savingsTotal } from '../../lib/fund'
-import { loanRemaining } from '../../lib/loans'
+import { loanRemaining, loansOfKind } from '../../lib/loans'
 import { formatMoney } from '../../lib/format'
 import { HubHeader, HubMenu, HubTitle, type HubItem } from '../layout/HubMenu'
 import { AccountsSection } from './AccountsSection'
@@ -19,6 +19,7 @@ const TITULOS: Record<MoneySub, { title: string; subtitle: string }> = {
   tarjetas: { title: 'Tarjetas de crédito', subtitle: 'Corte, pago, intereses y cuotas' },
   ahorros: { title: 'Ahorros', subtitle: 'Tus sobres, metas y aportes' },
   prestamos: { title: 'Le presté', subtitle: 'Lo que te deben y sus abonos' },
+  medebo: { title: 'Me prestaron', subtitle: 'Lo que debés y lo que ya abonaste' },
 }
 
 /** Hub "Dinero": dónde está tu plata y por dónde se mueve */
@@ -32,7 +33,10 @@ export function MoneyView() {
   const money = useMoney()
 
   const movs = monthMovements(month)
-  const porCobrar = loans.reduce((s, l) => s + loanRemaining(l), 0)
+  const prestados = loansOfKind(loans, 'lent')
+  const recibidos = loansOfKind(loans, 'borrowed')
+  const porCobrar = prestados.reduce((s, l) => s + loanRemaining(l), 0)
+  const porPagar = recibidos.reduce((s, l) => s + loanRemaining(l), 0)
   const ahorrado = savingsTotal(settings)
 
   const items: HubItem<MoneySub>[] = [
@@ -75,9 +79,18 @@ export function MoneyView() {
       title: 'Le presté',
       desc: 'Lo que te deben y sus abonos',
       icon: <HandCoins size={19} />,
-      stat: loans.length ? formatMoney(Math.round(porCobrar)) : 'Sin préstamos',
+      stat: prestados.length ? formatMoney(Math.round(porCobrar)) : 'Sin préstamos',
       tone: 'accent',
-      badge: loans.length || undefined,
+      badge: prestados.length || undefined,
+    },
+    {
+      id: 'medebo',
+      title: 'Me prestaron',
+      desc: 'Lo que debés, sin fecha ni papeles',
+      icon: <Handshake size={19} />,
+      stat: recibidos.length ? formatMoney(Math.round(porPagar)) : 'No debés nada',
+      tone: 'warning',
+      badge: recibidos.length || undefined,
     },
   ]
 
@@ -101,7 +114,8 @@ export function MoneyView() {
             {sub === 'movimientos' && <MovementsSection />}
             {sub === 'tarjetas' && <CardsSection />}
             {sub === 'ahorros' && <SavingsSection />}
-            {sub === 'prestamos' && <LoansView />}
+            {sub === 'prestamos' && <LoansView kind="lent" />}
+            {sub === 'medebo' && <LoansView kind="borrowed" />}
           </div>
         )}
       </div>

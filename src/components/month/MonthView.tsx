@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CalendarDays, ChartGantt, ChevronLeft, ChevronRight, CreditCard, LayoutGrid,
+  CalendarDays, ChartGantt, ChevronLeft, ChevronRight, CopyCheck, CreditCard, LayoutGrid,
   List, PiggyBank, Plus, Receipt, Share2, Table2, Target, Trash2,
 } from 'lucide-react'
 import type { Expense, ExpenseKind, MonthSub, PayableItem, ViewMode } from '../../types/finance'
@@ -12,6 +12,7 @@ import { celebrate } from '../../lib/fx'
 import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddExpenseSheet } from './AddExpenseSheet'
+import { CopyMonthSheet } from './CopyMonthSheet'
 import { ExpenseDetailSheet } from './ExpenseDetailSheet'
 import { MovementsCard } from './FundCards'
 import { BalanceCard } from './BalanceCard'
@@ -66,6 +67,7 @@ export function MonthView() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [detail, setDetail] = useState<PayableItem | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [copyOpen, setCopyOpen] = useState(false)
   const [showCongrats, setShowCongrats] = useState(false)
 
   useEffect(() => { ensureMonthExists(monthId) }, [monthId, ensureMonthExists])
@@ -192,6 +194,13 @@ export function MonthView() {
               >
                 <Share2 size={11} /> Compartir
               </button>
+              <button
+                onClick={() => setCopyOpen(true)}
+                className="pressable text-[11px] inline-flex items-center gap-1"
+                style={{ color: 'var(--app-accent-soft)' }}
+              >
+                <CopyCheck size={11} /> Copiar de otro mes
+              </button>
             </span>
           </div>
           <button
@@ -295,6 +304,12 @@ export function MonthView() {
           </div>
         </div>
       )}
+
+      <CopyMonthSheet
+        open={copyOpen}
+        onClose={() => setCopyOpen(false)}
+        targetMonthId={monthId}
+      />
 
       <AddExpenseSheet
         open={addOpen}

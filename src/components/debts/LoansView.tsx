@@ -1,21 +1,24 @@
-// "Le presté": préstamos propios. Una cuenta por persona con cuánto le presté,
-// desde cuándo me debe, lo que le fui prestando después y cada abono.
-// Todo movimiento de plata sale/entra de una cuenta y queda en Movimientos.
+// Préstamos informales en las dos direcciones:
+//   · "Le presté"  → plata que le presté a alguien (me deben)
+//   · "Me prestaron" → plata que alguien me prestó (yo debo), sin fecha ni papeles
+// Es la misma mecánica con el signo invertido: cada préstamo y cada abono sale
+// o entra de la cuenta que se elija y queda anotado en Movimientos.
 import { useState } from 'react'
 import {
   ArrowDownLeft, ArrowUpRight, CalendarClock, Check, HandCoins, Pencil, Phone,
   Plus, Trash2, User, Wallet, X,
 } from 'lucide-react'
-import type { Loan } from '../../types/finance'
+import type { Loan, LoanKind } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import {
-  loanHistory, loanIsSettled, loanLent, loanPaid, loanProgress, loanRemaining,
-  loanTotals, sinceLabel,
+  LOAN_COPY, loanHistory, loanIsSettled, loanLent, loanPaid, loanProgress,
+  loanRemaining, loanTotals, loansOfKind, sinceLabel,
 } from '../../lib/loans'
 import { accountById, activeAccounts, isCredit } from '../../lib/accounts'
 import { formatMoney } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
 import { todayLocalISO } from '../../lib/dates'
+import { accountColor } from '../../lib/itemColors'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { ProgressRing } from '../ui/ProgressRing'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -23,11 +26,19 @@ import { BottomSheet } from '../ui/BottomSheet'
 import { DateField } from '../ui/DatePicker'
 import { payBurst } from '../../lib/fx'
 
-export function LoansView() {
-  const loans = useFinanceStore((s) => s.loans)
+/** Color de cada dirección: lo que me deben suma, lo que debo pesa */
+function tono(kind: LoanKind): string {
+  return kind === 'borrowed' ? 'var(--c-warning)' : 'var(--c-income)'
+}
+
+export function LoansView({ kind = 'lent' }: { kind?: LoanKind }) {
+  const todos = useFinanceStore((s) => s.loans)
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Loan | null>(null)
 
+  const copy = LOAN_COPY[kind]
+  const color = tono(kind)
+  const loans = loansOfKind(todos, kind)
   const totals = loanTotals(loans)
   const activos = loans.filter((l) => !loanIsSettled(l))
   const pagados = loans.filter((l) => loanIsSettled(l))
@@ -36,10 +47,13 @@ export function LoansView() {
     <>
       {/* Resumen */}
       <div className="card p-4 grid grid-cols-2 gap-4 relative overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, var(--c-income), var(--app-accent))' }} />
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: `linear-gradient(90deg, ${color}, var(--app-accent))` }}
+        />
         <div>
-          <p className="text-[11.5px] text-muted">Te deben</p>
-          <p className="num text-[22px] font-bold leading-tight" style={{ color: 'var(--c-income)' }}>
+          <p className="text-[11.5px] text-muted">{copy.saldo}</p>
+          <p className="num text-[22px] font-bold leading-tight" style={{ color }}>
             {formatMoney(Math.round(totals.pendiente))}
           </p>
           <p className="text-[11px] text-muted mt-0.5">
@@ -47,54 +61,49 @@ export function LoansView() {
           </p>
         </div>
         <div>
-          <p className="text-[11.5px] text-muted">Ya te abonaron</p>
+          <p className="text-[11.5px] text-muted">{copy.abonado}</p>
           <p className="num text-[22px] font-bold text-ink leading-tight">
             {formatMoney(Math.round(totals.abonado))}
           </p>
           <p className="text-[11px] text-muted mt-0.5">
-            de {formatMoney(Math.round(totals.prestado))} prestados
+            de {formatMoney(Math.round(totals.prestado))} {copy.totalLabel}
           </p>
         </div>
       </div>
 
       {loans.length === 0 && (
         <div className="card p-8 text-center anim-pop">
-          <HandCoins size={26} className="mx-auto mb-2" style={{ color: 'var(--app-accent-soft)' }} />
-          <p className="text-[15px] font-semibold text-ink">Nadie te debe nada</p>
-          <p className="text-[13px] text-muted mt-1.5">
-            Cuando le prestes plata a alguien, anótalo aquí: llevás cuánto le prestaste,
-            desde cuándo y lo que te va abonando.
-          </p>
+          <HandCoins size={26} className="mx-auto mb-2" style={{ color }} />
+          <p className="text-[15px] font-semibold text-ink">{copy.vacioTitulo}</p>
+          <p className="text-[13px] text-muted mt-1.5">{copy.vacioTexto}</p>
         </div>
       )}
 
-      {activos.map((l) => <LoanCard key={l.id} loan={l} onEdit={setEditing} />)}
+      {activos.map((l) => <LoanCard key={l.id} loan={l} kind={kind} onEdit={setEditing} />)}
 
       {pagados.length > 0 && (
         <>
           <p className="text-[11.5px] font-semibold uppercase tracking-wider text-muted mt-1">
-            Ya te pagaron ({pagados.length})
+            {copy.saldadosTitulo} ({pagados.length})
           </p>
-          {pagados.map((l) => <LoanCard key={l.id} loan={l} onEdit={setEditing} />)}
+          {pagados.map((l) => <LoanCard key={l.id} loan={l} kind={kind} onEdit={setEditing} />)}
         </>
       )}
 
       <button
         onClick={() => { setEditing(null); setAddOpen(true) }}
         className="pressable rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 py-4 text-[13.5px] font-semibold"
-        style={{ borderColor: 'color-mix(in oklab, var(--app-accent) 50%, var(--c-border))', color: 'var(--app-accent-soft)' }}
+        style={{ borderColor: `color-mix(in oklab, ${color} 50%, var(--c-border))`, color }}
       >
-        <Plus size={17} /> Presté plata a alguien
+        <Plus size={17} /> {copy.nuevo}
       </button>
 
-      <p className="text-[11px] text-muted">
-        Lo que prestás sale de la cuenta que elijas y cada abono vuelve a ella. Todo queda
-        anotado en Movimientos.
-      </p>
+      <p className="text-[11px] text-muted">{copy.pie}</p>
 
       <LoanSheet
         open={addOpen || Boolean(editing)}
         loan={editing}
+        kind={kind}
         onClose={() => { setAddOpen(false); setEditing(null) }}
       />
     </>
@@ -103,7 +112,7 @@ export function LoansView() {
 
 /* ─── Tarjeta de un préstamo ────────────────────────────────────────────── */
 
-function LoanCard({ loan, onEdit }: { loan: Loan; onEdit: (l: Loan) => void }) {
+function LoanCard({ loan, kind, onEdit }: { loan: Loan; kind: LoanKind; onEdit: (l: Loan) => void }) {
   const accounts = useFinanceStore((s) => s.accounts)
   const addLoanPayment = useFinanceStore((s) => s.addLoanPayment)
   const deleteLoanPayment = useFinanceStore((s) => s.deleteLoanPayment)
@@ -116,6 +125,9 @@ function LoanCard({ loan, onEdit }: { loan: Loan; onEdit: (l: Loan) => void }) {
   const [masOpen, setMasOpen] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
 
+  const copy = LOAN_COPY[kind]
+  const color = tono(kind)
+  const meprestaron = kind === 'borrowed'
   const pendiente = loanRemaining(loan)
   const prestado = loanLent(loan)
   const abonado = loanPaid(loan)
@@ -133,7 +145,7 @@ function LoanCard({ loan, onEdit }: { loan: Loan; onEdit: (l: Loan) => void }) {
   return (
     <div className={`card p-4 flex flex-col gap-3 ${listo ? 'opacity-70' : ''}`}>
       <div className="flex items-center gap-3">
-        <ProgressRing progress={loanProgress(loan)} size={48} stroke={6} color={listo ? 'var(--c-income)' : 'var(--app-accent)'}>
+        <ProgressRing progress={loanProgress(loan)} size={48} stroke={6} color={listo ? 'var(--c-income)' : color}>
           {listo
             ? <Check size={16} style={{ color: 'var(--c-income)' }} />
             : <span className="num text-[10.5px] font-bold text-ink">{Math.round(loanProgress(loan) * 100)}%</span>}
@@ -144,18 +156,18 @@ function LoanCard({ loan, onEdit }: { loan: Loan; onEdit: (l: Loan) => void }) {
           </span>
           {listo ? (
             <span className="block text-[12px]" style={{ color: 'var(--c-income)' }}>
-              Te pagó todo · {formatMoney(prestado)}
+              {meprestaron ? 'Ya le pagaste todo' : 'Te pagó todo'} · {formatMoney(prestado)}
             </span>
           ) : (
-            <span className="num block text-[17px] font-bold" style={{ color: 'var(--c-income)' }}>
+            <span className="num block text-[17px] font-bold" style={{ color }}>
               {formatMoney(Math.round(pendiente))}
               <span className="text-[11.5px] text-muted font-normal"> de {formatMoney(prestado)}</span>
             </span>
           )}
           <span className="block text-[11px] text-muted mt-0.5 flex items-center gap-1">
-            <CalendarClock size={11} /> le presté {sinceLabel(loan.dateISO)}
+            <CalendarClock size={11} /> {meprestaron ? 'te prestó' : 'le presté'} {sinceLabel(loan.dateISO)}
             {(loan.advances?.length ?? 0) > 0 && <> · {loan.advances?.length} veces más</>}
-            {loan.dueDateISO && <> · quedó de pagar el {loan.dueDateISO.slice(8, 10)}/{loan.dueDateISO.slice(5, 7)}</>}
+            {loan.dueDateISO && <> · {meprestaron ? 'quedaste' : 'quedó'} de pagar el {loan.dueDateISO.slice(8, 10)}/{loan.dueDateISO.slice(5, 7)}</>}
           </span>
         </button>
         <button
@@ -167,27 +179,27 @@ function LoanCard({ loan, onEdit }: { loan: Loan; onEdit: (l: Loan) => void }) {
         </button>
       </div>
 
-      {/* Abono rápido + prestarle más */}
+      {/* Abono rápido + volver a prestar */}
       <div className="flex gap-2">
         <CurrencyInput value={abono} onChange={setAbono} className="flex-1" />
         <button
           onClick={registrar}
           className="pressable rounded-2xl px-3.5 text-[12.5px] font-semibold text-white shrink-0"
-          style={{ background: 'var(--c-income)' }}
+          style={{ background: meprestaron ? 'var(--c-danger)' : 'var(--c-income)' }}
         >
-          Me abonó
+          {meprestaron ? 'Le aboné' : 'Me abonó'}
         </button>
         <button
           onClick={() => setMasOpen(true)}
-          aria-label={`Prestarle más a ${loan.person}`}
+          aria-label={`${copy.masBoton} · ${loan.person}`}
           className="pressable rounded-2xl px-3.5 text-[12.5px] font-semibold shrink-0 border"
           style={{
-            borderColor: 'color-mix(in oklab, var(--app-accent) 45%, var(--c-border))',
-            color: 'var(--app-accent-soft)',
-            background: 'color-mix(in oklab, var(--app-accent) 10%, transparent)',
+            borderColor: `color-mix(in oklab, ${color} 45%, var(--c-border))`,
+            color,
+            background: `color-mix(in oklab, ${color} 10%, transparent)`,
           }}
         >
-          + Presté
+          {meprestaron ? '+ Me prestó' : '+ Presté'}
         </button>
       </div>
 
@@ -200,7 +212,8 @@ function LoanCard({ loan, onEdit }: { loan: Loan; onEdit: (l: Loan) => void }) {
           )}
           {cuenta && (
             <p className="text-[12px] text-muted flex items-center gap-1.5">
-              <Wallet size={12} /> Sale de {cuenta.name}
+              <Wallet size={12} style={{ color: accountColor(cuenta) }} />
+              {meprestaron ? 'Entró a' : 'Sale de'} {cuenta.name}
             </p>
           )}
           {loan.note && <p className="text-[12px] text-muted">{loan.note}</p>}
@@ -212,37 +225,39 @@ function LoanCard({ loan, onEdit }: { loan: Loan; onEdit: (l: Loan) => void }) {
                 Historial ({historial.length})
               </p>
               <p className="text-[11px] text-muted">
-                prestado <span className="num">{formatMoney(Math.round(prestado))}</span> · abonado{' '}
+                {meprestaron ? 'te prestaron' : 'prestado'} <span className="num">{formatMoney(Math.round(prestado))}</span> · abonado{' '}
                 <span className="num">{formatMoney(Math.round(abonado))}</span>
               </p>
             </div>
             {historial.map((ev) => {
               const esAbono = ev.tipo === 'abono'
               const inicial = ev.id.startsWith('inicial-')
+              // entra plata cuando me abonan (le presté) o cuando me prestan
+              const entra = meprestaron ? !esAbono : esAbono
               return (
                 <div key={ev.id} className="flex items-center gap-2 py-1.5">
                   <span
                     className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
                     style={{
-                      background: esAbono
+                      background: entra
                         ? 'color-mix(in oklab, var(--c-income) 16%, transparent)'
-                        : 'color-mix(in oklab, var(--app-accent) 16%, transparent)',
-                      color: esAbono ? 'var(--c-income)' : 'var(--app-accent-soft)',
+                        : 'color-mix(in oklab, var(--c-danger) 16%, transparent)',
+                      color: entra ? 'var(--c-income)' : 'var(--c-danger)',
                     }}
                   >
-                    {esAbono ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
+                    {entra ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
                   </span>
                   <span className="text-[12.5px] text-ink flex-1 truncate">
-                    {ev.note || (esAbono ? 'Abono' : 'Le presté')}
+                    {ev.note || (esAbono ? copy.eventoAbono : copy.eventoPrestamo)}
                   </span>
                   <span className="text-[10.5px] text-muted num">
                     {ev.dateISO.slice(8, 10)}/{ev.dateISO.slice(5, 7)}
                   </span>
                   <span
                     className="num text-[12.5px] font-semibold"
-                    style={{ color: esAbono ? 'var(--c-income)' : 'var(--c-text)' }}
+                    style={{ color: entra ? 'var(--c-income)' : 'var(--c-text)' }}
                   >
-                    {esAbono ? '+' : '−'}{formatMoney(ev.amount)}
+                    {entra ? '+' : '−'}{formatMoney(ev.amount)}
                   </span>
                   {inicial ? (
                     <span className="w-6 h-6" />
@@ -272,7 +287,7 @@ function LoanCard({ loan, onEdit }: { loan: Loan; onEdit: (l: Loan) => void }) {
         </div>
       )}
 
-      <LendMoreSheet open={masOpen} loan={loan} onClose={() => setMasOpen(false)} />
+      <LendMoreSheet open={masOpen} loan={loan} kind={kind} onClose={() => setMasOpen(false)} />
 
       <ConfirmDialog
         open={confirmDel}
@@ -287,26 +302,76 @@ function LoanCard({ loan, onEdit }: { loan: Loan; onEdit: (l: Loan) => void }) {
   )
 }
 
-/* ─── Prestarle más a la misma persona ──────────────────────────────────── */
+/* ─── Selector de cuenta compartido ─────────────────────────────────────── */
 
-function LendMoreSheet({ open, loan, onClose }: { open: boolean; loan: Loan; onClose: () => void }) {
+function AccountPicker({ value, onChange, label }: {
+  value: string
+  onChange: (id: string) => void
+  label: string
+}) {
+  const accounts = useFinanceStore((s) => s.accounts)
+  const activas = activeAccounts(accounts).filter((a) => !isCredit(a))
+  if (activas.length === 0) return null
+
+  return (
+    <div>
+      <label className="text-[12px] font-semibold text-muted">{label}</label>
+      <div className="flex gap-2 mt-2 overflow-x-auto no-scrollbar">
+        {activas.map((a) => {
+          const activo = a.id === value
+          const c = accountColor(a)
+          return (
+            <button
+              key={a.id}
+              onClick={() => onChange(a.id)}
+              className="pressable shrink-0 rounded-2xl border px-3 py-2 flex items-center gap-2"
+              style={activo
+                ? { borderColor: c, background: `color-mix(in oklab, ${c} 14%, var(--c-elevated))` }
+                : { borderColor: 'var(--c-border)', background: 'var(--c-elevated)' }}
+            >
+              <span style={{ color: activo ? c : 'var(--c-muted)' }}>
+                <ItemIcon icon={a.icon} name={a.name} size={15} />
+              </span>
+              <span className="text-[12.5px] font-medium" style={{ color: activo ? 'var(--c-text)' : 'var(--c-muted)' }}>
+                {a.name}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Otro préstamo con la misma persona ────────────────────────────────── */
+
+function LendMoreSheet({ open, loan, kind, onClose }: {
+  open: boolean; loan: Loan; kind: LoanKind; onClose: () => void
+}) {
+  const meprestaron = kind === 'borrowed'
   return (
     <BottomSheet
       open={open}
       onClose={onClose}
-      title={`Prestarle más a ${loan.person}`}
-      subtitle="Se suma a lo que te debe y sale de la cuenta que elijas"
+      title={meprestaron ? `${loan.person} te prestó más` : `Prestarle más a ${loan.person}`}
+      subtitle={meprestaron
+        ? 'Se suma a lo que le debés y entra a la cuenta que elijas'
+        : 'Se suma a lo que te debe y sale de la cuenta que elijas'}
     >
-      {open && <LendMoreForm key={`mas-${loan.id}`} loan={loan} onDone={onClose} />}
+      {open && <LendMoreForm key={`mas-${loan.id}`} loan={loan} kind={kind} onDone={onClose} />}
     </BottomSheet>
   )
 }
 
-function LendMoreForm({ loan, onDone }: { loan: Loan; onDone: () => void }) {
+function LendMoreForm({ loan, kind, onDone }: { loan: Loan; kind: LoanKind; onDone: () => void }) {
   const accounts = useFinanceStore((s) => s.accounts)
   const addLoanAdvance = useFinanceStore((s) => s.addLoanAdvance)
   const activas = activeAccounts(accounts).filter((a) => !isCredit(a))
   const principal = activas.find((a) => a.isMain) ?? activas[0]
+
+  const meprestaron = kind === 'borrowed'
+  const copy = LOAN_COPY[kind]
+  const color = tono(kind)
 
   const [amount, setAmount] = useState(0)
   const [dateISO, setDateISO] = useState(todayLocalISO())
@@ -319,42 +384,15 @@ function LendMoreForm({ loan, onDone }: { loan: Loan; onDone: () => void }) {
   return (
     <div className="flex flex-col gap-4 pb-2">
       <div>
-        <label className="text-[12px] font-semibold text-muted">¿Cuánto más le prestaste?</label>
+        <label className="text-[12px] font-semibold text-muted">
+          {meprestaron ? '¿Cuánto más te prestó?' : '¿Cuánto más le prestaste?'}
+        </label>
         <CurrencyInput value={amount} onChange={setAmount} className="mt-1.5" autoFocus />
       </div>
 
       <DateField value={dateISO} onChange={setDateISO} label="¿Qué día?" />
 
-      {activas.length > 0 && (
-        <div>
-          <label className="text-[12px] font-semibold text-muted">¿De qué cuenta salió?</label>
-          <div className="flex gap-2 mt-2 overflow-x-auto no-scrollbar">
-            {activas.map((a) => {
-              const activo = a.id === accountId
-              return (
-                <button
-                  key={a.id}
-                  onClick={() => setAccountId(a.id)}
-                  className="pressable shrink-0 rounded-2xl border px-3 py-2 flex items-center gap-2"
-                  style={activo
-                    ? {
-                        borderColor: 'var(--app-accent)',
-                        background: 'color-mix(in oklab, var(--app-accent) 14%, var(--c-elevated))',
-                      }
-                    : { borderColor: 'var(--c-border)', background: 'var(--c-elevated)' }}
-                >
-                  <span style={{ color: activo ? 'var(--app-accent-soft)' : 'var(--c-muted)' }}>
-                    <ItemIcon icon={a.icon} name={a.name} size={15} />
-                  </span>
-                  <span className="text-[12.5px] font-medium" style={{ color: activo ? 'var(--c-text)' : 'var(--c-muted)' }}>
-                    {a.name}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      <AccountPicker value={accountId} onChange={setAccountId} label={copy.cuentaLabel} />
 
       <div>
         <label className="text-[12px] font-semibold text-muted">Nota (opcional)</label>
@@ -369,13 +407,13 @@ function LendMoreForm({ loan, onDone }: { loan: Loan; onDone: () => void }) {
       {amount > 0 && (
         <div
           className="rounded-xl px-3.5 py-2.5"
-          style={{ background: 'color-mix(in oklab, var(--app-accent) 10%, transparent)' }}
+          style={{ background: `color-mix(in oklab, ${color} 10%, transparent)` }}
         >
           <p className="text-[11.5px] text-ink leading-snug">
-            {loan.person} te va a deber{' '}
+            {meprestaron ? 'Le vas a deber ' : `${loan.person} te va a deber `}
             <span className="num font-bold">{formatMoney(Math.round(nuevoPendiente))}</span>
-            {' '}(de <span className="num">{formatMoney(Math.round(nuevoTotal))}</span> prestados en total).
-            Se registra el movimiento y baja tu efectivo.
+            {' '}(de <span className="num">{formatMoney(Math.round(nuevoTotal))}</span> en total).
+            {meprestaron ? ' Se registra el movimiento y sube tu efectivo.' : ' Se registra el movimiento y baja tu efectivo.'}
           </p>
         </div>
       )}
@@ -383,7 +421,13 @@ function LendMoreForm({ loan, onDone }: { loan: Loan; onDone: () => void }) {
       <button
         onClick={() => {
           if (amount <= 0) return
-          addLoanAdvance(loan.id, Math.round(amount), note.trim() || 'Le presté más', dateISO, accountId || undefined)
+          addLoanAdvance(
+            loan.id,
+            Math.round(amount),
+            note.trim() || (meprestaron ? 'Me prestó más' : 'Le presté más'),
+            dateISO,
+            accountId || undefined,
+          )
           onDone()
         }}
         disabled={amount <= 0}
@@ -397,25 +441,32 @@ function LendMoreForm({ loan, onDone }: { loan: Loan; onDone: () => void }) {
 
 /* ─── Crear / editar préstamo ───────────────────────────────────────────── */
 
-function LoanSheet({ open, loan, onClose }: { open: boolean; loan: Loan | null; onClose: () => void }) {
+function LoanSheet({ open, loan, kind, onClose }: {
+  open: boolean; loan: Loan | null; kind: LoanKind; onClose: () => void
+}) {
   return (
     <BottomSheet
       open={open}
       onClose={onClose}
-      title={loan ? 'Editar préstamo' : 'Le presté plata a alguien'}
-      subtitle="Llevá el control de lo que te deben y de cada abono"
+      title={loan ? 'Editar préstamo' : LOAN_COPY[kind].nuevo}
+      subtitle={kind === 'borrowed'
+        ? 'Llevá el control de lo que debés y de cada abono'
+        : 'Llevá el control de lo que te deben y de cada abono'}
     >
-      {open && <LoanForm key={loan?.id ?? 'new'} loan={loan} onClose={onClose} />}
+      {open && <LoanForm key={loan?.id ?? 'new'} loan={loan} kind={kind} onClose={onClose} />}
     </BottomSheet>
   )
 }
 
-function LoanForm({ loan, onClose }: { loan: Loan | null; onClose: () => void }) {
+function LoanForm({ loan, kind, onClose }: { loan: Loan | null; kind: LoanKind; onClose: () => void }) {
   const accounts = useFinanceStore((s) => s.accounts)
   const addLoan = useFinanceStore((s) => s.addLoan)
   const updateLoan = useFinanceStore((s) => s.updateLoan)
   const activas = activeAccounts(accounts).filter((a) => !isCredit(a))
   const principal = activas.find((a) => a.isMain) ?? activas[0]
+
+  const meprestaron = kind === 'borrowed'
+  const copy = LOAN_COPY[kind]
 
   const [person, setPerson] = useState(() => loan?.person ?? '')
   const [amount, setAmount] = useState(() => loan?.amount ?? 0)
@@ -428,9 +479,16 @@ function LoanForm({ loan, onClose }: { loan: Loan | null; onClose: () => void })
   const [error, setError] = useState('')
 
   const guardar = () => {
-    if (person.trim().length < 2) { setError('Escribe a quién le prestaste.'); return }
-    if (amount <= 0) { setError('Escribe cuánto le prestaste.'); return }
+    if (person.trim().length < 2) {
+      setError(meprestaron ? 'Escribe quién te prestó.' : 'Escribe a quién le prestaste.')
+      return
+    }
+    if (amount <= 0) {
+      setError(meprestaron ? 'Escribe cuánto te prestó.' : 'Escribe cuánto le prestaste.')
+      return
+    }
     const data = {
+      kind,
       person: person.trim(),
       amount: Math.round(amount),
       phone: phone.trim() || undefined,
@@ -447,7 +505,7 @@ function LoanForm({ loan, onClose }: { loan: Loan | null; onClose: () => void })
   return (
     <div className="flex flex-col gap-3.5 pb-2">
       <div>
-        <label className="text-[12px] font-semibold text-muted block mb-1.5">¿A quién le prestaste?</label>
+        <label className="text-[12px] font-semibold text-muted block mb-1.5">{copy.personaLabel}</label>
         <input
           className="input-base"
           placeholder="Nombre de la persona"
@@ -457,51 +515,31 @@ function LoanForm({ loan, onClose }: { loan: Loan | null; onClose: () => void })
         />
       </div>
       <div>
-        <label className="text-[12px] font-semibold text-muted block mb-1.5">¿Cuánto le prestaste?</label>
+        <label className="text-[12px] font-semibold text-muted block mb-1.5">
+          {meprestaron ? '¿Cuánto te prestó?' : '¿Cuánto le prestaste?'}
+        </label>
         <CurrencyInput value={amount} onChange={setAmount} />
       </div>
 
-      <DateField value={dateISO} onChange={setDateISO} label="¿Desde cuándo te debe?" maxToday />
+      <DateField
+        value={dateISO}
+        onChange={setDateISO}
+        label={meprestaron ? '¿Desde cuándo le debés?' : '¿Desde cuándo te debe?'}
+        maxToday
+      />
 
-      {activas.length > 0 && !loan && (
-        <div>
-          <label className="text-[12px] font-semibold text-muted">¿De qué cuenta salió?</label>
-          <div className="flex gap-2 mt-2 overflow-x-auto no-scrollbar">
-            {activas.map((a) => {
-              const activo = a.id === accountId
-              return (
-                <button
-                  key={a.id}
-                  onClick={() => setAccountId(a.id)}
-                  className="pressable shrink-0 rounded-2xl border px-3 py-2 flex items-center gap-2"
-                  style={activo
-                    ? {
-                        borderColor: 'var(--app-accent)',
-                        background: 'color-mix(in oklab, var(--app-accent) 14%, var(--c-elevated))',
-                      }
-                    : { borderColor: 'var(--c-border)', background: 'var(--c-elevated)' }}
-                >
-                  <span style={{ color: activo ? 'var(--app-accent-soft)' : 'var(--c-muted)' }}>
-                    <ItemIcon icon={a.icon} name={a.name} size={15} />
-                  </span>
-                  <span className="text-[12.5px] font-medium" style={{ color: activo ? 'var(--c-text)' : 'var(--c-muted)' }}>
-                    {a.name}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {!loan && <AccountPicker value={accountId} onChange={setAccountId} label={copy.cuentaLabel} />}
 
-      {/* Fecha en que quedó de pagar (opcional) */}
+      {/* Fecha de pago (opcional: los informales casi nunca la tienen) */}
       <div className="rounded-2xl border border-edge bg-elevated p-3">
         <button
           onClick={() => setConFecha((v) => !v)}
           className="pressable w-full flex items-center justify-between text-left"
         >
           <span>
-            <span className="block text-[12.5px] font-semibold text-ink">¿Quedó de pagarte un día?</span>
+            <span className="block text-[12.5px] font-semibold text-ink">
+              {meprestaron ? '¿Quedaste de pagarle un día?' : '¿Quedó de pagarte un día?'}
+            </span>
             <span className="block text-[10.5px] text-muted">Opcional, para recordarte</span>
           </span>
           <span
@@ -519,7 +557,7 @@ function LoanForm({ loan, onClose }: { loan: Loan | null; onClose: () => void })
             <DateField
               value={dueDateISO || todayLocalISO()}
               onChange={setDue}
-              title="¿Qué día quedó de pagar?"
+              title="¿Qué día?"
             />
           </div>
         )}
@@ -542,7 +580,9 @@ function LoanForm({ loan, onClose }: { loan: Loan | null; onClose: () => void })
 
       {!loan && (
         <p className="text-[11px] text-muted text-center">
-          Se registra el movimiento y baja tu efectivo real.
+          {meprestaron
+            ? 'Se registra el movimiento y sube tu efectivo real.'
+            : 'Se registra el movimiento y baja tu efectivo real.'}
         </p>
       )}
     </div>

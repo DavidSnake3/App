@@ -163,7 +163,7 @@ export function MovementsSection() {
                     : m.kind === 'transferencia'
                       ? 'var(--app-accent-soft)'
                       : 'var(--c-text)'
-                  const catColor = categoryColor(m.categoryId)
+                  const catColor = categoryColor(m.categoryId, cats)
                   return (
                     <button
                       key={m.id}

@@ -8,6 +8,7 @@ import { TAB_ORDER, useSwipeTabs } from './hooks/useSwipeTabs'
 import { firebaseReady, logout } from './lib/firebase'
 import { currentMonthId } from './lib/dates'
 import { recompressDataUrl } from './lib/themes'
+import { initBackStack, refreshBackStack } from './lib/backStack'
 import { BottomNav } from './components/layout/BottomNav'
 import { HomeView } from './components/home/HomeView'
 import { MoneyView } from './components/money/MoneyView'
@@ -35,11 +36,39 @@ function App() {
   const widgetsTip = useFinanceStore((s) => s.profile.widgetsTip)
   const chatOpen = useChat((s) => s.open)
   const activeTab = useFinanceStore((s) => s.activeTab)
+  const subs = useFinanceStore((s) => s.subs)
   const ensureMonthExists = useFinanceStore((s) => s.ensureMonthExists)
   const setActiveMonth = useFinanceStore((s) => s.setActiveMonth)
 
   // Splash de arranque premium
   const [showSplash, setShowSplash] = useState(true)
+
+  // Atrás del celular: cierra lo que esté abierto, sale del submenú, vuelve a
+  // Inicio y solo entonces (tocando otra vez) se sale de la app
+  const [avisoSalir, setAvisoSalir] = useState(false)
+  useEffect(() => initBackStack({
+    nav: {
+      can: () => {
+        const s = useFinanceStore.getState()
+        return Boolean(s.subs[s.activeTab]) || s.activeTab !== 'home'
+      },
+      back: () => {
+        const s = useFinanceStore.getState()
+        if (s.subs[s.activeTab]) s.setSub(s.activeTab, '')
+        else if (s.activeTab !== 'home') s.setActiveTab('home')
+      },
+    },
+    onExitHint: () => setAvisoSalir(true),
+  }), [])
+
+  // al cambiar de pestaña o entrar a un submenú hay algo nuevo a lo que volver
+  useEffect(() => { refreshBackStack() }, [activeTab, subs])
+
+  useEffect(() => {
+    if (!avisoSalir) return
+    const t = setTimeout(() => setAvisoSalir(false), 2200)
+    return () => clearTimeout(t)
+  }, [avisoSalir])
 
   // Al salir del chat de bienvenida: explicar que el inicio se personaliza
   const [showTip, setShowTip] = useState(false)
@@ -195,6 +224,14 @@ function App() {
       {showSplash && <SplashIntro onDone={() => setShowSplash(false)} />}
       {content}
       <LoadingOverlay />
+      {avisoSalir && (
+        <div className="fixed left-0 right-0 z-[95] flex justify-center pointer-events-none anim-fade"
+             style={{ bottom: 'calc(env(safe-area-inset-bottom) + 88px)' }}>
+          <span className="card px-4 py-2 text-[12.5px] font-semibold text-ink shadow-lg">
+            Toca atrás otra vez para salir
+          </span>
+        </div>
+      )}
     </>
   )
 }

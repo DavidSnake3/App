@@ -219,16 +219,17 @@ export function cardDebt(a: Account, ctx: BalanceCtx): number {
     if (mv.toAccountId === a.id && mv.kind === 'transferencia') deuda -= mv.amount
   }
 
-  // gastos del mes marcados como pagados con esta tarjeta
+  // gastos del mes marcados como pagados con esta tarjeta (los que ya
+  // generaron su movimiento se contaron arriba, con los movimientos)
   for (const m of Object.values(ctx.months)) {
     for (const e of m.expenses) {
-      if (e.accountId === a.id && e.paid) deuda += e.amount
+      if (e.accountId === a.id && e.paid && !e.movementId) deuda += e.amount
     }
   }
   // cuotas de deudas pagadas con esta tarjeta
   for (const d of ctx.debts) {
     for (const p of Object.values(d.payments)) {
-      if (p.accountId === a.id && p.paid) deuda += p.amount
+      if (p.accountId === a.id && p.paid && !p.movementId) deuda += p.amount
     }
   }
 
@@ -382,14 +383,14 @@ export function cardStatement(a: Account, ctx: BalanceCtx): CardStatement {
     }
     for (const m of Object.values(ctx.months)) {
       for (const e of m.expenses) {
-        if (e.accountId !== a.id || !e.paid) continue
+        if (e.accountId !== a.id || !e.paid || e.movementId) continue
         const iso = (e.paidAt ?? `${m.id}-15`).slice(0, 10)
         if (iso <= hastaISO) total += e.amount
       }
     }
     for (const d of ctx.debts) {
       for (const [mid, pago] of Object.entries(d.payments)) {
-        if (pago.accountId !== a.id || !pago.paid) continue
+        if (pago.accountId !== a.id || !pago.paid || pago.movementId) continue
         const iso = (pago.paidAt ?? `${mid}-15`).slice(0, 10)
         if (iso <= hastaISO) total += pago.amount
       }

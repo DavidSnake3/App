@@ -65,9 +65,9 @@ export function CategoryReport() {
     return top.map((c, i) => {
       const frac = total > 0 ? c.total / total : 0
       const dash = frac * C
-      return { ...c, color: categoryColor(c.categoryId), dash, gap: C - dash, offset: -previos[i], frac }
+      return { ...c, color: categoryColor(c.categoryId, cats), dash, gap: C - dash, offset: -previos[i], frac }
     })
-  }, [porCategoria, total])
+  }, [porCategoria, total, cats])
 
   const maxSerie = Math.max(1, ...serie.map((x) => Math.max(x.gasto, x.ingreso)))
 
@@ -249,7 +249,7 @@ export function CategoryReport() {
                     <div className="flex items-center gap-2">
                       <span
                         className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-                        style={{ background: 'var(--c-elevated)', color: categoryColor(c.categoryId) }}
+                        style={{ background: 'var(--c-elevated)', color: categoryColor(c.categoryId, cats) }}
                       >
                         <ItemIcon icon={cat.icon} size={14} />
                       </span>
@@ -268,7 +268,7 @@ export function CategoryReport() {
                         className="h-full rounded-full transition-all duration-700 bar-shine"
                         style={{
                           width: `${Math.max(2, Math.round(frac * 100))}%`,
-                          background: `linear-gradient(90deg, color-mix(in oklab, ${categoryColor(c.categoryId)} 70%, #000), ${categoryColor(c.categoryId)})`,
+                          background: `linear-gradient(90deg, color-mix(in oklab, ${categoryColor(c.categoryId, cats)} 70%, #000), ${categoryColor(c.categoryId, cats)})`,
                         }}
                       />
                     </div>

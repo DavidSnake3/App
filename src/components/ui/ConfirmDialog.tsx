@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import { useBackClose } from '../../hooks/useBackClose'
 
 interface Props {
   open: boolean
@@ -13,6 +14,9 @@ interface Props {
 export function ConfirmDialog({
   open, title, message, confirmLabel = 'Confirmar', danger, onConfirm, onCancel,
 }: Props) {
+  // el atrás del celular cancela el diálogo en vez de salirse de la app
+  useBackClose(open, onCancel)
+
   if (!open) return null
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 max-w-[520px] mx-auto">

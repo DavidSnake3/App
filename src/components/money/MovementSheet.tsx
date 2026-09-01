@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { ArrowDownLeft, ArrowUpRight, Banknote, Check, CreditCard, Repeat, Trash2 } from 'lucide-react'
 import type { Movement, MovementKind } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import { categoryList, guessCategory } from '../../lib/categories'
+import { guessCategory } from '../../lib/categories'
+import { CategoryPicker } from '../ui/CategoryPicker'
 import { accountById, activeAccounts, isCredit } from '../../lib/accounts'
 import { todayLocalISO } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
@@ -60,7 +61,6 @@ function MovementForm({
   defaultAmount, defaultName, onDone,
 }: Props & { onDone: () => void }) {
   const accounts = useFinanceStore((s) => s.accounts)
-  const cats = useFinanceStore((s) => s.settings.categories)
   const budgets = useFinanceStore((s) => s.budgets)
   const addMovement = useFinanceStore((s) => s.addMovement)
   const updateMovement = useFinanceStore((s) => s.updateMovement)
@@ -86,7 +86,6 @@ function MovementForm({
   const [confirmDel, setConfirmDel] = useState(false)
 
   const esTransfer = kind === 'transferencia'
-  const lista = categoryList(cats, esTransfer ? undefined : (kind as 'gasto' | 'ingreso'))
   const cuentaOrigen = accountById(accounts, accountId)
   const cuentaDestino = accountById(accounts, toAccountId)
   const origenEsTarjeta = Boolean(cuentaOrigen && isCredit(cuentaOrigen))
@@ -171,39 +170,14 @@ function MovementForm({
           />
         </div>
 
-        {/* Categoría con ícono */}
+        {/* Categoría con ícono y color */}
         {!esTransfer && (
-          <div>
-            <label className="text-[12px] font-semibold text-muted">Categoría</label>
-            <div className="grid grid-cols-4 gap-2 mt-2">
-              {lista.map((c) => {
-                const activo = c.id === categoryId
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => { setCategoryId(c.id); setCatManual(true) }}
-                    className="pressable rounded-2xl border px-1 py-2 flex flex-col items-center gap-1 transition-all duration-200"
-                    style={activo
-                      ? {
-                          borderColor: 'var(--app-accent)',
-                          background: 'color-mix(in oklab, var(--app-accent) 14%, var(--c-elevated))',
-                        }
-                      : { borderColor: 'var(--c-border)', background: 'var(--c-elevated)' }}
-                  >
-                    <span style={{ color: activo ? 'var(--app-accent-soft)' : 'var(--c-muted)' }}>
-                      <ItemIcon icon={c.icon} size={17} />
-                    </span>
-                    <span
-                      className="text-[9.5px] leading-tight text-center"
-                      style={{ color: activo ? 'var(--c-text)' : 'var(--c-muted)' }}
-                    >
-                      {c.name}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          <CategoryPicker
+            value={categoryId}
+            onChange={(id) => { setCategoryId(id); setCatManual(true) }}
+            kind={kind === 'ingreso' ? 'ingreso' : 'gasto'}
+            preview={0}
+          />
         )}
 
         {/* Cuentas */}

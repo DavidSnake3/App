@@ -1,21 +1,70 @@
-// Préstamos propios: plata que le presté a alguien (cuentas por cobrar).
-import type { Loan, LoanAdvance, LoanPayment } from '../types/finance'
+// Préstamos informales en las dos direcciones: lo que le presté a alguien
+// (me deben) y lo que alguien me prestó a mí (yo debo). Misma mecánica, signo
+// contrario: cada movimiento entra o sale de la cuenta que se elija.
+import type { Loan, LoanAdvance, LoanKind, LoanPayment } from '../types/finance'
+
+/** Los préstamos guardados antes de esta versión son "le presté" */
+export function loanKind(l: Loan): LoanKind {
+  return l.kind ?? 'lent'
+}
+
+/** Textos de cada dirección, para no repetir la vista dos veces */
+export const LOAN_COPY = {
+  lent: {
+    titulo: 'Le presté',
+    subtitulo: 'Lo que te deben y sus abonos',
+    saldo: 'Te deben',
+    abonado: 'Ya te abonaron',
+    totalLabel: 'prestados',
+    nuevo: 'Presté plata a alguien',
+    masBoton: 'Prestarle más',
+    abonoBoton: 'Registrar abono',
+    eventoPrestamo: 'Le presté',
+    eventoAbono: 'Me abonó',
+    vacioTitulo: 'Nadie te debe nada',
+    vacioTexto: 'Cuando le prestes plata a alguien, anótalo aquí: llevás cuánto le prestaste, desde cuándo y lo que te va abonando.',
+    saldadosTitulo: 'Ya te pagaron',
+    personaLabel: '¿A quién le prestaste?',
+    cuentaLabel: '¿De cuál cuenta salió la plata?',
+    cuentaAbonoLabel: '¿A cuál cuenta entró el abono?',
+    pie: 'Lo que prestás sale de la cuenta que elijas y cada abono vuelve a ella. Todo queda anotado en Movimientos.',
+  },
+  borrowed: {
+    titulo: 'Me prestaron',
+    subtitulo: 'Lo que debés y lo que ya abonaste',
+    saldo: 'Debés',
+    abonado: 'Ya abonaste',
+    totalLabel: 'que te prestaron',
+    nuevo: 'Alguien me prestó plata',
+    masBoton: 'Me prestó más',
+    abonoBoton: 'Registrar mi abono',
+    eventoPrestamo: 'Me prestó',
+    eventoAbono: 'Le aboné',
+    vacioTitulo: 'No debés nada',
+    vacioTexto: 'Si alguien te presta plata (sin fecha ni papeles), anotalo aquí: entra a la cuenta que elijas y llevás cuánto le has abonado.',
+    saldadosTitulo: 'Ya pagaste',
+    personaLabel: '¿Quién te prestó?',
+    cuentaLabel: '¿A cuál cuenta entró la plata?',
+    cuentaAbonoLabel: '¿De cuál cuenta salió el abono?',
+    pie: 'Lo que te prestan entra a la cuenta que elijas y cada abono sale de ella. Todo queda anotado en Movimientos.',
+  },
+} as const
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100
 }
 
-/** Cuánto le presté en total: el primer préstamo más los que le sumé después */
+/** Total del préstamo: el inicial más los que se sumaron después */
 export function loanLent(l: Loan): number {
   return round2(l.amount + (l.advances ?? []).reduce((s, a) => s + a.amount, 0))
 }
 
-/** Cuánto me ha abonado */
+/** Cuánto se ha abonado */
 export function loanPaid(l: Loan): number {
   return round2(l.payments.reduce((s, p) => s + p.amount, 0))
 }
 
-/** Cuánto me debe todavía */
+/** Cuánto falta por saldar */
 export function loanRemaining(l: Loan): number {
   return Math.max(0, round2(loanLent(l) - loanPaid(l)))
 }
@@ -44,12 +93,19 @@ export function loanProgress(l: Loan): number {
   return Math.min(1, loanPaid(l) / total)
 }
 
-/** Días que han pasado desde que le presté */
+/**
+ * Días que han pasado desde esa fecha.
+ *
+ * Se leen año-mes-día del texto: `new Date('2026-09-01')` se interpreta como
+ * medianoche UTC y en América eso caía en el día anterior ("ayer" para algo
+ * anotado hoy).
+ */
 export function daysSince(dateISO: string, today = new Date()): number {
-  const d = new Date(dateISO)
-  if (Number.isNaN(d.getTime())) return 0
-  const ms = today.getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-  return Math.max(0, Math.floor(ms / 86_400_000))
+  const [y, m, d] = dateISO.slice(0, 10).split('-').map(Number)
+  if (!y || !m || !d) return 0
+  const desde = new Date(y, m - 1, d).getTime()
+  const hoy = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  return Math.max(0, Math.floor((hoy - desde) / 86_400_000))
 }
 
 /** "hace 3 días", "hace 2 meses"… */
@@ -94,13 +150,20 @@ export function loanTotals(loans: Loan[]): LoanTotals {
 export function loanFlowInMonth(loans: Loan[], monthId: string): number {
   let flow = 0
   for (const l of loans) {
-    if (!l.movementId && l.dateISO.slice(0, 7) === monthId) flow -= l.amount
+    // si me prestaron a mí, el préstamo ENTRA y el abono SALE
+    const signo = loanKind(l) === 'borrowed' ? -1 : 1
+    if (!l.movementId && l.dateISO.slice(0, 7) === monthId) flow -= signo * l.amount
     for (const a of l.advances ?? []) {
-      if (!a.movementId && a.dateISO.slice(0, 7) === monthId) flow -= a.amount
+      if (!a.movementId && a.dateISO.slice(0, 7) === monthId) flow -= signo * a.amount
     }
     for (const p of l.payments) {
-      if (!p.movementId && p.dateISO.slice(0, 7) === monthId) flow += p.amount
+      if (!p.movementId && p.dateISO.slice(0, 7) === monthId) flow += signo * p.amount
     }
   }
   return round2(flow)
+}
+
+/** Solo los de una dirección */
+export function loansOfKind(loans: Loan[], kind: LoanKind): Loan[] {
+  return loans.filter((l) => loanKind(l) === kind)
 }

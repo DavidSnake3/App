@@ -3,12 +3,13 @@ import { persist } from 'zustand/middleware'
 import type {
   Account, AnimationPrefs, AppSettings, Budget, Category, Debt, DebtPayment, Expense,
   FundConfig, Installment, Loan, LoanAdvance, MonthData, Movement, NotificationPrefs, PayrollConfig,
-  PaySchedule, SavingsConfig, SavingsEnvelope, SubItem, TabId, ThemeSettings, UsageState,
-  UserProfile, ViewMode, WidgetConf,
+  PaySchedule, RecurringTemplate, SavingsConfig, SavingsEnvelope, SubItem, TabId, ThemeSettings,
+  UsageState, UserProfile, ViewMode, WidgetConf,
 } from '../types/finance'
 import { currentMonthId, todayISO, todayLocalISO} from '../lib/dates'
 import { DEFAULT_CATEGORIES, guessCategory, mergeCategories } from '../lib/categories'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
+import { missingFromTemplates, templateFromExpense } from '../lib/recurring'
 import {
   DEFAULT_CCSS_PCT, DEFAULT_STATUTORY_NAME, convertPeriod, countryPreset, payrollBreakdown,
 } from '../lib/payroll'
@@ -145,6 +146,8 @@ interface FinanceState {
   accounts: Account[]
   /** compras a cuotas con tarjeta de credito */
   installments: Installment[]
+  /** pagos fijos que se repiten todos los meses */
+  recurring: RecurringTemplate[]
   /** consumo de Snake (mensajes y tokens reales) */
   usage: UsageState
   debts: Debt[]
@@ -188,6 +191,18 @@ interface FinanceActions {
   /** copia los recurrentes del mes anterior al mes destino (mejora 12) */
   importRecurring(targetMonthId: string, fromMonthId: string): void
   markCarryAsked(monthId: string): void
+  /** copia pagos concretos de un mes a otro */
+  copyExpensesFrom(targetMonthId: string, fromMonthId: string, ids: string[]): void
+
+  // ── Pagos fijos (plantillas recurrentes) ─────────────────────────────────
+  addTemplate(t: Omit<RecurringTemplate, 'id' | 'createdAt'>): void
+  updateTemplate(id: string, patch: Partial<Omit<RecurringTemplate, 'id'>>): void
+  deleteTemplate(id: string, alsoFuture?: boolean): void
+  toggleTemplate(id: string): void
+  /** crea en un mes los pagos fijos que le falten */
+  applyTemplates(monthId: string): void
+  /** los pone en todos los meses que ya existen */
+  applyTemplatesEverywhere(): void
 
   setProfile(patch: Partial<UserProfile>): void
   setSettings(patch: Partial<AppSettings>): void
@@ -278,6 +293,7 @@ export interface PersistedShape {
   months: Record<string, MonthData>
   accounts?: Account[]
   installments?: Installment[]
+  recurring?: RecurringTemplate[]
   debts: Debt[]
   loans?: Loan[]
   budgets?: Budget[]
@@ -462,6 +478,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       months: {},
       accounts: [],
       installments: [],
+      recurring: [],
       debts: [],
       loans: [],
       budgets: [],
@@ -483,10 +500,13 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
 
       // Mes nuevo SIEMPRE vacío: copiar recurrentes solo si el usuario acepta (mejora 12)
       ensureMonthExists: (monthId) => {
-        const { months, settings } = get()
+        const { months, settings, recurring } = get()
         if (months[monthId]) return
+        // el mes nuevo nace con los pagos fijos ya puestos
+        const base = makeMonth(monthId, settings)
+        const fijos = missingFromTemplates(base, recurring)
         set((s) => ({
-          months: { ...s.months, [monthId]: makeMonth(monthId, settings) },
+          months: { ...s.months, [monthId]: { ...base, expenses: fijos } },
           ...touch(),
         }))
       },
@@ -506,11 +526,34 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       updateIncome: (monthId, patch) =>
         set((s) => patchMonth(s, monthId, (m) => ({ ...m, income: { ...m.income, ...patch } }))),
 
-      addExpense: (monthId, e) =>
-        set((s) => patchMonth(s, monthId, (m) => ({
-          ...m,
-          expenses: [...m.expenses, { ...e, id: uid(), anchorMonthId: e.anchorMonthId ?? monthId, createdAt: todayISO() }],
-        }))),
+      /**
+       * Al agregar un gasto RECURRENTE se crea también su pago fijo, para que
+       * aparezca solo en los meses siguientes. Si ya existe uno con ese
+       * nombre, no se duplica.
+       */
+      addExpense: (monthId, e) => {
+        const id = uid()
+        const gasto: Expense = {
+          ...e,
+          id,
+          anchorMonthId: e.anchorMonthId ?? monthId,
+          createdAt: todayISO(),
+        }
+        set((s) => {
+          // si se repite, se guarda como PAGO FIJO para que salga solo cada mes
+          const yaExiste = s.recurring.some(
+            (t) => t.name.trim().toLowerCase() === gasto.name.trim().toLowerCase(),
+          )
+          const plantilla = gasto.recurrence !== 'once' && !gasto.templateId && !yaExiste
+            ? templateFromExpense(gasto, monthId)
+            : null
+          if (plantilla) gasto.templateId = plantilla.id
+          return {
+            ...patchMonth(s, monthId, (m) => ({ ...m, expenses: [...m.expenses, gasto] })),
+            recurring: plantilla ? [...s.recurring, plantilla] : s.recurring,
+          }
+        })
+      },
 
       updateExpense: (monthId, id, patch) =>
         set((s) => patchExpense(s, monthId, id, (e) => ({ ...e, ...patch }))),
@@ -521,12 +564,44 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           expenses: m.expenses.filter((e) => e.id !== id),
         }))),
 
-      togglePaid: (monthId, id) =>
+      /**
+       * Marcar un pago como PAGADO crea su movimiento: queda en el historial y
+       * sale de la cuenta con la que se pagó (si es tarjeta, sube su deuda).
+       * Al desmarcarlo, ese movimiento se borra.
+       */
+      togglePaid: (monthId, id) => {
+        const s0 = get()
+        const gasto = s0.months[monthId]?.expenses.find((e) => e.id === id)
+        if (!gasto) return
+
+        if (gasto.paid) {
+          if (gasto.movementId) get().deleteMovement(gasto.movementId)
+          set((s) => patchExpense(s, monthId, id, (e) => ({
+            ...e, paid: false, paidAt: undefined, movementId: undefined,
+          })))
+          return
+        }
+
+        const monto = gasto.children.length
+          ? gasto.children.reduce((t, c) => t + c.amount, 0)
+          : gasto.amount
+        const cuenta = gasto.accountId || cuentaPorDefecto(s0)
+        const movementId = cuenta && monto > 0
+          ? get().addMovementReturningId({
+              name: gasto.name.slice(0, 40),
+              amount: monto,
+              kind: 'gasto',
+              categoryId: gasto.categoryId || guessCategory(gasto.name, 'gasto'),
+              accountId: cuenta,
+              dateISO: todayLocalISO(),
+              icon: gasto.icon,
+              budgetId: gasto.budgetId,
+            })
+          : undefined
         set((s) => patchExpense(s, monthId, id, (e) => ({
-          ...e,
-          paid: !e.paid,
-          paidAt: !e.paid ? todayISO() : undefined,
-        }))),
+          ...e, paid: true, paidAt: todayISO(), movementId,
+        })))
+      },
 
       addSubItem: (monthId, expenseId, item) =>
         set((s) => patchExpense(s, monthId, expenseId, (e) => ({
@@ -584,20 +659,55 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           ...touch(),
         })),
 
-      toggleDebtPaid: (debtId, monthId) =>
+      /** Igual que los pagos del mes: la cuota pagada deja su movimiento */
+      toggleDebtPaid: (debtId, monthId) => {
+        const s0 = get()
+        const deuda = s0.debts.find((d) => d.id === debtId)
+        if (!deuda) return
+        const prev: DebtPayment = deuda.payments[monthId] ?? { paid: false, amount: deuda.monthlyPayment }
+
+        if (prev.paid) {
+          if (prev.movementId) get().deleteMovement(prev.movementId)
+          set((s) => ({
+            debts: s.debts.map((d) => (d.id === debtId
+              ? {
+                  ...d,
+                  payments: {
+                    ...d.payments,
+                    [monthId]: { ...prev, paid: false, paidAt: undefined, movementId: undefined },
+                  },
+                }
+              : d)),
+            ...touch(),
+          }))
+          return
+        }
+
+        const cuenta = prev.accountId || cuentaPorDefecto(s0)
+        const movementId = cuenta && prev.amount > 0
+          ? get().addMovementReturningId({
+              name: `Cuota ${deuda.name}`.slice(0, 40),
+              amount: prev.amount,
+              kind: 'gasto',
+              categoryId: deuda.categoryId || 'deudas',
+              accountId: cuenta,
+              dateISO: todayLocalISO(),
+              icon: deuda.icon,
+            })
+          : undefined
         set((s) => ({
-          debts: s.debts.map((d) => {
-            if (d.id !== debtId) return d
-            const prev: DebtPayment = d.payments[monthId] ?? { paid: false, amount: d.monthlyPayment }
-            const next: DebtPayment = {
-              ...prev,
-              paid: !prev.paid,
-              paidAt: !prev.paid ? todayISO() : undefined,
-            }
-            return { ...d, payments: { ...d.payments, [monthId]: next } }
-          }),
+          debts: s.debts.map((d) => (d.id === debtId
+            ? {
+                ...d,
+                payments: {
+                  ...d.payments,
+                  [monthId]: { ...prev, paid: true, paidAt: todayISO(), movementId },
+                },
+              }
+            : d)),
           ...touch(),
-        })),
+        }))
+      },
 
       payDebtInstallment: (debtId, monthId, detail) =>
         set((s) => ({
@@ -637,6 +747,85 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             },
             ...touch(),
           }
+        }),
+
+      copyExpensesFrom: (targetMonthId, fromMonthId, ids) =>
+        set((s) => {
+          const from = s.months[fromMonthId]
+          const target = s.months[targetMonthId] ?? makeMonth(targetMonthId, s.settings)
+          if (!from) return {}
+          const existentes = new Set(target.expenses.map((e) => e.name.trim().toLowerCase()))
+          const copias = from.expenses
+            .filter((e) => ids.includes(e.id))
+            .filter((e) => !existentes.has(e.name.trim().toLowerCase()))
+            .map((e) => ({ ...cloneExpenseForMonth(e), templateId: undefined }))
+          if (!copias.length) return {}
+          return {
+            months: {
+              ...s.months,
+              [targetMonthId]: { ...target, expenses: [...target.expenses, ...copias] },
+            },
+            ...touch(),
+          }
+        }),
+
+      // ── Pagos fijos ──────────────────────────────────────────────────────
+      addTemplate: (t) =>
+        set((s) => ({
+          recurring: [...s.recurring, { ...t, id: uid(), createdAt: todayISO() }],
+          ...touch(),
+        })),
+      updateTemplate: (id, patch) =>
+        set((s) => ({
+          recurring: s.recurring.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+          ...touch(),
+        })),
+      /**
+       * Borra la plantilla. Con `alsoFuture` quita también los pagos que ya
+       * había generado en los meses que aún no empiezan (los meses pasados no
+       * se tocan: son historial).
+       */
+      deleteTemplate: (id, alsoFuture) =>
+        set((s) => {
+          const nowId = currentMonthId()
+          const months = alsoFuture
+            ? Object.fromEntries(Object.entries(s.months).map(([mid, m]) => [mid, (
+                mid >= nowId
+                  ? { ...m, expenses: m.expenses.filter((e) => e.templateId !== id || e.paid) }
+                  : m
+              )]))
+            : s.months
+          return { recurring: s.recurring.filter((t) => t.id !== id), months, ...touch() }
+        }),
+      toggleTemplate: (id) =>
+        set((s) => ({
+          recurring: s.recurring.map((t) => (t.id === id ? { ...t, active: !t.active } : t)),
+          ...touch(),
+        })),
+      applyTemplates: (monthId) =>
+        set((s) => {
+          const mes = s.months[monthId]
+          if (!mes) return {}
+          const nuevos = missingFromTemplates(mes, s.recurring)
+          if (!nuevos.length) return {}
+          return {
+            months: { ...s.months, [monthId]: { ...mes, expenses: [...mes.expenses, ...nuevos] } },
+            ...touch(),
+          }
+        }),
+      applyTemplatesEverywhere: () =>
+        set((s) => {
+          const nowId = currentMonthId()
+          let cambio = false
+          const months = Object.fromEntries(Object.entries(s.months).map(([mid, m]) => {
+            // los meses pasados son historial: no se tocan
+            if (mid < nowId) return [mid, m]
+            const nuevos = missingFromTemplates(m, s.recurring)
+            if (!nuevos.length) return [mid, m]
+            cambio = true
+            return [mid, { ...m, expenses: [...m.expenses, ...nuevos] }]
+          }))
+          return cambio ? { months, ...touch() } : {}
         }),
 
       markCarryAsked: (monthId) =>
@@ -1038,11 +1227,13 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
        * saca la plata de la cuenta (así se ve en Movimientos y en el saldo).
        */
       addLoan: (l) => {
+        // si me prestaron a mí, la plata ENTRA a la cuenta; si yo presté, SALE
+        const meprestaron = l.kind === 'borrowed'
         const movementId = get().addMovementReturningId({
-          name: `Le presté a ${l.person}`.slice(0, 40),
+          name: (meprestaron ? `Me prestó ${l.person}` : `Le presté a ${l.person}`).slice(0, 40),
           amount: l.amount,
-          kind: 'gasto',
-          categoryId: 'preste',
+          kind: meprestaron ? 'ingreso' : 'gasto',
+          categoryId: meprestaron ? 'me-prestaron' : 'preste',
           accountId: l.accountId ?? cuentaPorDefecto(get()),
           dateISO: (l.dateISO || todayISO()).slice(0, 10),
           note: l.note,
@@ -1073,16 +1264,22 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         }
         set((s) => ({ loans: s.loans.filter((l) => l.id !== id), ...touch() }))
       },
-      /** Me abonó: entra la plata a la cuenta y baja lo que me debe */
+      /**
+       * Abono del préstamo. Si yo presté, el abono ENTRA a mi cuenta; si me
+       * prestaron, soy yo quien paga y la plata SALE.
+       */
       addLoanPayment: (loanId, amount, note, dateISO, accountId) => {
         const loan = get().loans.find((l) => l.id === loanId)
+        const meprestaron = loan?.kind === 'borrowed'
         const fecha = (dateISO || todayISO()).slice(0, 10)
         const cuenta = accountId ?? loan?.accountId ?? cuentaPorDefecto(get())
         const movementId = get().addMovementReturningId({
-          name: `Abono de ${loan?.person ?? 'préstamo'}`.slice(0, 40),
+          name: (meprestaron
+            ? `Abono a ${loan?.person ?? 'préstamo'}`
+            : `Abono de ${loan?.person ?? 'préstamo'}`).slice(0, 40),
           amount,
-          kind: 'ingreso',
-          categoryId: 'me-pagaron',
+          kind: meprestaron ? 'gasto' : 'ingreso',
+          categoryId: meprestaron ? 'pague-prestamo' : 'me-pagaron',
           accountId: cuenta,
           dateISO: fecha,
           note,
@@ -1108,16 +1305,19 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         }))
       },
 
-      /** Le volví a prestar: sube lo que me debe y sale de la cuenta */
+      /** Otro préstamo con la misma persona: sube el saldo y mueve la cuenta */
       addLoanAdvance: (loanId, amount, note, dateISO, accountId) => {
         const loan = get().loans.find((l) => l.id === loanId)
+        const meprestaron = loan?.kind === 'borrowed'
         const fecha = (dateISO || todayISO()).slice(0, 10)
         const cuenta = accountId ?? loan?.accountId ?? cuentaPorDefecto(get())
         const movementId = get().addMovementReturningId({
-          name: `Le presté más a ${loan?.person ?? 'alguien'}`.slice(0, 40),
+          name: (meprestaron
+            ? `Me prestó más ${loan?.person ?? 'alguien'}`
+            : `Le presté más a ${loan?.person ?? 'alguien'}`).slice(0, 40),
           amount,
-          kind: 'gasto',
-          categoryId: 'preste',
+          kind: meprestaron ? 'ingreso' : 'gasto',
+          categoryId: meprestaron ? 'me-prestaron' : 'preste',
           accountId: cuenta,
           dateISO: fecha,
           note,
@@ -1219,6 +1419,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           months: healMonths(data.months ?? {}, accounts),
           accounts,
           installments,
+          recurring: data.recurring ?? prev.recurring ?? [],
           debts: healDebts(data.debts),
           loans: data.loans ?? [],
           budgets: data.budgets ?? [],
@@ -1247,6 +1448,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           months: {},
           accounts: [],
           installments: [],
+          recurring: [],
           debts: [],
           loans: [],
           budgets: [],
@@ -1272,6 +1474,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           months: healMonths(p.months ?? {}, p.accounts ?? []),
           accounts: p.accounts ?? [],
           installments: p.installments ?? [],
+          recurring: p.recurring ?? [],
           debts: healDebts(p.debts),
           loans: p.loans ?? [],
           budgets: p.budgets ?? [],
@@ -1393,6 +1596,7 @@ export function exportState(): PersistedShape {
     months: s.months,
     accounts: s.accounts,
     installments: s.installments,
+    recurring: s.recurring,
     debts: s.debts,
     loans: s.loans,
     budgets: s.budgets,

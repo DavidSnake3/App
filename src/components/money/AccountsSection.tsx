@@ -8,6 +8,7 @@ import { useMoney } from '../../hooks/useLedger'
 import { accountTypeLabel } from '../../lib/accounts'
 import { formatMoney } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
+import { accountColor } from '../../lib/itemColors'
 import { AccountSheet } from './AccountSheet'
 import { MovementSheet } from './MovementSheet'
 
@@ -102,19 +103,24 @@ export function AccountsSection() {
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {money.balances.map(({ account, balance }) => (
+          {money.balances.map(({ account, balance }) => {
+            const tono = accountColor(account)
+            return (
             <button
               key={account.id}
               onClick={() => setSheet({ open: true, editing: account, balance })}
               className="pressable tile p-3.5 flex items-center gap-3 text-left anim-rise"
-              style={{ background: 'linear-gradient(155deg, color-mix(in oklab, var(--app-accent) 7%, var(--c-card)) 0%, var(--c-card) 60%)' }}
+              style={{
+                background: `linear-gradient(155deg, color-mix(in oklab, ${tono} 11%, var(--c-card)) 0%, var(--c-card) 60%)`,
+                borderColor: `color-mix(in oklab, ${tono} 24%, var(--c-border))`,
+              }}
             >
               <span
                 className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
                 style={{
-                  background: 'linear-gradient(145deg, color-mix(in oklab, var(--app-accent) 24%, transparent), color-mix(in oklab, var(--app-accent) 9%, transparent))',
-                  color: 'var(--app-accent-soft)',
-                  boxShadow: 'inset 0 0 0 1px color-mix(in oklab, var(--app-accent) 30%, transparent)',
+                  background: `linear-gradient(145deg, ${tono}, color-mix(in oklab, ${tono} 52%, #000))`,
+                  color: '#fff',
+                  boxShadow: `0 7px 18px -10px ${tono}`,
                 }}
               >
                 <ItemIcon icon={account.icon} name={account.name} size={18} />
@@ -141,7 +147,8 @@ export function AccountsSection() {
                 <ChevronRight size={14} className="text-muted" />
               </span>
             </button>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -151,24 +158,26 @@ export function AccountsSection() {
           <p className="text-[11.5px] font-bold uppercase tracking-wider text-muted px-1">
             Tarjetas de crédito
           </p>
-          {money.cards.map(({ account, statement }) => (
+          {money.cards.map(({ account, statement }) => {
+            const tono = accountColor(account)
+            return (
             <button
               key={account.id}
               onClick={() => setSub('money', 'tarjetas')}
               className="pressable tile p-3.5 flex items-center gap-3 text-left anim-rise"
               style={{
-                background: 'linear-gradient(155deg, color-mix(in oklab, var(--c-danger) 8%, var(--c-card)) 0%, var(--c-card) 60%)',
+                background: `linear-gradient(155deg, color-mix(in oklab, ${tono} 11%, var(--c-card)) 0%, var(--c-card) 60%)`,
                 borderColor: statement.overdue
                   ? 'color-mix(in oklab, var(--c-danger) 55%, var(--c-border))'
-                  : 'color-mix(in oklab, var(--c-danger) 20%, var(--c-border))',
+                  : `color-mix(in oklab, ${tono} 24%, var(--c-border))`,
               }}
             >
               <span
                 className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
                 style={{
-                  background: 'linear-gradient(145deg, color-mix(in oklab, var(--c-danger) 24%, transparent), color-mix(in oklab, var(--c-danger) 9%, transparent))',
-                  color: 'var(--c-danger)',
-                  boxShadow: 'inset 0 0 0 1px color-mix(in oklab, var(--c-danger) 28%, transparent)',
+                  background: `linear-gradient(145deg, ${tono}, color-mix(in oklab, ${tono} 52%, #000))`,
+                  color: '#fff',
+                  boxShadow: `0 7px 18px -10px ${tono}`,
                 }}
               >
                 <ItemIcon icon={account.icon ?? 'tarjeta'} name={account.name} size={18} />
@@ -194,7 +203,8 @@ export function AccountsSection() {
                 ) : null}
               </span>
             </button>
-          ))}
+            )
+          })}
         </div>
       )}
 

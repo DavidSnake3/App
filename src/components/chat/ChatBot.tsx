@@ -14,6 +14,7 @@ import { aiAvailable } from '../../lib/ai'
 import { withLoading } from '../../store/useLoading'
 import { uid as newId } from '../../lib/finance'
 import { compressImage } from '../../lib/themes'
+import { useBackClose } from '../../hooks/useBackClose'
 import { AppLogo } from '../ui/AppLogo'
 import { LoaderDots } from '../ui/Loader'
 
@@ -56,6 +57,8 @@ const THINKING_MSGS = [
 export function ChatBot({ auth }: { auth: AuthState }) {
   const open = useChat((s) => s.open)
   const uidKey = auth.user?.uid ?? null
+  // el atrás del celular cierra el chat
+  useBackClose(open, () => useChat.getState().closeChat())
   if (!open) return null
   // remontar por sesión abierta: el estado inicial se lee en los useState
   return <ChatSession key={uidKey ?? 'local'} uidKey={uidKey} />
