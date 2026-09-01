@@ -4,7 +4,7 @@
 // - Alarma intrusiva dentro de la app: overlay a pantalla completa con sonido.
 import { Capacitor } from '@capacitor/core'
 import type { AppSettings, Debt, MonthData, PendingAlarm, ReminderPref } from '../types/finance'
-import { buildPayables } from './finance'
+import { buildPayables, remainingAmount } from './finance'
 import { dueDate } from './dates'
 import { formatMoney } from './format'
 import { nextPaydays, payrollBreakdown } from './payroll'
@@ -105,12 +105,12 @@ export function buildReminderTasks(
     const items = buildPayables(month, debts)
     for (const it of items) {
       if (it.paid || !it.dueDay) continue
-      push(`${month.id}-${it.id}`, it.name, it.amount, month.id, it.dueDay, undefined)
+      push(`${month.id}-${it.id}`, it.name, it.remaining, month.id, it.dueDay, undefined)
     }
     // preferencias por elemento (override)
     for (const e of month.expenses) {
       if (e.paid || !e.dueDay || !e.reminder?.enabled) continue
-      push(`ov-${month.id}-${e.id}`, e.name, e.amount, month.id, e.dueDay, e.reminder)
+      push(`ov-${month.id}-${e.id}`, e.name, remainingAmount(e), month.id, e.dueDay, e.reminder)
     }
   }
 
@@ -131,7 +131,7 @@ export function buildReminderTasks(
       const pendientes = months[mid]
         ? buildPayables(months[mid], debts).filter((i) => !i.paid)
         : []
-      const pendTotal = pendientes.reduce((s, i) => s + i.amount, 0)
+      const pendTotal = pendientes.reduce((s, i) => s + i.remaining, 0)
       const detalle = pendientes.length
         ? ` Tienes ${pendientes.length} pago${pendientes.length === 1 ? '' : 's'} pendiente${pendientes.length === 1 ? '' : 's'} por ${formatMoney(pendTotal)}.`
         : ' No tienes pagos pendientes este mes. 🎉'

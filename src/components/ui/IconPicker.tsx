@@ -10,13 +10,16 @@ interface Props {
   /** para adivinar el ícono por defecto que se muestra */
   name?: string
   kind?: 'gasto' | 'servicio' | 'personal' | 'deuda'
+  /** ícono que manda cuando el usuario no eligió uno (el de su categoría) */
+  fallback?: string
 }
 
 /** Selector de íconos en menú-cuadrícula (mejora 6): sin deslizar tedioso */
-export function IconPicker({ value, onChange, name, kind }: Props) {
+export function IconPicker({ value, onChange, name, kind, fallback }: Props) {
   const [open, setOpen] = useState(false)
   useBackClose(open, () => setOpen(false))
   const current = value && ITEM_ICONS[value] ? ITEM_ICONS[value] : null
+  const auto = !current && fallback && ITEM_ICONS[fallback] ? ITEM_ICONS[fallback] : null
 
   return (
     <>
@@ -28,14 +31,18 @@ export function IconPicker({ value, onChange, name, kind }: Props) {
           className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
           style={{ background: 'color-mix(in oklab, var(--app-accent) 16%, transparent)', color: 'var(--app-accent-soft)' }}
         >
-          <ItemIcon icon={value} name={name} kind={kind} size={18} />
+          <ItemIcon icon={value || fallback} name={name} kind={kind} size={18} />
         </span>
         <span className="flex-1 min-w-0">
           <span className="block text-[13.5px] font-medium text-ink">
-            {current ? current.label : 'Ícono automático'}
+            {current ? current.label : auto ? `Automático · ${auto.label}` : 'Ícono automático'}
           </span>
           <span className="block text-[11.5px] text-muted">
-            {current ? 'Toca para cambiarlo' : 'Se adivina por el nombre · toca para elegir'}
+            {current
+              ? 'Toca para cambiarlo'
+              : auto
+                ? 'El de la categoría · toca para elegir otro'
+                : 'Se adivina por el nombre · toca para elegir'}
           </span>
         </span>
         <ChevronRight size={15} className="text-muted shrink-0" />

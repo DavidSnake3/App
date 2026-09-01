@@ -8,7 +8,7 @@ import type {
 } from '../types/finance'
 import { loanFlowInMonth } from './loans'
 import { currentMonthId, daysInMonth, parseMonthId } from './dates'
-import { buildPayables, getMonthSummary } from './finance'
+import { buildPayables, getMonthSummary, remainingAmount } from './finance'
 import { payrollBreakdown } from './payroll'
 import { accountById, cashMovementsNet, isCredit, totalCash } from './accounts'
 
@@ -124,11 +124,18 @@ export function paidInCash(m: MonthData, debts: Debt[], accounts: Account[] = []
   }
   let total = 0
   for (const e of m.expenses) {
+    // adelantos que aún no llegaron a ser movimiento (sin cuentas creadas)
+    for (const ad of e.advances ?? []) {
+      if (ad.movementId) continue
+      if (conTarjeta(ad.accountId ?? e.accountId)) continue
+      total += ad.amount
+    }
     if (!e.paid) continue
     // si al pagarlo se creó un movimiento, ese movimiento ya movió la cuenta
     if (e.movementId) continue
     if (conTarjeta(e.accountId)) continue
-    total += e.children.length ? e.children.reduce((s, c) => s + c.amount, 0) : e.amount
+    // solo el PENDIENTE: lo adelantado ya se contó arriba
+    total += remainingAmount(e)
   }
   for (const d of debts) {
     if (d.viaPlanilla) continue
@@ -404,7 +411,7 @@ export function kindTotals(m: MonthData, debts: Debt[]): KindTotal[] {
   return defs.map(({ kind, label }) => {
     const list = items.filter((i) => i.kind === kind)
     const total = round2(list.reduce((s, i) => s + i.amount, 0))
-    const paid = round2(list.filter((i) => i.paid).reduce((s, i) => s + i.amount, 0))
+    const paid = round2(list.reduce((s, i) => s + (i.paid ? i.amount : i.advanced), 0))
     return {
       kind, label, total, paid,
       pending: round2(total - paid),

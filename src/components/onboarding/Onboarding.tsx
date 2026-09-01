@@ -231,8 +231,7 @@ export function Onboarding({ user }: { user: AppUser | null }) {
         period: s.dueDay <= 15 ? 'q1' : 'q2',
         kind: 'servicio',
         recurrence: 'monthly',
-        children: [],
-      })
+        })
     }
     if (planId) setSettings({ financialPlanId: planId })
     if (notifOn) setNotifications({ enabled: true })

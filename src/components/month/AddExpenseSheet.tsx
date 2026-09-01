@@ -8,7 +8,8 @@ import { ItemIcon } from '../../lib/icons'
 import { IconPicker } from '../ui/IconPicker'
 import { ColorPicker } from '../ui/ColorPicker'
 import { CategoryPicker } from '../ui/CategoryPicker'
-import { guessCategory } from '../../lib/categories'
+import { category, guessCategory } from '../../lib/categories'
+import { formatMoney } from '../../lib/format'
 import { KIND_COLORS } from '../../lib/itemColors'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
@@ -58,6 +59,7 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
   const [amount, setAmount] = useState(editing?.amount ?? 0)
   const [kind, setKind] = useState<ExpenseKind>(editing?.kind ?? defaultKind)
   const [icon, setIcon] = useState(editing?.icon ?? '')
+  const cats = useFinanceStore((s) => s.settings.categories)
   const [color, setColor] = useState(editing?.color ?? '')
   // categoría: se adivina por el nombre hasta que el usuario elija una
   const [categoryId, setCategoryId] = useState(editing?.categoryId ?? '')
@@ -83,16 +85,23 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
 
   const save = () => {
     if (!name.trim()) { setError('Ponle un nombre al pago.'); return }
-    if (amount <= 0 && !editing?.children.length) { setError('El monto debe ser mayor a 0.'); return }
+    if (!editing?.shopping && amount <= 0) { setError('El monto debe ser mayor a 0.'); return }
+    const yaAdelantado = (editing?.advances ?? []).reduce((t, a) => t + a.amount, 0)
+    if (yaAdelantado > 0 && amount < yaAdelantado) {
+      setError(`Ya adelantaste ${formatMoney(yaAdelantado)} de este pago: el monto no puede ser menor.`)
+      return
+    }
     const day = dueDay === '' ? undefined : Math.max(1, Math.min(31, Number(dueDay)))
     const payload = {
       name: name.trim(),
-      amount,
+      // el monto de una lista de compras lo manda su checklist
+      amount: editing?.shopping ? editing.amount : amount,
       kind,
       icon: icon || undefined,
       color: color || undefined,
       categoryId: categoryId || guessCategory(name.trim(), 'gasto'),
-      recurrence: (isRecurring ? recurrence : 'once') as Recurrence,
+      // una lista de compras no se repite sola: se revive copiándola de otro mes
+      recurrence: (editing?.shopping ? 'once' : isRecurring ? recurrence : 'once') as Recurrence,
       dueDay: day,
       period: (day && day <= 15 ? 'q1' : 'q2') as Expense['period'],
       accountId: accountId || undefined,
@@ -101,7 +110,7 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
         : undefined,
     }
     if (editing) updateExpense(monthId, editing.id, payload, aplicarATodos ? 'siempre' : 'mes')
-    else addExpense(monthId, { ...payload, paid: false, children: [] })
+    else addExpense(monthId, { ...payload, paid: false })
     onDone()
   }
 
@@ -124,10 +133,16 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
         />
       </div>
 
-      <div>
-        <label className="text-[13px] font-medium text-muted block mb-1.5">Monto</label>
-        <CurrencyInput value={amount} onChange={setAmount} />
-      </div>
+      {editing?.shopping ? (
+        <p className="text-[11.5px] text-muted leading-snug px-1">
+          El monto de una lista de compras sale solo de sus productos.
+        </p>
+      ) : (
+        <div>
+          <label className="text-[13px] font-medium text-muted block mb-1.5">Monto</label>
+          <CurrencyInput value={amount} onChange={setAmount} />
+        </div>
+      )}
 
       <div>
         <span className="text-[13px] font-medium text-muted block mb-1.5">Tipo</span>
@@ -182,7 +197,13 @@ function ExpenseForm({ monthId, editing, defaultKind, onDone }: {
       {/* Ícono a elegir (mejoras 6 y 10) */}
       <div>
         <span className="text-[13px] font-medium text-muted block mb-1.5">Ícono</span>
-        <IconPicker value={icon} onChange={setIcon} name={name} kind={kind} />
+        <IconPicker
+          value={icon}
+          onChange={setIcon}
+          name={name}
+          kind={kind}
+          fallback={category(cats, categoryId || guessCategory(name, 'gasto')).icon}
+        />
 
         <ColorPicker
           value={color}

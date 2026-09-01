@@ -37,7 +37,6 @@ export function expenseFromTemplate(t: RecurringTemplate, monthId: string): Expe
     period: t.dueDay && t.dueDay <= 15 ? 'q1' : 'q2',
     kind: t.kind,
     recurrence: t.recurrence,
-    children: [],
     icon: t.icon,
     note: t.note,
     accountId: t.accountId,

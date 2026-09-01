@@ -11,7 +11,7 @@ import type {
 } from '../types/finance'
 import { addMonthsToId, currentMonthId, daysInMonth, monthDiff, parseMonthId } from './dates'
 import { cardRules, type CardRules } from './countries'
-import { debtIsActiveInMonth } from './finance'
+import { debtIsActiveInMonth, remainingAmount } from './finance'
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100
@@ -223,7 +223,12 @@ export function cardDebt(a: Account, ctx: BalanceCtx): number {
   // generaron su movimiento se contaron arriba, con los movimientos)
   for (const m of Object.values(ctx.months)) {
     for (const e of m.expenses) {
-      if (e.accountId === a.id && e.paid && !e.movementId) deuda += e.amount
+      // adelantos cargados a esta tarjeta que no llegaron a ser movimiento
+      for (const ad of e.advances ?? []) {
+        if ((ad.accountId ?? e.accountId) === a.id && !ad.movementId) deuda += ad.amount
+      }
+      // del pago en sí, solo el pendiente (lo adelantado ya se sumó)
+      if (e.accountId === a.id && e.paid && !e.movementId) deuda += remainingAmount(e)
     }
   }
   // cuotas de deudas pagadas con esta tarjeta

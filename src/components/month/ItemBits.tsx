@@ -5,15 +5,42 @@ import { getUrgency, urgencyColor, urgencyLabel } from '../../lib/dates'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { payBurst } from '../../lib/fx'
 
-/** Botón de check: marca pagado con confeti y sonido (punto 20) */
-export function PaidCheck({ item, monthId, size = 40 }: { item: PayableItem; monthId: string; size?: number }) {
+/**
+ * Botón de check: marca pagado con confeti y sonido.
+ *
+ * El anillo se llena a medias cuando el pago tiene adelantos o cuando es una
+ * lista de compras y ya llevás cosas en el carrito.
+ */
+export function PaidCheck({ item, monthId, size = 40, onShoppingTap }: {
+  item: PayableItem
+  monthId: string
+  size?: number
+  /** en una lista sin cerrar, el check abre la lista en vez de pagar */
+  onShoppingTap?: () => void
+}) {
   const ref = useRef<HTMLButtonElement>(null)
   const togglePaid = useFinanceStore((s) => s.togglePaid)
   const toggleDebtPaid = useFinanceStore((s) => s.toggleDebtPaid)
+  const toggleShoppingDone = useFinanceStore((s) => s.toggleShoppingDone)
   const prefs = useFinanceStore((s) => s.settings.animations)
+
+  // anillo a medias: lo que llevo en el carrito, o lo ya adelantado
+  const pct = item.paid
+    ? 1
+    : item.shopping && !item.shopping.done
+      ? (item.shopping.total > 0 ? Math.min(1, item.shopping.checkedTotal / item.shopping.total) : 0)
+      : (item.amount > 0 ? Math.min(1, item.advanced / item.amount) : 0)
 
   const handle = (e: React.MouseEvent) => {
     e.stopPropagation()
+    // Una lista nunca pasa por togglePaid directo: el movimiento tiene que
+    // salir por lo MARCADO, no por lo planeado.
+    if (item.shopping) {
+      if (!item.shopping.done && onShoppingTap) { onShoppingTap(); return }
+      if (!item.paid) payBurst(ref.current, prefs)
+      toggleShoppingDone(monthId, item.refId)
+      return
+    }
     if (!item.paid) payBurst(ref.current, prefs)
     if (item.source === 'expense') togglePaid(monthId, item.refId)
     else toggleDebtPaid(item.refId, monthId)
@@ -23,13 +50,21 @@ export function PaidCheck({ item, monthId, size = 40 }: { item: PayableItem; mon
     <button
       ref={ref}
       onClick={handle}
-      aria-label={item.paid ? `Desmarcar ${item.name}` : `Marcar ${item.name} como pagado`}
+      aria-label={item.paid
+        ? `Desmarcar ${item.name}`
+        : pct > 0
+          ? `Marcar ${item.name} como pagado · ${Math.round(pct * 100)}% cubierto`
+          : `Marcar ${item.name} como pagado`}
       className="pressable rounded-full flex items-center justify-center border-2 transition-all duration-200 shrink-0"
       style={{
         width: size,
         height: size,
-        borderColor: item.paid ? 'var(--c-income)' : 'var(--c-border)',
-        background: item.paid ? 'var(--c-income)' : 'transparent',
+        borderColor: item.paid || pct > 0 ? 'var(--c-income)' : 'var(--c-border)',
+        background: item.paid
+          ? 'var(--c-income)'
+          : pct > 0
+            ? `conic-gradient(color-mix(in oklab, var(--c-income) 55%, transparent) ${pct * 360}deg, transparent 0deg)`
+            : 'transparent',
         color: item.paid ? '#08281c' : 'var(--c-muted)',
       }}
     >

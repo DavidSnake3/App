@@ -38,10 +38,9 @@ export function TableView({ items, monthId, onOpen }: Props) {
                 className="pressable border-b border-edge/60 cursor-pointer"
                 style={{ background: idx % 2 ? 'color-mix(in oklab, var(--c-elevated) 55%, transparent)' : 'transparent' }}
               >
-                <td className="px-2.5 py-2"><PaidCheck item={it} monthId={monthId} size={26} /></td>
+                <td className="px-2.5 py-2"><PaidCheck item={it} monthId={monthId} size={26} onShoppingTap={() => onOpen(it)} /></td>
                 <td className={`px-2 py-2 font-medium text-ink ${it.paid ? 'line-through opacity-60' : ''}`}>
                   {it.name}
-                  {it.children.length > 0 && <span className="text-muted"> ({it.children.length})</span>}
                 </td>
                 <td className="px-2 py-2 text-right num font-semibold text-ink">{formatMoney(it.amount)}</td>
                 <td className="px-2 py-2 text-center font-semibold num" style={{ color: urgencyColor(u) }}>

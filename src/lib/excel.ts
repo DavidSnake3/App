@@ -66,11 +66,6 @@ function monthSheet(ws: Sheet, month: MonthData, debts: Debt[], profile: UserPro
     st.font = { bold: true, color: { argb: it.paid ? 'FF047857' : 'FFB91C1C' } }
     st.alignment = { horizontal: 'center' }
     // sub-hijos (punto 3)
-    for (const c of it.children) {
-      const sub = ws.addRow([`    · ${c.name}`, '', c.amount, '', '', ''])
-      sub.getCell(3).numFmt = fmt
-      sub.font = { color: { argb: 'FF64748B' }, size: 10 }
-    }
   }
 
   ws.columns = [

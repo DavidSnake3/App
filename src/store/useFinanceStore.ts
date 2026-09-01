@@ -3,13 +3,15 @@ import { persist } from 'zustand/middleware'
 import type {
   Account, AnimationPrefs, AppSettings, Budget, Category, Debt, DebtPayment, Expense,
   FundConfig, Installment, Loan, LoanAdvance, MonthData, Movement, NotificationPrefs, PayrollConfig,
-  PaySchedule, RecurringTemplate, SavingsConfig, SavingsEnvelope, SubItem, TabId, ThemeSettings,
+  PaySchedule, RecurringTemplate, SavingsConfig, SavingsEnvelope, TabId, ThemeSettings,
   UsageState, UserProfile, ViewMode, WidgetConf,
+  ExpenseAdvance, ShoppingProduct,
 } from '../types/finance'
 import { currentMonthId, todayISO, todayLocalISO} from '../lib/dates'
 import { DEFAULT_CATEGORIES, guessCategory, mergeCategories } from '../lib/categories'
-import { cloneExpenseForMonth, makeMonth, recurringCandidates, uid } from '../lib/finance'
+import { cloneExpenseForMonth, makeMonth, recurringCandidates, remainingAmount, uid } from '../lib/finance'
 import { seedAllMonths, seedMonth, templateFromExpense } from '../lib/recurring'
+import { shoppingChecked, syncShoppingAmount } from '../lib/shopping'
 import {
   DEFAULT_CCSS_PCT, DEFAULT_STATUTORY_NAME, convertPeriod, countryPreset, payrollBreakdown,
 } from '../lib/payroll'
@@ -178,10 +180,29 @@ interface FinanceActions {
   updateExpense(monthId: string, id: string, patch: Partial<Expense>, scope?: 'mes' | 'siempre'): void
   /** `scope` 'mes' lo quita solo de aqui - 'siempre' deja de repetirlo */
   deleteExpense(monthId: string, id: string, scope?: 'mes' | 'siempre'): void
+
+  // ── Adelantos de un pago ─────────────────────────────────────────────────
+  /** Adelanta parte de un pago: crea el movimiento real y baja el pendiente */
+  addExpenseAdvance(monthId: string, expenseId: string, data: {
+    amount: number; dateISO?: string; accountId?: string; note?: string
+  }): void
+  /** Borra un adelanto y su movimiento; si ya estaba pagado, recalcula el final */
+  deleteExpenseAdvance(monthId: string, expenseId: string, advanceId: string): void
+
+  // ── Listas de compras ────────────────────────────────────────────────────
+  /** crea el gasto-lista del mes y devuelve su id para abrirlo de una vez */
+  createShoppingList(monthId: string, data: {
+    name: string; dueDay?: number; accountId?: string
+    categoryId?: string; icon?: string; color?: string; store?: string
+  }): string
+  addShoppingProduct(monthId: string, expenseId: string, p: Omit<ShoppingProduct, 'id' | 'checked' | 'checkedAt'>): void
+  updateShoppingProduct(monthId: string, expenseId: string, productId: string, patch: Partial<ShoppingProduct>): void
+  deleteShoppingProduct(monthId: string, expenseId: string, productId: string): void
+  /** marca/desmarca un producto: NO mueve plata, solo el subtotal en vivo */
+  toggleShoppingProduct(monthId: string, expenseId: string, productId: string): void
+  /** finaliza (o reabre) la compra: aquí y solo aquí se mueve la plata */
+  toggleShoppingDone(monthId: string, expenseId: string): void
   togglePaid(monthId: string, id: string): void
-  addSubItem(monthId: string, expenseId: string, item: Omit<SubItem, 'id'>): void
-  updateSubItem(monthId: string, expenseId: string, subId: string, patch: Partial<SubItem>): void
-  deleteSubItem(monthId: string, expenseId: string, subId: string): void
 
   addDebt(d: Omit<Debt, 'id' | 'createdAt' | 'payments'>): void
   updateDebt(id: string, patch: Partial<Debt>): void
@@ -305,6 +326,12 @@ function round2(v: number): number {
 }
 
 /** Cuenta de la que sale/entra la plata cuando no se indica una */
+/** Día por defecto de un adelanto: hoy si estamos en ese mes; si no, el 1.º */
+function diaDeAdelanto(monthId: string): string {
+  const hoy = todayLocalISO()
+  return hoy.slice(0, 7) === monthId ? hoy : `${monthId}-01`
+}
+
 function cuentaPorDefecto(s: { accounts: Account[] }): string {
   const act = s.accounts.filter((a) => !a.archived && a.type !== 'credito')
   return (act.find((a) => a.isMain) ?? act[0])?.id ?? ''
@@ -314,6 +341,9 @@ function cuentaPorDefecto(s: { accounts: Account[] }): string {
  * Meses sanos: los gastos hormiga viejos se convierten en MOVIMIENTOS con su
  * categoria adivinada, para que nadie pierda lo que ya habia anotado.
  */
+/** Un gasto viejo (v9 y anteriores) traia su desglose en `children` */
+interface GastoConHijos { children?: { id: string; name: string; amount: number }[] }
+
 function healMonths(
   months: Record<string, MonthData>,
   accounts: Account[] = [],
@@ -323,9 +353,33 @@ function healMonths(
   let cambio = false
   const out: Record<string, MonthData> = {}
   for (const [id, m] of Object.entries(months)) {
-    const viejas = m.hormigas ?? []
-    if (!viejas.length) { out[id] = m; continue }
-    const yaMigradas = new Set((m.movements ?? []).map((x) => x.id))
+    let mes = m
+
+    // (1) SUB-ITEMS viejos -> el monto queda consolidado y el desglose en la nota
+    if ((mes.expenses ?? []).some((e) => 'children' in (e as object))) {
+      cambio = true
+      mes = {
+        ...mes,
+        expenses: mes.expenses.map((raw) => {
+          const { children, ...limpio } = raw as Expense & GastoConHijos
+          const hijos = children ?? []
+          if (!hijos.length) return limpio as Expense
+          const suma = hijos.reduce((t, c) => t + (c.amount || 0), 0)
+          const desglose = hijos.map((c) => `${c.name} ${c.amount}`).join(' - ')
+          return {
+            ...limpio,
+            // el mismo numero que el usuario ya veia en pantalla
+            amount: suma,
+            note: [limpio.note, desglose].filter(Boolean).join(' - '),
+          } as Expense
+        }),
+      }
+    }
+
+    // (2) gastos hormiga -> movimientos
+    const viejas = mes.hormigas ?? []
+    if (!viejas.length) { out[id] = mes; continue }
+    const yaMigradas = new Set((mes.movements ?? []).map((x) => x.id))
     const nuevos: Movement[] = viejas
       .filter((h) => !yaMigradas.has(h.id))
       .map((h) => ({
@@ -339,9 +393,9 @@ function healMonths(
         budgetId: h.budgetId,
         createdAt: h.dateISO || `${id}-15`,
       }))
-    if (!nuevos.length) { out[id] = m; continue }
+    if (!nuevos.length) { out[id] = mes; continue }
     cambio = true
-    out[id] = { ...m, hormigas: [], movements: [...(m.movements ?? []), ...nuevos] }
+    out[id] = { ...mes, hormigas: [], movements: [...(mes.movements ?? []), ...nuevos] }
   }
   return cambio ? out : months
 }
@@ -454,8 +508,7 @@ function migrateV1(old: V1State): Partial<FinanceState> {
           period: section.type === 'quincena' ? 'q1' : 'q2',
           kind: 'gasto',
           recurrence: it.isRecurring ? 'monthly' : 'once',
-          children: [],
-          anchorMonthId: id,
+                  anchorMonthId: id,
           createdAt: todayISO(),
         })
       }
@@ -604,10 +657,15 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           // (c) "también en los meses siguientes"
           if (scope === 'siempre' && tid) {
             recurring = recurring.map((t) => (t.id === tid ? { ...t, ...parchePlantilla(patch) } : t))
+            // los campos de plata nunca se clonan a otros meses
+            const parcheFuturo = { ...patch }
+            delete parcheFuturo.advances
+            delete parcheFuturo.movementId
+            delete parcheFuturo.shopping
             months = Object.fromEntries(Object.entries(months).map(([mid, m]) => [mid,
               mid > monthId
                 ? { ...m, expenses: m.expenses.map((e) =>
-                    (e.templateId === tid && !e.paid ? { ...e, ...patch } : e)) }
+                    (e.templateId === tid && !e.paid ? { ...e, ...parcheFuturo } : e)) }
                 : m]))
           }
           if (apaga) {
@@ -653,6 +711,220 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         }),
 
       /**
+       * ADELANTO: el recibo es de 30.000 y el día 10 abonás 15.000. Sale plata
+       * de verdad (movimiento con su fecha, su cuenta y su categoría) y el pago
+       * queda con 15.000 pendientes.
+       */
+      addExpenseAdvance: (monthId, expenseId, data) => {
+        const s0 = get()
+        const gasto = s0.months[monthId]?.expenses.find((e) => e.id === expenseId)
+        if (!gasto || gasto.paid || data.amount <= 0) return
+        // una lista de compras no admite adelantos: su monto todavía se está
+        // moviendo y el adelanto podría superar lo que de verdad se compre
+        if (gasto.shopping) return
+
+        const monto = Math.min(data.amount, remainingAmount(gasto))
+        if (monto <= 0) return
+
+        const fecha = (data.dateISO || diaDeAdelanto(monthId)).slice(0, 10)
+        const cuenta = data.accountId || gasto.accountId || cuentaPorDefecto(s0)
+        const movementId = cuenta
+          ? get().addMovementReturningId({
+              name: `Adelanto - ${gasto.name}`.slice(0, 40),
+              amount: monto,
+              kind: 'gasto',
+              categoryId: gasto.categoryId || guessCategory(gasto.name, 'gasto'),
+              accountId: cuenta,
+              dateISO: fecha,
+              icon: gasto.icon,
+              budgetId: gasto.budgetId,
+              note: data.note,
+            })
+          : undefined
+
+        const adelanto: ExpenseAdvance = {
+          id: uid(),
+          amount: monto,
+          dateISO: fecha,
+          accountId: cuenta || undefined,
+          movementId,
+          note: data.note,
+          createdAt: todayISO(),
+        }
+
+        set((st) => patchExpense(st, monthId, expenseId, (e) => {
+          const advances = [...(e.advances ?? []), adelanto]
+          const total = advances.reduce((t, a) => t + a.amount, 0)
+          // si los adelantos cubren el total, el pago queda saldado sin otro
+          // movimiento: esa plata ya salió con los adelantos
+          return e.amount > 0 && total >= e.amount
+            ? { ...e, advances, paid: true, paidAt: todayISO(), movementId: undefined }
+            : { ...e, advances }
+        }))
+      },
+
+      /**
+       * Borrar un adelanto devuelve su plata a la cuenta. Si el pago ya estaba
+       * pagado se recalcula su movimiento final, o quedaría "pagado" habiendo
+       * movido menos plata de la que cuesta.
+       */
+      deleteExpenseAdvance: (monthId, expenseId, advanceId) => {
+        const s0 = get()
+        const gasto = s0.months[monthId]?.expenses.find((e) => e.id === expenseId)
+        const adelanto = (gasto?.advances ?? []).find((a) => a.id === advanceId)
+        if (!gasto || !adelanto) return
+
+        // 1) se va el movimiento del adelanto: la plata vuelve a la cuenta
+        if (adelanto.movementId) get().deleteMovement(adelanto.movementId)
+
+        const quedan = (gasto.advances ?? []).filter((a) => a.id !== advanceId)
+        const falta = Math.max(0, gasto.amount - quedan.reduce((t, a) => t + a.amount, 0))
+
+        // 2) rebalanceo del movimiento final (solo si está pagado)
+        let movementId = gasto.movementId
+        if (gasto.paid) {
+          if (movementId) {
+            if (falta > 0) get().updateMovement(movementId, { amount: falta })
+            else { get().deleteMovement(movementId); movementId = undefined }
+          } else if (falta > 0) {
+            // estaba saldado solo con adelantos: ahora hace falta el movimiento
+            const cuenta = gasto.accountId || cuentaPorDefecto(s0)
+            movementId = cuenta
+              ? get().addMovementReturningId({
+                  name: gasto.name.slice(0, 40),
+                  amount: falta,
+                  kind: 'gasto',
+                  categoryId: gasto.categoryId || guessCategory(gasto.name, 'gasto'),
+                  accountId: cuenta,
+                  dateISO: (gasto.paidAt ?? todayISO()).slice(0, 10),
+                  icon: gasto.icon,
+                  budgetId: gasto.budgetId,
+                })
+              : undefined
+          }
+        }
+
+        set((st) => patchExpense(st, monthId, expenseId, (e) => ({
+          ...e,
+          advances: (e.advances ?? []).filter((a) => a.id !== advanceId),
+          movementId: e.paid ? movementId : e.movementId,
+        })))
+      },
+
+      /* ─── Listas de compras ──────────────────────────────────────────── */
+
+      createShoppingList: (monthId, data) => {
+        get().ensureMonthExists(monthId)
+        const id = uid()
+        const day = data.dueDay
+        set((st) => {
+          const mes = st.months[monthId]
+          if (!mes) return {}
+          const gasto: Expense = {
+            id,
+            name: data.name.trim() || 'Lista de compras',
+            amount: 0, // lo sincroniza cada producto
+            paid: false,
+            dueDay: day,
+            period: day && day <= 15 ? 'q1' : 'q2',
+            kind: 'gasto',
+            // una compra no se repite sola; se revive con "Copiar de otro mes"
+            recurrence: 'once',
+            icon: data.icon || 'super',
+            color: data.color,
+            accountId: data.accountId,
+            categoryId: data.categoryId || guessCategory(data.name, 'gasto'),
+            anchorMonthId: monthId,
+            shopping: { items: [], done: false, store: data.store },
+            createdAt: todayISO(),
+          }
+          return {
+            months: { ...st.months, [monthId]: { ...mes, expenses: [...mes.expenses, gasto] } },
+            ...touch(),
+          }
+        })
+        return id
+      },
+
+      addShoppingProduct: (monthId, expenseId, prod) =>
+        set((st) => patchExpense(st, monthId, expenseId, (e) => {
+          if (!e.shopping || e.shopping.done) return e // cerrada = solo lectura
+          return syncShoppingAmount({
+            ...e,
+            shopping: {
+              ...e.shopping,
+              items: [...e.shopping.items, {
+                ...prod, id: uid(), qty: Math.max(1, prod.qty || 1), checked: false,
+              }],
+            },
+          })
+        })),
+
+      updateShoppingProduct: (monthId, expenseId, productId, patch) =>
+        set((st) => patchExpense(st, monthId, expenseId, (e) => {
+          if (!e.shopping || e.shopping.done) return e
+          return syncShoppingAmount({
+            ...e,
+            shopping: {
+              ...e.shopping,
+              items: e.shopping.items.map((prod) => (prod.id === productId ? { ...prod, ...patch } : prod)),
+            },
+          })
+        })),
+
+      deleteShoppingProduct: (monthId, expenseId, productId) =>
+        set((st) => patchExpense(st, monthId, expenseId, (e) => {
+          if (!e.shopping || e.shopping.done) return e
+          return syncShoppingAmount({
+            ...e,
+            shopping: { ...e.shopping, items: e.shopping.items.filter((prod) => prod.id !== productId) },
+          })
+        })),
+
+      /** Marcar un producto NO mueve plata: solo cambia el subtotal que llevo */
+      toggleShoppingProduct: (monthId, expenseId, productId) =>
+        set((st) => patchExpense(st, monthId, expenseId, (e) => {
+          if (!e.shopping || e.shopping.done) return e
+          return syncShoppingAmount({
+            ...e,
+            shopping: {
+              ...e.shopping,
+              items: e.shopping.items.map((prod) => (prod.id === productId
+                ? { ...prod, checked: !prod.checked, checkedAt: prod.checked ? undefined : todayISO() }
+                : prod)),
+            },
+          })
+        })),
+
+      /**
+       * Único punto donde una lista mueve dinero. Al cerrarla, el gasto pasa a
+       * valer solo lo marcado y togglePaid crea el movimiento por ESE mismo
+       * número. Al reabrirla se borra el movimiento y vuelve a valer lo planeado.
+       */
+      toggleShoppingDone: (monthId, expenseId) => {
+        const gasto = get().months[monthId]?.expenses.find((e) => e.id === expenseId)
+        if (!gasto?.shopping) return
+
+        if (gasto.shopping.done || gasto.paid) { // reabrir
+          if (gasto.paid) get().togglePaid(monthId, expenseId) // borra el movimiento
+          set((st) => patchExpense(st, monthId, expenseId, (e) => (e.shopping
+            ? syncShoppingAmount({ ...e, shopping: { ...e.shopping, done: false, doneAt: undefined } })
+            : e)))
+          return
+        }
+
+        // sin nada en el carrito no se cierra nada
+        if (shoppingChecked(gasto.shopping) <= 0) return
+
+        // 1) el gasto colapsa al subtotal marcado…
+        set((st) => patchExpense(st, monthId, expenseId, (e) => (e.shopping
+          ? syncShoppingAmount({ ...e, shopping: { ...e.shopping, done: true, doneAt: todayISO() } })
+          : e)))
+        // 2) …y togglePaid lee ese monto ya escrito para crear el movimiento
+        get().togglePaid(monthId, expenseId)
+      },
+
+      /**
        * Marcar un pago como PAGADO crea su movimiento: queda en el historial y
        * sale de la cuenta con la que se pagó (si es tarjeta, sube su deuda).
        * Al desmarcarlo, ese movimiento se borra.
@@ -663,6 +935,8 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         if (!gasto) return
 
         if (gasto.paid) {
+          // se borra SOLO el movimiento final: los adelantos no se tocan,
+          // esa plata ya salió de verdad y sigue en Movimientos
           if (gasto.movementId) get().deleteMovement(gasto.movementId)
           set((s) => patchExpense(s, monthId, id, (e) => ({
             ...e, paid: false, paidAt: undefined, movementId: undefined,
@@ -670,9 +944,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           return
         }
 
-        const monto = gasto.children.length
-          ? gasto.children.reduce((t, c) => t + c.amount, 0)
-          : gasto.amount
+        const monto = remainingAmount(gasto)
         const cuenta = gasto.accountId || cuentaPorDefecto(s0)
         const movementId = cuenta && monto > 0
           ? get().addMovementReturningId({
@@ -691,23 +963,6 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         })))
       },
 
-      addSubItem: (monthId, expenseId, item) =>
-        set((s) => patchExpense(s, monthId, expenseId, (e) => ({
-          ...e,
-          children: [...e.children, { ...item, id: uid() }],
-        }))),
-
-      updateSubItem: (monthId, expenseId, subId, patch) =>
-        set((s) => patchExpense(s, monthId, expenseId, (e) => ({
-          ...e,
-          children: e.children.map((c) => (c.id === subId ? { ...c, ...patch } : c)),
-        }))),
-
-      deleteSubItem: (monthId, expenseId, subId) =>
-        set((s) => patchExpense(s, monthId, expenseId, (e) => ({
-          ...e,
-          children: e.children.filter((c) => c.id !== subId),
-        }))),
 
       addDebt: (d) =>
         set((s) => ({
@@ -1497,7 +1752,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
     }),
     {
       name: 'finance-app-state',
-      version: 9,
+      version: 10,
       // Merge profundo de settings: cualquier estado guardado sin los campos
       // nuevos (clientes viejos, nube) recibe los defaults sin romper nada
       merge: (persisted, current) => {
@@ -1625,6 +1880,19 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           }
         }
 
+        if (version < 10) {
+          // v9 → v10: se van los SUB-ÍTEMS. healMonths consolida el monto de
+          // los gastos que tenían hijos y deja el desglose en la nota.
+          st = {
+            ...st,
+            months: seedAllMonths(
+              healMonths(st.months ?? {}, st.accounts ?? []),
+              st.recurring ?? [],
+              currentMonthId(),
+            ),
+          }
+        }
+
         return st as FinanceState & FinanceActions
       },
     },
@@ -1635,7 +1903,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
 export function exportState(): PersistedShape {
   const s = useFinanceStore.getState()
   return {
-    schema: 9,
+    schema: 10,
     months: s.months,
     accounts: s.accounts,
     installments: s.installments,

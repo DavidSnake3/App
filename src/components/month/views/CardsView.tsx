@@ -1,4 +1,4 @@
-import { ChevronRight, Layers, RefreshCw } from 'lucide-react'
+import { ArrowDownToLine, ChevronRight, RefreshCw, ShoppingCart } from 'lucide-react'
 import type { PayableItem } from '../../../types/finance'
 import { formatMoney } from '../../../lib/format'
 import { getUrgency, urgencyColor } from '../../../lib/dates'
@@ -42,7 +42,7 @@ export function CardsView({ items, monthId, onOpen }: Props) {
             <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: edge }} />
 
             <div className="flex items-center gap-3.5">
-              <PaidCheck item={it} monthId={monthId} />
+              <PaidCheck item={it} monthId={monthId} onShoppingTap={() => onOpen(it)} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span
@@ -52,6 +52,22 @@ export function CardsView({ items, monthId, onOpen }: Props) {
                     <ItemIcon icon={it.icon} name={it.name} kind={it.kind} size={12} />
                   </span>
                   <KindTag kind={it.kind} />
+                  {!it.paid && it.advanced > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[11.5px]" style={{ color: 'var(--c-income)' }}>
+                      <ArrowDownToLine size={11} /> Adelantado {formatMoney(it.advanced)}
+                    </span>
+                  )}
+                  {it.shopping && (
+                    <span
+                      className="inline-flex items-center gap-1 text-[11.5px]"
+                      style={{ color: it.shopping.done ? 'var(--c-income)' : 'var(--app-accent-soft)' }}
+                    >
+                      <ShoppingCart size={11} />
+                      {it.shopping.done
+                        ? 'Compra cerrada'
+                        : `${it.shopping.checkedCount}/${it.shopping.count} · llevo ${formatMoney(it.shopping.checkedTotal)}`}
+                    </span>
+                  )}
                   {it.recurrence !== 'once' && it.kind !== 'deuda' && (
                     <span className="inline-flex items-center gap-1 text-[10.5px] text-muted">
                       <RefreshCw size={10} /> {RECURRENCE_LABEL[it.recurrence]}
@@ -63,15 +79,15 @@ export function CardsView({ items, monthId, onOpen }: Props) {
                 </p>
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                   <DueBadge item={it} monthId={monthId} />
-                  {it.children.length > 0 && (
-                    <span className="inline-flex items-center gap-1 text-[11.5px] text-muted">
-                      <Layers size={11} /> {it.children.length} sub-ítems
-                    </span>
-                  )}
                 </div>
               </div>
               <div className="text-right shrink-0">
                 <p className="num text-[17px] font-bold text-ink">{formatMoney(it.amount)}</p>
+                {!it.paid && it.advanced > 0 && (
+                  <p className="num text-[11px] font-semibold" style={{ color: 'var(--c-warning)' }}>
+                    falta {formatMoney(it.remaining)}
+                  </p>
+                )}
                 <ChevronRight size={15} className="ml-auto mt-1 text-muted" />
               </div>
             </div>

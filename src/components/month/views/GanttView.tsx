@@ -57,7 +57,7 @@ export function GanttView({ items, monthId, onOpen }: Props) {
                   onKeyDown={(e) => { if (e.key === 'Enter') onOpen(it) }}
                   className="pressable w-[128px] shrink-0 flex items-center gap-2 min-w-0"
                 >
-                  <PaidCheck item={it} monthId={monthId} size={24} />
+                  <PaidCheck item={it} monthId={monthId} size={24} onShoppingTap={() => onOpen(it)} />
                   <span className={`text-[12px] font-medium text-ink truncate ${it.paid ? 'line-through opacity-60' : ''}`}>
                     {it.name}
                   </span>

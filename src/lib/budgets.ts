@@ -1,6 +1,7 @@
 // Presupuestos propios: un límite que el usuario define (ej. "Comida de la U")
 // y va anotando lo que gasta. Avisa cuando se acerca o se pasa del límite.
 import type { Budget, MonthData } from '../types/finance'
+import { remainingAmount } from './finance'
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100
@@ -56,9 +57,14 @@ export function budgetStatus(
   for (const h of month?.hormigas ?? []) {
     if (h.budgetId === b.id && h.dateISO >= from) spent += h.amount
   }
-  // pagos del mes asignados (solo los ya pagados cuentan como gasto real)
+  // pagos del mes asignados. Lo que ya generó movimiento se contó arriba: aquí
+  // solo entra lo que no lo hizo, para no cobrar el mismo colón dos veces.
   for (const e of month?.expenses ?? []) {
-    if (e.budgetId === b.id && e.paid) spent += e.amount
+    if (e.budgetId !== b.id) continue
+    for (const ad of e.advances ?? []) {
+      if (!ad.movementId && ad.dateISO >= from) spent += ad.amount
+    }
+    if (e.paid && !e.movementId) spent += remainingAmount(e)
   }
 
   spent = round2(spent)

@@ -204,8 +204,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
         period: dueDay <= 15 ? 'q1' : 'q2',
         kind: kindOf(d.kind),
         recurrence: recurrenceOf(d.recurrencia ?? d.recurrence),
-        children: [],
-      })
+          })
     },
   },
 

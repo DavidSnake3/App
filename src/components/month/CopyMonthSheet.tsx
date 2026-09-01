@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react'
 import { Check, CopyCheck, Repeat2 } from 'lucide-react'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { addMonthsToId, monthLabel } from '../../lib/dates'
-import { effectiveAmount } from '../../lib/finance'
 import { formatMoney } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
 import { BottomSheet } from '../ui/BottomSheet'
@@ -54,7 +53,7 @@ function CopyForm({ targetMonthId, onDone }: { targetMonthId: string; onDone: ()
 
   const total = disponibles
     .filter((e) => sel.includes(e.id))
-    .reduce((s, e) => s + effectiveAmount(e), 0)
+    .reduce((s, e) => s + e.amount, 0)
 
   const alternar = (id: string) =>
     setSel((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
@@ -127,7 +126,7 @@ function CopyForm({ targetMonthId, onDone }: { targetMonthId: string; onDone: ()
                     </span>
                   </span>
                   <span className="num text-[13px] font-semibold text-ink shrink-0">
-                    {formatMoney(effectiveAmount(e))}
+                    {formatMoney(e.amount)}
                   </span>
                 </button>
               )

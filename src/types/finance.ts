@@ -6,7 +6,7 @@ export type TabId = 'home' | 'money' | 'month' | 'reports' | 'settings'
 
 /** Submenú activo dentro de cada hub (navegación de 2 niveles) */
 export type MoneySub = 'cuentas' | 'movimientos' | 'tarjetas' | 'ahorros' | 'prestamos' | 'medebo'
-export type MonthSub = 'pagos' | 'deudas' | 'presupuestos' | 'plan'
+export type MonthSub = 'pagos' | 'deudas' | 'compras' | 'presupuestos' | 'plan'
 export type ReportsSub = 'ano' | 'categorias' | 'reporte'
 
 /** Vistas configurables para el mes (punto 10) */
@@ -28,12 +28,6 @@ export type ExpenseKind = 'gasto' | 'servicio' | 'personal'
 /** Quincena a la que pertenece el pago */
 export type Period = 'q1' | 'q2'
 
-/** Sub-hijos de un gasto, ej. "Diario" → tomate, arroz… (punto 3) */
-export interface SubItem {
-  id: string
-  name: string
-  amount: number
-}
 
 /** Preferencia de recordatorio por elemento (puntos 9 y 12) */
 export interface ReminderPref {
@@ -41,6 +35,52 @@ export interface ReminderPref {
   daysBefore: number[]  // ej. [3, 1, 0]
   time: string          // "09:00"
   alarm: boolean        // modo alarma intrusiva
+}
+
+/**
+ * ADELANTO de un pago del mes: plata que ya abonaste ANTES de marcarlo pagado.
+ * Ej. el recibo es de 30.000 y vence el 15, pero el 10 adelantás 15.000.
+ * Cada adelanto es plata real: siempre nace con su propio movimiento.
+ */
+export interface ExpenseAdvance {
+  id: string
+  /** siempre positivo */
+  amount: number
+  /** 'yyyy-MM-dd': define en qué mes cae el movimiento */
+  dateISO: string
+  /** cuenta de la que sale (si es tarjeta, sube su deuda) */
+  accountId?: string
+  /** movimiento que generó, para poder revertirlo */
+  movementId?: string
+  note?: string
+  createdAt: string
+}
+
+/** Un producto dentro de una lista de compras */
+export interface ShoppingProduct {
+  id: string
+  name: string
+  /** precio unitario */
+  price: number
+  qty: number
+  /** ya lo eché al carrito */
+  checked: boolean
+  checkedAt?: string
+  note?: string
+}
+
+/**
+ * Contenido de una lista de compras. El gasto que la contiene es el que sale
+ * en "Pagos del mes". Mientras `done` es false el gasto vale la suma de TODOS
+ * los productos (lo planeado); al cerrarla vale solo lo marcado, y ese es el
+ * monto del movimiento real.
+ */
+export interface ShoppingList {
+  items: ShoppingProduct[]
+  done: boolean
+  doneAt?: string
+  /** dónde se compra: Automercado, Palí… (informativo) */
+  store?: string
 }
 
 export interface Expense {
@@ -53,7 +93,10 @@ export interface Expense {
   period: Period
   kind: ExpenseKind      // 'servicio' = servicio obligatorio (punto 7)
   recurrence: Recurrence
-  children: SubItem[]    // sub-hijos (punto 3)
+  /** abonos parciales hechos antes de pagarlo del todo */
+  advances?: ExpenseAdvance[]
+  /** si el gasto es una lista de compras, aquí van sus productos */
+  shopping?: ShoppingList
   note?: string
   icon?: string          // ícono elegido por el usuario (punto: iconos)
   /** color propio del pago (si no, usa el de su tipo o su categoría) */
@@ -443,7 +486,6 @@ export interface PayableItem {
   period: Period
   kind: ExpenseKind | 'deuda'
   recurrence: Recurrence
-  children: SubItem[]
   icon?: string
   /** cuenta con la que se paga (tarjeta = se vuelve deuda) */
   accountId?: string
@@ -451,6 +493,20 @@ export interface PayableItem {
   color?: string
   /** pago fijo del que viene (sale en todos los meses) */
   templateId?: string
+  /** ya adelantado (abonos parciales); 0 en cuotas de deuda */
+  advanced: number
+  /** lo que falta por pagar; 0 si ya está pagado */
+  remaining: number
+  /** resumen en vivo si el pago es una lista de compras */
+  shopping?: {
+    count: number
+    checkedCount: number
+    /** suma de todos los productos (lo planeado) */
+    total: number
+    /** suma de lo marcado (lo que llevo) */
+    checkedTotal: number
+    done: boolean
+  }
   /** progreso de la deuda: cuota n de m */
   debtProgress?: { current: number; total: number; remaining: number }
 }

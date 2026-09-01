@@ -4,6 +4,7 @@ import type {
 } from '../types/finance'
 import { addMonthsToId, monthDiff, monthLabel, parseMonthId, todayISO } from './dates'
 import { extraPaysInMonth } from './payroll'
+import { resetShoppingForCopy, shoppingSummary, syncShoppingAmount } from './shopping'
 
 let _idCounter = 0
 export function uid(): string {
@@ -29,11 +30,6 @@ const RECURRENCE_EVERY: Record<Recurrence, number> = {
   bimonthly: 2, quarterly: 3, semiannual: 6, annual: 12,
 }
 
-/** Si un gasto tiene sub-hijos, su monto efectivo es la suma de ellos (punto 3) */
-export function effectiveAmount(e: Expense): number {
-  if (e.children.length > 0) return e.children.reduce((s, c) => s + c.amount, 0)
-  return e.amount
-}
 
 // ─── Deudas ──────────────────────────────────────────────────────────────────
 
@@ -69,25 +65,41 @@ export function debtIsSettled(d: Debt): boolean {
 // ─── Elementos del mes ───────────────────────────────────────────────────────
 
 /** Une gastos + cuotas de deuda del mes en una sola lista para las vistas */
+/** Lo que ya se adelantó de un pago */
+export function advancedAmount(e: Expense): number {
+  return (e.advances ?? []).reduce((s, a) => s + a.amount, 0)
+}
+
+/** Lo que falta por pagar de un gasto (nunca negativo) */
+export function remainingAmount(e: Expense): number {
+  return Math.max(0, e.amount - advancedAmount(e))
+}
+
 export function buildPayables(month: MonthData, debts: Debt[]): PayableItem[] {
-  const items: PayableItem[] = month.expenses.map((e) => ({
-    id: `e-${e.id}`,
-    source: 'expense',
-    refId: e.id,
-    name: e.name,
-    amount: effectiveAmount(e),
-    paid: e.paid,
-    paidAt: e.paidAt,
-    dueDay: e.dueDay,
-    period: e.period,
-    kind: e.kind,
-    recurrence: e.recurrence,
-    children: e.children,
-    icon: e.icon,
-    color: e.color,
-    templateId: e.templateId,
-    accountId: e.accountId,
-  }))
+  const items: PayableItem[] = month.expenses.map((e) => {
+    const advanced = advancedAmount(e)
+    return {
+      id: `e-${e.id}`,
+      source: 'expense',
+      refId: e.id,
+      name: e.name,
+      // el monto sigue siendo el TOTAL: lo adelantado viaja aparte
+      amount: e.amount,
+      advanced,
+      remaining: e.paid ? 0 : Math.max(0, e.amount - advanced),
+      paid: e.paid,
+      paidAt: e.paidAt,
+      dueDay: e.dueDay,
+      period: e.period,
+      kind: e.kind,
+      recurrence: e.recurrence,
+      icon: e.icon,
+      color: e.color,
+      templateId: e.templateId,
+      accountId: e.accountId,
+      shopping: e.shopping ? shoppingSummary(e.shopping) : undefined,
+    }
+  })
 
   for (const d of debts) {
     if (d.viaPlanilla) continue // se deduce de la planilla, no del mes
@@ -100,13 +112,14 @@ export function buildPayables(month: MonthData, debts: Debt[]): PayableItem[] {
       refId: d.id,
       name: d.name,
       amount: pay?.amount ?? d.monthlyPayment,
+      advanced: 0,
+      remaining: (pay?.paid ?? false) ? 0 : (pay?.amount ?? d.monthlyPayment),
       paid: pay?.paid ?? false,
       paidAt: pay?.paidAt,
       dueDay: d.dueDay,
       period: d.dueDay <= 15 ? 'q1' : 'q2',
       kind: 'deuda',
       recurrence: 'monthly',
-      children: [],
       icon: d.icon,
       color: d.color,
       accountId: pay?.accountId,
@@ -126,6 +139,8 @@ export interface MonthSummary {
   countTotal: number
   countPaid: number
   progress: number
+  /** lo abonado por adelantado de los pagos que aún no están pagados */
+  advancedTotal: number
   allPaid: boolean
   servicios: number
   gastos: number
@@ -137,7 +152,10 @@ export function getMonthSummary(month: MonthData, debts: Debt[]): MonthSummary {
   const items = buildPayables(month, debts)
   const totalIncome = month.income.salary + month.income.additional
   const totalExpenses = items.reduce((s, i) => s + i.amount, 0)
-  const paidAmount = items.filter((i) => i.paid).reduce((s, i) => s + i.amount, 0)
+  // lo pagado del mes: los ítems pagados por su total y, de los que faltan,
+  // lo que ya se adelantó. Así un adelanto sí baja el pendiente.
+  const paidAmount = items.reduce((s, i) => s + (i.paid ? i.amount : i.advanced), 0)
+  const advancedTotal = items.reduce((s, i) => s + (i.paid ? 0 : i.advanced), 0)
   const countTotal = items.length
   const countPaid = items.filter((i) => i.paid).length
   const sumKind = (k: string) => items.filter((i) => i.kind === k).reduce((s, i) => s + i.amount, 0)
@@ -146,6 +164,7 @@ export function getMonthSummary(month: MonthData, debts: Debt[]): MonthSummary {
     totalExpenses,
     paidAmount,
     pendingAmount: totalExpenses - paidAmount,
+    advancedTotal,
     savings: totalIncome - totalExpenses,
     countTotal,
     countPaid,
@@ -177,14 +196,21 @@ export function recurringCandidates(from: MonthData, targetMonthId: string): Exp
 
 /** Copia de un gasto para otro mes (nuevo id, sin pagar) */
 export function cloneExpenseForMonth(e: Expense): Expense {
-  return {
+  const copia: Expense = {
     ...e,
     id: uid(),
     paid: false,
     paidAt: undefined,
-    children: e.children.map((c) => ({ ...c, id: uid() })),
+    // los adelantos son plata que YA salió: no se copian a otro mes
+    advances: undefined,
+    // el movimiento pertenece al gasto original
+    movementId: undefined,
+    // copiar una lista es volver a tenerla, sin nada marcado
+    shopping: e.shopping ? resetShoppingForCopy(e.shopping, uid) : undefined,
     createdAt: todayISO(),
   }
+  // una lista cerrada valía lo comprado: al reabrirla vuelve a valer lo planeado
+  return syncShoppingAmount(copia)
 }
 
 /** Crea un mes VACÍO (las deudas siguen solas; los gastos se copian solo si el usuario acepta) */

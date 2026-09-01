@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays, ChartGantt, ChevronLeft, ChevronRight, CopyCheck, CreditCard, LayoutGrid,
-  List, PiggyBank, Plus, Receipt, Share2, Table2, Target, Trash2,
+  List, PiggyBank, Plus, Receipt, Share2, Table2, Target, Trash2, ShoppingCart,
 } from 'lucide-react'
 import type { Expense, ExpenseKind, MonthSub, PayableItem, ViewMode } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -29,6 +29,7 @@ import { ListView } from './views/ListView'
 import { TableView } from './views/TableView'
 import { MonthCalendarView } from './views/MonthCalendarView'
 import { GanttView } from './views/GanttView'
+import { ShoppingListsSection } from './ShoppingListsSection'
 
 const VIEW_OPTIONS: { value: ViewMode; label: React.ReactNode; ariaLabel: string }[] = [
   { value: 'cards', label: <LayoutGrid size={16} />, ariaLabel: 'Tarjetas' },
@@ -41,6 +42,7 @@ const VIEW_OPTIONS: { value: ViewMode; label: React.ReactNode; ariaLabel: string
 const TITULOS: Record<MonthSub, { title: string; subtitle: string }> = {
   pagos: { title: 'Pagos del mes', subtitle: 'Servicios, gastos, personales y cuotas' },
   deudas: { title: 'Deudas', subtitle: 'Tus cuotas y el camino a cero' },
+  compras: { title: 'Lista de compras', subtitle: 'Marcá lo que comprás y mirá el subtotal' },
   presupuestos: { title: 'Presupuestos', subtitle: 'Límites por categoría y avisos' },
   plan: { title: 'Mi plan del mes', subtitle: 'Balance, reparto y sobrante' },
 }
@@ -114,6 +116,9 @@ export function MonthView() {
 
   const pendientes = items.filter((i) => !i.paid).length
   const deudasActivas = debts.filter((d) => !d.viaPlanilla)
+  const listas = month.expenses.filter((e) => e.shopping)
+  const listasAbiertas = listas.filter((e) => !e.shopping!.done)
+  const comprasPendiente = listasAbiertas.reduce((t, e) => t + e.amount, 0)
   const subItems: HubItem<MonthSub>[] = [
     {
       id: 'pagos',
@@ -132,6 +137,17 @@ export function MonthView() {
       stat: deudasActivas.length ? formatMoney(Math.round(deudasActivas.reduce((t, d) => t + d.monthlyPayment, 0))) : 'Sin deudas',
       tone: 'danger',
       badge: deudasActivas.length || undefined,
+    },
+    {
+      id: 'compras',
+      title: 'Lista de compras',
+      desc: 'Marcá lo que comprás y su subtotal',
+      icon: <ShoppingCart size={19} />,
+      stat: listasAbiertas.length
+        ? formatMoney(Math.round(comprasPendiente))
+        : (listas.length ? 'Todo comprado' : 'Crear la primera'),
+      tone: 'accent',
+      badge: listasAbiertas.length || undefined,
     },
     {
       id: 'presupuestos',
@@ -232,6 +248,8 @@ export function MonthView() {
             <MovementsCard />
           </div>
         )}
+
+        {sub === 'compras' && <ShoppingListsSection monthId={monthId} />}
 
         {sub === 'deudas' && (
           <div className="flex flex-col gap-4 anim-page">

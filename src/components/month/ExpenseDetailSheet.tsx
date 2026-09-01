@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
-import { CalendarX2, Pencil, Plus, Repeat2, Trash2 } from 'lucide-react'
+import { CalendarX2, Pencil, Repeat2, Trash2 } from 'lucide-react'
 import type { PayableItem } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { formatMoney } from '../../lib/format'
 import { RECURRENCE_LABEL, debtPaidCount, debtRemaining } from '../../lib/finance'
 import { BottomSheet } from '../ui/BottomSheet'
-import { CurrencyInput } from '../ui/CurrencyInput'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { DueBadge, PaidCheck } from './ItemBits'
+import { AdvancesBlock } from './AdvancesBlock'
+import { ShoppingChecklist } from './ShoppingChecklist'
 
 interface Props {
   item: PayableItem | null
@@ -20,12 +21,8 @@ interface Props {
 export function ExpenseDetailSheet({ item, monthId, onClose, onEdit }: Props) {
   const month = useFinanceStore((s) => s.months[monthId])
   const debts = useFinanceStore((s) => s.debts)
-  const addSubItem = useFinanceStore((s) => s.addSubItem)
-  const deleteSubItem = useFinanceStore((s) => s.deleteSubItem)
   const deleteExpense = useFinanceStore((s) => s.deleteExpense)
 
-  const [subName, setSubName] = useState('')
-  const [subAmount, setSubAmount] = useState(0)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [comoQuitar, setComoQuitar] = useState(false)
 
@@ -34,21 +31,18 @@ export function ExpenseDetailSheet({ item, monthId, onClose, onEdit }: Props) {
     if (!item) return null
     if (item.source === 'expense') {
       const e = month?.expenses.find((x) => x.id === item.refId)
-      return e ? { ...item, templateId: e.templateId, children: e.children, paid: e.paid, amount: e.children.length ? e.children.reduce((s, c) => s + c.amount, 0) : e.amount } : item
+      return e ? { ...item, templateId: e.templateId, paid: e.paid, amount: e.amount } : item
     }
     return item
   }, [item, month])
 
   if (!item || !live) return null
 
-  const debt = item.source === 'debt' ? debts.find((d) => d.id === item.refId) : null
+  const gastoVivo = item.source === 'expense'
+    ? month?.expenses.find((x) => x.id === item.refId)
+    : undefined
 
-  const addSub = () => {
-    if (!subName.trim() || subAmount <= 0) return
-    addSubItem(monthId, item.refId, { name: subName.trim(), amount: subAmount })
-    setSubName('')
-    setSubAmount(0)
-  }
+  const debt = item.source === 'debt' ? debts.find((d) => d.id === item.refId) : null
 
   return (
     <BottomSheet open={!!item} onClose={onClose} title={live.name} subtitle={RECURRENCE_LABEL[live.recurrence]}>
@@ -95,54 +89,12 @@ export function ExpenseDetailSheet({ item, monthId, onClose, onEdit }: Props) {
           </div>
         )}
 
-        {item.source === 'expense' && (
+        {item.source === 'expense' && gastoVivo && (
           <>
-            {/* Sub-hijos (punto 3) */}
-            <div>
-              <p className="text-[13px] font-semibold text-muted mb-2">
-                Sub-ítems {live.children.length > 0 && `· ${live.children.length}`}
-              </p>
-              {live.children.length > 0 && (
-                <div className="card overflow-hidden divide-y divide-[var(--c-border)] mb-3">
-                  {live.children.map((c) => (
-                    <div key={c.id} className="flex items-center gap-2 px-3.5 py-2.5">
-                      <span className="flex-1 text-[14px] text-ink truncate">{c.name}</span>
-                      <span className="num text-[13.5px] font-semibold text-ink">{formatMoney(c.amount)}</span>
-                      <button
-                        onClick={() => deleteSubItem(monthId, item.refId, c.id)}
-                        aria-label={`Eliminar ${c.name}`}
-                        className="pressable w-8 h-8 flex items-center justify-center rounded-full text-muted"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <input
-                  className="input-base flex-1"
-                  placeholder="Ej. Tomate, arroz…"
-                  value={subName}
-                  onChange={(e) => setSubName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') addSub() }}
-                />
-                <CurrencyInput value={subAmount} onChange={setSubAmount} className="w-32" />
-                <button
-                  onClick={addSub}
-                  aria-label="Agregar sub-ítem"
-                  className="pressable w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-white"
-                  style={{ background: 'var(--app-accent)' }}
-                >
-                  <Plus size={19} />
-                </button>
-              </div>
-              {live.children.length > 0 && (
-                <p className="text-[11.5px] text-muted mt-2">
-                  El monto del gasto ahora es la suma de sus sub-ítems.
-                </p>
-              )}
-            </div>
+            {/* Una lista de compras trae su checklist; el resto, sus adelantos */}
+            {gastoVivo.shopping
+              ? <ShoppingChecklist monthId={monthId} expense={gastoVivo} />
+              : <AdvancesBlock monthId={monthId} expense={gastoVivo} />}
 
             <div className="flex gap-2.5">
               <button
