@@ -15,7 +15,7 @@ interface Props {
 export function ListView({ items, monthId, onOpen }: Props) {
   return (
     <div className="card overflow-hidden divide-y divide-[var(--c-border)]">
-      {items.map((it) => {
+      {items.map((it, i) => {
         const u = getUrgency(monthId, it.dueDay, it.paid)
         const tinte = itemColor(it)
         return (
@@ -25,8 +25,8 @@ export function ListView({ items, monthId, onOpen }: Props) {
             tabIndex={0}
             onClick={() => onOpen(it)}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(it) } }}
-            className="pressable w-full flex items-center gap-3 px-3.5 py-3 text-left bg-transparent"
-            style={{ opacity: it.paid ? 0.65 : 1 }}
+            className="pressable w-full flex items-center gap-3 px-3.5 py-3 text-left bg-transparent anim-rise"
+            style={{ opacity: it.paid ? 0.65 : 1, animationDelay: `${Math.min(i * 30, 240)}ms` }}
           >
             <PaidCheck item={it} monthId={monthId} size={32} onShoppingTap={() => onOpen(it)} />
             <span

@@ -154,7 +154,7 @@ export function MovementsSection() {
                 </p>
               </div>
               <div className="flex flex-col gap-2">
-                {movs.map((m) => {
+                {movs.map((m, i) => {
                   const cat = category(cats, m.categoryId)
                   const cuenta = accountById(accounts, m.accountId)
                   const destino = accountById(accounts, m.toAccountId)
@@ -168,8 +168,8 @@ export function MovementsSection() {
                     <button
                       key={m.id}
                       onClick={() => setSheet({ open: true, editing: m })}
-                      className="pressable tile px-3.5 py-3 flex items-center gap-3 text-left"
-                      style={{ background: 'var(--c-card)' }}
+                      className="pressable tile px-3.5 py-3 flex items-center gap-3 text-left anim-rise"
+                      style={{ background: 'var(--c-card)', animationDelay: `${Math.min(i * 28, 220)}ms` }}
                     >
                       <span
                         className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
