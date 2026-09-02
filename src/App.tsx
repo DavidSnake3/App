@@ -77,6 +77,9 @@ function App() {
   // Dirección de la transición entre pestañas (para el deslizamiento)
   const prevTab = useRef(activeTab)
   const [tabAnim, setTabAnim] = useState('anim-page')
+  // estilo de transición elegido en Ajustes (y "ninguna" si las apagó)
+  const anims = useFinanceStore((s) => s.settings.animations)
+  const transicion = anims.transitions ? (anims.transitionStyle ?? 'deslizar') : 'ninguna'
   useEffect(() => {
     if (prevTab.current !== activeTab) {
       const from = TAB_ORDER.indexOf(prevTab.current)
@@ -189,7 +192,7 @@ function App() {
       <div className="h-full flex flex-col overflow-hidden">
         <main
           key={activeTab}
-          className={`flex-1 flex flex-col min-h-0 relative ${tabAnim}`}
+          className={`flex-1 flex flex-col min-h-0 relative tr-${transicion} ${tabAnim}`}
           style={{ paddingTop: 'env(safe-area-inset-top)' }}
           onTouchStart={swipe.onTouchStart}
           onTouchMove={swipe.onTouchMove}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarDays, ChartGantt, ChevronLeft, ChevronRight, CopyCheck, CreditCard, LayoutGrid,
   List, PiggyBank, Plus, Receipt, Table2, Target, Trash2, ShoppingCart,
@@ -86,17 +86,24 @@ export function MonthView() {
     [month, debts],
   )
 
-  // Felicitación al completar todos los pagos (punto 22)
+  /**
+   * Felicitación al completar TODOS los pagos del mes.
+   *
+   * La celebración se dispara de una, sin temporizador: `markCelebrated` cambia
+   * el mes, el efecto se vuelve a ejecutar y su limpieza cancelaba el confeti
+   * antes de que saliera. La ref evita repetirlo aunque el efecto corra otra vez.
+   */
+  const yaCelebrado = useRef<string | null>(null)
   useEffect(() => {
     if (!month || !summary) return
     if (!summary.allPaid || month.celebrated) return
+    if (yaCelebrado.current === monthId) return
+    yaCelebrado.current = monthId
+    celebrate(animPrefs)
+    setShowCongrats(true)
     markCelebrated(monthId)
-    const show = setTimeout(() => {
-      celebrate(animPrefs)
-      setShowCongrats(true)
-    }, 60)
-    const hide = setTimeout(() => setShowCongrats(false), 3600)
-    return () => { clearTimeout(show); clearTimeout(hide) }
+    const hide = setTimeout(() => setShowCongrats(false), 4200)
+    return () => clearTimeout(hide)
   }, [summary, month, monthId, markCelebrated, animPrefs])
 
   if (!month || !summary) return null

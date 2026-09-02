@@ -74,32 +74,67 @@ export function payBurst(el: HTMLElement | null, prefs: AnimationPrefs) {
   }
 }
 
-/** Celebración al completar todos los pagos del mes (punto 22) */
+/**
+ * Celebración al completar TODOS los pagos del mes.
+ *
+ * Tres intensidades: suave (un toque), normal y fiesta (cañonazo inicial,
+ * chorros laterales más largos y lluvia de billetes). Se elige en Ajustes.
+ */
 export function celebrate(prefs: AnimationPrefs) {
   if (prefs.sounds) playSuccess()
   vibrate([60, 40, 60, 40, 120], prefs)
   if (reduced() || !prefs.celebration) return
 
-  const end = Date.now() + 1600
+  const nivel = prefs.celebrationLevel ?? 'normal'
   const colors = [accent(), '#2dd4a0', '#ffd166', '#ff7ab8', '#ffffff']
+  const dur = nivel === 'suave' ? 900 : nivel === 'fiesta' ? 3200 : 1600
+  const porLado = nivel === 'suave' ? 3 : nivel === 'fiesta' ? 9 : 5
 
+  // cañonazo de bienvenida: el golpe que hace que se sienta un logro
+  if (nivel !== 'suave') {
+    void confetti({
+      particleCount: nivel === 'fiesta' ? 160 : 90,
+      spread: nivel === 'fiesta' ? 110 : 80,
+      startVelocity: 55, origin: { x: 0.5, y: 0.62 },
+      colors, disableForReducedMotion: true,
+    })
+  }
+
+  const end = Date.now() + dur
   const frame = () => {
     void confetti({
-      particleCount: 5, angle: 60, spread: 60, startVelocity: 45,
+      particleCount: porLado, angle: 60, spread: 60, startVelocity: 45,
       origin: { x: 0, y: 0.75 }, colors, disableForReducedMotion: true,
     })
     void confetti({
-      particleCount: 5, angle: 120, spread: 60, startVelocity: 45,
+      particleCount: porLado, angle: 120, spread: 60, startVelocity: 45,
       origin: { x: 1, y: 0.75 }, colors, disableForReducedMotion: true,
     })
     if (prefs.cash) {
       void confetti({
-        particleCount: 2, spread: 90, startVelocity: 32, gravity: 0.8,
-        scalar: 1.2, shapes: [BILL], origin: { x: Math.random(), y: -0.05 },
+        particleCount: nivel === 'fiesta' ? 4 : 2, spread: 90, startVelocity: 32,
+        gravity: 0.8, scalar: 1.2, shapes: [BILL],
+        origin: { x: Math.random(), y: -0.05 },
         colors: ['#2dd4a0', '#1baf7a'], disableForReducedMotion: true,
       })
     }
     if (Date.now() < end) requestAnimationFrame(frame)
   }
   frame()
+
+  // estrellas doradas al final, para cerrar bonito
+  if (nivel === 'fiesta') {
+    setTimeout(() => {
+      void confetti({
+        particleCount: 70, spread: 130, startVelocity: 30, scalar: 1.3,
+        shapes: [COIN], origin: { x: 0.5, y: 0.5 },
+        colors: ['#ffd166', '#ffb703', '#ffffff'], disableForReducedMotion: true,
+      })
+    }, 900)
+  }
+}
+
+/** Muestra la celebración tal como quedará configurada (para probarla en Ajustes) */
+export function previewCelebration(prefs: AnimationPrefs) {
+  celebrate(prefs)
 }

@@ -583,3 +583,51 @@ input, select, textarea, button { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .tour-hueco { transition: none; animation: none; }
 }
+
+/* ─── Estilos de transición entre pestañas (se eligen en Ajustes) ─────────
+   Cada estilo define cómo entra la pantalla al cambiar de pestaña. El sentido
+   (izquierda/derecha) lo pone App.tsx según hacia dónde va el usuario. */
+
+/* Deslizar (el de siempre) */
+.tr-deslizar.anim-tab-left  { animation: slideFromRight 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.tr-deslizar.anim-tab-right { animation: slideFromLeft  0.26s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.tr-deslizar.anim-page      { animation: fadeSlideIn    0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+/* Desvanecer: sobrio, sin movimiento lateral */
+@keyframes trFade { from { opacity: 0 } to { opacity: 1 } }
+.tr-desvanecer.anim-tab-left,
+.tr-desvanecer.anim-tab-right,
+.tr-desvanecer.anim-page { animation: trFade 0.22s ease both; }
+
+/* Zoom: la pantalla entra creciendo desde el centro */
+@keyframes trZoomIn { from { opacity: 0; transform: scale(0.94) } to { opacity: 1; transform: scale(1) } }
+.tr-zoom.anim-tab-left,
+.tr-zoom.anim-tab-right,
+.tr-zoom.anim-page { animation: trZoomIn 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+/* Subir: entra desde abajo, como una carta que se levanta */
+@keyframes trUp { from { opacity: 0; transform: translateY(22px) } to { opacity: 1; transform: translateY(0) } }
+.tr-subir.anim-tab-left,
+.tr-subir.anim-tab-right,
+.tr-subir.anim-page { animation: trUp 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+/* Voltear: un giro corto en 3D, el más llamativo */
+@keyframes trFlipL { from { opacity: 0; transform: perspective(900px) rotateY(14deg) translateX(26px) } to { opacity: 1; transform: perspective(900px) rotateY(0) translateX(0) } }
+@keyframes trFlipR { from { opacity: 0; transform: perspective(900px) rotateY(-14deg) translateX(-26px) } to { opacity: 1; transform: perspective(900px) rotateY(0) translateX(0) } }
+.tr-voltear.anim-tab-left  { animation: trFlipL 0.34s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.tr-voltear.anim-tab-right { animation: trFlipR 0.34s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.tr-voltear.anim-page      { animation: trFlipL 0.34s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+/* Sin transición: cambia de una */
+.tr-ninguna.anim-tab-left,
+.tr-ninguna.anim-tab-right,
+.tr-ninguna.anim-page { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tr-deslizar.anim-tab-left, .tr-deslizar.anim-tab-right, .tr-deslizar.anim-page,
+  .tr-zoom.anim-tab-left, .tr-zoom.anim-tab-right, .tr-zoom.anim-page,
+  .tr-subir.anim-tab-left, .tr-subir.anim-tab-right, .tr-subir.anim-page,
+  .tr-voltear.anim-tab-left, .tr-voltear.anim-tab-right, .tr-voltear.anim-page {
+    animation: trFade 0.2s ease both;
+  }
+}

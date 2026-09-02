@@ -7,7 +7,8 @@ import {
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
 import type {
-  AlarmSoundId, Debt, PayPeriod, PayrollDeduction, PaySoundId, PendingAlarm, WorkerType,
+  AlarmSoundId, Debt, PayPeriod, PayrollDeduction, PaySoundId, PendingAlarm,
+  TransitionStyle, WorkerType,
 } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { useChat } from '../../store/useChat'
@@ -42,6 +43,21 @@ import { SnakeSection } from './SnakeSection'
 import { DeductionSheet } from './DeductionSheet'
 import { CategoriesSection } from './CategoriesSection'
 import { ExtraPaysEditor, LegalNotice, StatutoryEditor, TaxEditor } from './PayrollEditors'
+
+const TRANSITION_STYLES: { id: TransitionStyle; label: string }[] = [
+  { id: 'deslizar', label: 'Deslizar' },
+  { id: 'desvanecer', label: 'Desvanecer' },
+  { id: 'zoom', label: 'Zoom' },
+  { id: 'subir', label: 'Subir' },
+  { id: 'voltear', label: 'Voltear' },
+  { id: 'ninguna', label: 'Sin transición' },
+]
+
+const CELEBRATION_LEVELS: { id: 'suave' | 'normal' | 'fiesta'; label: string }[] = [
+  { id: 'suave', label: 'Discreta' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'fiesta', label: 'Fiesta' },
+]
 
 const ACCENT_CHOICES = ['#7c5cff', '#10b981', '#0ea5e9', '#f43f5e', '#d97706', '#ec4899', '#14b8a6', '#8b5cf6']
 
@@ -174,7 +190,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNFinance v3.6.0</p>
+  return <p className="text-[11px] text-muted text-center">SNFinance v3.7.0</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -841,9 +857,43 @@ export function AnimacionesSection() {
         <RowToggle title="Transiciones" desc="Animaciones al cambiar de pantalla">
           <Toggle checked={a.transitions} onChange={(v) => setAnimations({ transitions: v })} label="Transiciones" />
         </RowToggle>
+        {a.transitions && (
+          <div>
+            <p className="text-[12px] text-muted mb-1.5">
+              Cómo entra cada pantalla (toca una y cambiá de pestaña para verla):
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {TRANSITION_STYLES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setAnimations({ transitionStyle: t.id })}
+                  className={`pressable chip ${(a.transitionStyle ?? 'deslizar') === t.id ? 'chip-active' : ''}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <RowToggle title="Celebración de mes" desc="Festejo al completar todos los pagos">
           <Toggle checked={a.celebration} onChange={(v) => setAnimations({ celebration: v })} label="Celebración" />
         </RowToggle>
+        {a.celebration && (
+          <div>
+            <p className="text-[12px] text-muted mb-1.5">¿Qué tan grande la fiesta?</p>
+            <div className="flex gap-1.5">
+              {CELEBRATION_LEVELS.map((n) => (
+                <button
+                  key={n.id}
+                  onClick={() => { setAnimations({ celebrationLevel: n.id }); celebrate({ ...a, celebrationLevel: n.id }) }}
+                  className={`pressable chip flex-1 justify-center ${(a.celebrationLevel ?? 'normal') === n.id ? 'chip-active' : ''}`}
+                >
+                  {n.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <RowToggle title="Vibración" desc="Respuesta háptica en acciones">
           <Toggle checked={a.haptics} onChange={(v) => setAnimations({ haptics: v })} label="Vibración" />
         </RowToggle>
@@ -1104,7 +1154,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNFinance v3.6.0 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNFinance v3.7.0 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

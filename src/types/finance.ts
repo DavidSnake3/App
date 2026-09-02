@@ -622,6 +622,10 @@ export type PaySoundId = 'ding' | 'caja' | 'monedas'
 export type AlarmSoundId = 'clasica' | 'digital' | 'suave'
 
 /** Qué animaciones prefiere el usuario (punto 25) */
+/** Cómo entra cada pantalla al cambiar de pestaña */
+export type TransitionStyle =
+  | 'deslizar' | 'desvanecer' | 'zoom' | 'subir' | 'voltear' | 'ninguna'
+
 export interface AnimationPrefs {
   confetti: boolean
   cash: boolean
@@ -631,6 +635,10 @@ export interface AnimationPrefs {
   celebration: boolean
   paySound: PaySoundId
   alarmSound: AlarmSoundId
+  /** estilo de la transición entre pestañas */
+  transitionStyle?: TransitionStyle
+  /** cuánto confeti: discreto, normal o fiesta */
+  celebrationLevel?: 'suave' | 'normal' | 'fiesta'
 }
 
 // ─── Planilla / comprobante salarial ─────────────────────────────────────────

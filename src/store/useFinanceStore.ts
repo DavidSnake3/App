@@ -68,6 +68,8 @@ export const DEFAULT_ANIMATIONS: AnimationPrefs = {
   celebration: true,
   paySound: 'caja',
   alarmSound: 'clasica',
+  transitionStyle: 'deslizar',
+  celebrationLevel: 'normal',
 }
 
 const CR = countryPreset('cr')!
