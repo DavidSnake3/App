@@ -17,6 +17,7 @@ import {
   accountBalance, activeAccounts, cardStatement, installmentIsDone, installmentPaidCount,
   installmentRemaining, isCredit, monthMovements, movementsExpense, movementsIncome, totalCash,
 } from './accounts'
+import { mapaParaPrompt } from './appMap'
 
 export interface ChatMsg {
   id: string
@@ -48,8 +49,9 @@ Personalidad: cercano, claro, breve y motivador. SIEMPRE en español. Sin emojis
 Formato: párrafos cortos; usa **negritas** para montos/nombres y listas con "- " cuando ayuden.
 
 CONOCES LA APP COMPLETA (guía para el usuario):
-- Pestañas (5, con submenús): Inicio (widgets personalizables: mantener presionado ~1s para editar tamaño S/M/L, mover, quitar o agregar) · DINERO (submenús: Cuentas, Movimientos, Tarjetas, Ahorros, Presté) · MES (submenús: Pagos, Deudas, Presupuestos, Mi plan) · REPORTES (submenús: El año, Categorías, Reporte) · Ajustes. Se puede deslizar entre pestañas y los submenús son las píldoras de arriba.
-- Mes: pagos del mes en 5 vistas (tarjetas, lista, tabla, calendario, gantt). Botón + para agregar gasto/servicio/personal con ícono, recurrencia y recordatorio. Los pagos se ponen rojos al acercarse su fecha límite. Al entrar a un mes nuevo la app PREGUNTA si copiar los recurrentes (nunca copia sola); las deudas siguen solas. El salario NO se edita aquí: viene de Ajustes → Ingresos y planilla (los "Adicionales" del mes sí se editan en línea). Botón "Compartir" para generar una imagen-resumen del mes.
+- Pestañas (5, cada una con un menú de cuadros): Inicio (widgets personalizables: mantener presionado ~1s para editar tamaño S/M/L, mover, quitar o agregar) · DINERO (Cuentas, Movimientos, Tarjetas, Ahorros, Le presté, Me prestaron) · MES (Pagos, Deudas, Lista de compras, Presupuestos, Mi plan) · REPORTES (El año, Categorías, Reporte) · AJUSTES (Cuenta y perfil, Ingresos y planilla, Categorías, Snake y planes, Tema, Animaciones y sonidos, Notificaciones, Datos y respaldo, Ayuda). Tocar una pestaña lleva siempre a su menú de cuadros; el atrás del celular cierra lo abierto, sale del submenú y vuelve a Inicio. El detalle de cada módulo está en el MAPA DE LA APP de abajo: úsalo para decir dónde está cada cosa.
+- Mes: pagos del mes en 5 vistas (tarjetas, lista, tabla, calendario, gantt). Botón + para agregar gasto/servicio/personal con categoría, ícono, color, recurrencia y recordatorio. Los pagos se ponen rojos al acercarse su fecha límite. Un pago marcado como RECURRENTE aparece solo en TODOS los meses de ahí en adelante (al quitarlo se pregunta: solo este mes o dejar de repetirlo). Marcar un pago como PAGADO crea su movimiento y sale de la cuenta asignada. ADELANTOS: a un pago se le puede abonar una parte antes (ej. 15 000 de un recibo de 30 000): sale plata real con su movimiento y al marcarlo pagado solo se cobra lo que falta. "Copiar de otro mes" trae pagos de un mes anterior. El salario NO se edita aquí: viene de Ajustes → Ingresos y planilla.
+- LISTA DE COMPRAS (Mes → Lista de compras): listas con título, tienda, productos con precio y cantidad, y checklist para ir marcando en el súper. Muestra el subtotal en vivo contra lo planeado. La lista aparece también en Pagos del mes; NO mueve plata hasta que se FINALIZA, y entonces sale de la cuenta SOLO lo marcado. Se puede reabrir, editar y eliminar. Snake puede crear una lista con varios productos de una vez (por ejemplo, a partir de una factura o de compras anteriores).
 - CUENTAS (Dinero → Cuentas): el usuario registra sus cuentas contables: efectivo, cuenta corriente, cuenta de ahorros, inversión y TARJETAS DE CRÉDITO. La suma de las cuentas que no son de crédito es su EFECTIVO REAL (lo que de verdad tiene hoy). Cada cuenta tiene su saldo, se puede marcar como principal (ahí cae el salario y de ahí salen los pagos sin cuenta asignada) y se puede excluir del total.
 - TARJETAS DE CRÉDITO (Dinero → Tarjetas): cada tarjeta tiene límite, día de CORTE, día de PAGO e interés (anual o mensual).
   La app calcula y explica: PAGO DE CONTADO (todo el saldo del corte; es el único que evita intereses), PAGO MÍNIMO y su desglose, mora y cargos.
@@ -63,7 +65,8 @@ CONOCES LA APP COMPLETA (guía para el usuario):
 - EFECTIVO REAL: sale de las cuentas. El salario suma al llegar y se restan los pagos, los movimientos en efectivo y los aportes al ahorro. El sobrante del mes se arrastra solo al siguiente (NO es ahorro, es lo que sobró). El ahorro va aparte.
 - REPORTES → Categorías: dashboard de movimientos por tipo con rango mensual, anual o a la medida (fecha inicio y fecha fin), con dona por categoría, detalle, totales por cuenta y barras mes a mes.
 - Deudas (Mes → Deudas): cada deuda tiene estado de cuenta estilo recibo (saldo anterior, aporte capital/intereses, nuevo saldo, cuotas pagadas/pendientes, próximo pago, monto al día), historial de abonos y registro de abono con desglose. Una deuda puede pagarse "por planilla" (se deduce del salario y no aparece en el mes). Arriba hay una gráfica "camino a cero deudas" con la fecha en que quedará libre.
-- PRÉSTAMOS PROPIOS (Dinero → "Presté"): plata que el usuario le prestó a alguien, con cuánto le prestó, desde cuándo y los abonos recibidos. Lo prestado sale de su saldo real y cada abono vuelve.
+- PRÉSTAMOS INFORMALES en dos direcciones. "LE PRESTÉ" (Dinero → Le presté): plata que el usuario le prestó a alguien, con cuánto, desde cuándo, préstamos adicionales a la misma persona y los abonos recibidos; lo prestado sale de la cuenta y cada abono vuelve. "ME PRESTARON" (Dinero → Me prestaron): plata que alguien le prestó al usuario, sin fecha ni papeles; entra a la cuenta al recibirla y cada abono que él hace sale de ella. Todo deja su movimiento.
+- CATEGORÍAS (Ajustes → Categorías): cada categoría tiene ícono y color; el usuario puede crear las suyas y cambiar el color de las de la app. Cuentas y pagos también tienen color propio, y las cuentas tienen un estilo visual (tarjeta azul, negra, oro…, efectivo, monedero, banco, cripto).
 - PRESUPUESTOS (Mes → Presupuestos): límites por categoría (ej. "Comida de la U: 30 000 al mes"), con avisos al llegar al 80% y al pasarse.
 - PLAN FINANCIERO (Mes → Mi plan): reglas 50/30/20, 40/30/20/10, 60/20/20, 70/20/10 y 80/20. La app compara el reparto real del mes contra la regla elegida.
 - Ahorro por SOBRES: el usuario crea varios ahorros (ej. Emergencias, Viaje), cada uno con su meta, con el dinero que ya tenía guardado y con aportes/retiros con fecha. El progreso usa el dinero real del sobre. Hay meta sugerida de FONDO DE EMERGENCIA = 3 meses de gastos promedio.
@@ -239,7 +242,29 @@ function chatKey(uid: string | null): string {
   return `snb-chat-${uid ?? 'local'}`
 }
 
+/**
+ * Marca de "la app sigue viva". sessionStorage sobrevive a minimizar la app y
+ * volver (pause/resume del WebView), pero se pierde cuando el sistema la mata
+ * o el usuario la cierra del todo. Así el chat se conserva mientras la app
+ * esté abierta y arranca de cero en cada arranque en frío, sin acumular caché.
+ */
+const SESION_KEY = 'snb-chat-sesion'
+
+function sesionViva(): boolean {
+  try { return sessionStorage.getItem(SESION_KEY) === '1' } catch { return true }
+}
+
+function marcarSesion() {
+  try { sessionStorage.setItem(SESION_KEY, '1') } catch { /* nada */ }
+}
+
 export function loadChat(uid: string | null): ChatMsg[] {
+  // arranque en frío: la conversación anterior se descarta
+  if (!sesionViva()) {
+    clearChat(uid)
+    marcarSesion()
+    return []
+  }
   try {
     return JSON.parse(localStorage.getItem(chatKey(uid)) ?? '[]') as ChatMsg[]
   } catch {
@@ -287,6 +312,32 @@ function parseAction(text: string): { clean: string; action?: ChatAction } {
   return { clean }
 }
 
+/**
+ * Snake recuerda TODA la conversación de la sesión, no solo los últimos
+ * mensajes: los recientes van completos (según el plan) y los anteriores se
+ * condensan en un resumen hecho aquí mismo, sin gastar IA. Así, si la persona
+ * cambia de tema y vuelve, el hilo no se pierde.
+ */
+function recortarHistorial(history: ChatMsg[], recientes: number): GeminiTurn[] {
+  const completos = history.slice(-recientes)
+  const viejos = history.slice(0, Math.max(0, history.length - recientes))
+  const turnos: GeminiTurn[] = []
+  if (viejos.length) {
+    const lineas = viejos
+      .filter((m) => m.text)
+      .map((m) => `${m.role === 'user' ? 'Usuario' : 'Snake'}: ${m.text.replace(/\s+/g, ' ').slice(0, 160)}`)
+      .slice(-30)
+    turnos.push(
+      { role: 'user', parts: [{ text: `RESUMEN DE LO QUE YA HABLAMOS EN ESTA SESIÓN (antes de los mensajes siguientes):\n${lineas.join('\n')}` }] },
+      { role: 'model', parts: [{ text: 'Perfecto, tengo presente todo lo anterior.' }] },
+    )
+  }
+  for (const m of completos) {
+    turnos.push({ role: m.role, parts: [{ text: m.text || '(adjunto)' }] })
+  }
+  return turnos
+}
+
 export async function sendToFin(
   history: ChatMsg[],
   userText: string,
@@ -297,10 +348,7 @@ export async function sendToFin(
     // contexto fresco en cada envío (los datos cambian)
     { role: 'user', parts: [{ text: `DATOS DEL USUARIO (actualizados ahora):\n${buildUserContext()}` }] },
     { role: 'model', parts: [{ text: 'Entendido, tengo los datos del usuario listos.' }] },
-    ...history.slice(-limits.context).map((m): GeminiTurn => ({
-      role: m.role,
-      parts: [{ text: m.text || '(adjunto)' }],
-    })),
+    ...recortarHistorial(history, limits.context),
     {
       role: 'user',
       parts: [
@@ -311,7 +359,8 @@ export async function sendToFin(
   ]
 
   const raw = await geminiChat(turns, {
-    system: APP_KNOWLEDGE,
+    // el mapa de la app sale de appMap.ts: si la app cambia, Snake se entera solo
+    system: `${APP_KNOWLEDGE}\n\nMAPA DE LA APP (dónde está cada cosa; usa la ruta "Pestaña › Módulo" al indicar dónde ir):\n${mapaParaPrompt()}`,
     temperature: 0.6,
     maxTokens: limits.maxTokens,
     model: limits.model,
