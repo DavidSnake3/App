@@ -93,7 +93,7 @@ export function ExpenseDetailSheet({ item, monthId, onClose, onEdit }: Props) {
           <>
             {/* Una lista de compras trae su checklist; el resto, sus adelantos */}
             {gastoVivo.shopping
-              ? <ShoppingChecklist monthId={monthId} expense={gastoVivo} />
+              ? <ShoppingChecklist monthId={monthId} expense={gastoVivo} onDeleted={onClose} />
               : <AdvancesBlock monthId={monthId} expense={gastoVivo} />}
 
             <div className="flex gap-2.5">

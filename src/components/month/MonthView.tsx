@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays, ChartGantt, ChevronLeft, ChevronRight, CopyCheck, CreditCard, LayoutGrid,
-  List, PiggyBank, Plus, Receipt, Share2, Table2, Target, Trash2, ShoppingCart,
+  List, PiggyBank, Plus, Receipt, Table2, Target, Trash2, ShoppingCart,
 } from 'lucide-react'
 import type { Expense, ExpenseKind, MonthSub, PayableItem, ViewMode } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -14,13 +14,9 @@ import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddExpenseSheet } from './AddExpenseSheet'
 import { CopyMonthSheet } from './CopyMonthSheet'
 import { ExpenseDetailSheet } from './ExpenseDetailSheet'
-import { MovementsCard } from './FundCards'
 import { BalanceCard } from './BalanceCard'
 import { PlanCard } from './PlanCard'
 import { BudgetsCard } from './BudgetsCard'
-import { buildMonthCardBlob } from '../../lib/shareCard'
-import { downloadWorkbook } from '../../lib/excel'
-import { withLoading } from '../../store/useLoading'
 import { HubHeader, HubMenu, HubTitle, type HubItem } from '../layout/HubMenu'
 import { Fab } from '../ui/Fab'
 import { DebtsView } from '../debts/DebtsView'
@@ -201,16 +197,6 @@ export function MonthView() {
                   </button>
                 )}
               <button
-                onClick={() => void withLoading('Generando tu resumen…', async () => {
-                  const s = useFinanceStore.getState()
-                  const blob = await buildMonthCardBlob(month, debts, s.settings, s.months, s.profile.name)
-                  await downloadWorkbook(blob, `Resumen-${monthId}.png`)
-                }).catch(() => {})}
-                className="pressable text-[11px] text-muted inline-flex items-center gap-1"
-              >
-                <Share2 size={11} /> Compartir
-              </button>
-              <button
                 onClick={() => setCopyOpen(true)}
                 className="pressable text-[11px] inline-flex items-center gap-1"
                 style={{ color: 'var(--app-accent-soft)' }}
@@ -245,7 +231,6 @@ export function MonthView() {
         {sub === 'presupuestos' && (
           <div className="flex flex-col gap-4 anim-page">
             <BudgetsCard />
-            <MovementsCard />
           </div>
         )}
 

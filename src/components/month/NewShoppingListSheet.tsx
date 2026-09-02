@@ -1,6 +1,8 @@
-// Crear una lista de compras: título, dónde se compra y con qué cuenta se pagará.
+// Crear o editar una lista de compras: título, dónde se compra, con qué cuenta
+// se pagará y su color. Los productos se manejan dentro de la lista.
 import { useState } from 'react'
-import { ShoppingCart } from 'lucide-react'
+import { Save, ShoppingCart } from 'lucide-react'
+import type { Expense } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { activeAccounts, isCredit } from '../../lib/accounts'
 import { accountColor } from '../../lib/itemColors'
@@ -11,43 +13,77 @@ import { ColorPicker } from '../ui/ColorPicker'
 interface Props {
   open: boolean
   monthId: string
+  /** si viene, la hoja edita esa lista en vez de crear una nueva */
+  editing?: Expense | null
   onClose: () => void
   onCreated: (expenseId: string) => void
 }
 
-export function NewShoppingListSheet({ open, monthId, onClose, onCreated }: Props) {
+export function NewShoppingListSheet({ open, monthId, editing, onClose, onCreated }: Props) {
   return (
     <BottomSheet
       open={open}
       onClose={onClose}
-      title="Nueva lista de compras"
-      subtitle="Armala antes de ir, y marcá en el súper"
+      title={editing ? 'Editar lista' : 'Nueva lista de compras'}
+      subtitle={editing ? 'Cambiá el nombre, la tienda o la cuenta' : 'Armala antes de ir, y marcá en el súper'}
     >
-      {open && <Form key={monthId} monthId={monthId} onCreated={onCreated} />}
+      {open && (
+        <Form
+          key={editing?.id ?? monthId}
+          monthId={monthId}
+          editing={editing ?? null}
+          onCreated={onCreated}
+          onClose={onClose}
+        />
+      )}
     </BottomSheet>
   )
 }
 
-function Form({ monthId, onCreated }: { monthId: string; onCreated: (id: string) => void }) {
+function Form({ monthId, editing, onCreated, onClose }: {
+  monthId: string
+  editing: Expense | null
+  onCreated: (id: string) => void
+  onClose: () => void
+}) {
   const accounts = useFinanceStore((s) => s.accounts)
   const createShoppingList = useFinanceStore((s) => s.createShoppingList)
+  const updateExpense = useFinanceStore((s) => s.updateExpense)
   const cuentas = activeAccounts(accounts)
 
-  const [name, setName] = useState('')
-  const [store, setStore] = useState('')
-  const [dueDay, setDueDay] = useState<number | ''>('')
-  const [accountId, setAccountId] = useState('')
-  const [color, setColor] = useState('')
+  const [name, setName] = useState(editing?.name ?? '')
+  const [store, setStore] = useState(editing?.shopping?.store ?? '')
+  const [dueDay, setDueDay] = useState<number | ''>(editing?.dueDay ?? '')
+  const [accountId, setAccountId] = useState(editing?.accountId ?? '')
+  const [color, setColor] = useState(editing?.color ?? '')
   const [error, setError] = useState('')
 
   const cuentaElegida = cuentas.find((a) => a.id === accountId)
+  const cerrada = Boolean(editing?.shopping?.done)
 
-  const crear = () => {
-    if (!name.trim()) { setError('Ponle un nombre a la lista.') ; return }
+  const guardar = () => {
+    if (!name.trim()) { setError('Ponle un nombre a la lista.'); return }
+    const day = dueDay === '' ? undefined : Math.max(1, Math.min(31, Number(dueDay)))
+
+    if (editing) {
+      updateExpense(monthId, editing.id, {
+        name: name.trim(),
+        dueDay: day,
+        period: day && day <= 15 ? 'q1' : 'q2',
+        accountId: accountId || undefined,
+        color: color || undefined,
+        shopping: editing.shopping
+          ? { ...editing.shopping, store: store.trim() || undefined }
+          : editing.shopping,
+      })
+      onClose()
+      return
+    }
+
     const id = createShoppingList(monthId, {
       name: name.trim(),
       store: store.trim() || undefined,
-      dueDay: dueDay === '' ? undefined : Math.max(1, Math.min(31, Number(dueDay))),
+      dueDay: day,
       accountId: accountId || undefined,
       color: color || undefined,
       icon: 'super',
@@ -64,7 +100,7 @@ function Form({ monthId, onCreated }: { monthId: string; onCreated: (id: string)
           placeholder="Ej. Diario de la quincena"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          autoFocus
+          autoFocus={!editing}
         />
       </div>
 
@@ -94,19 +130,23 @@ function Form({ monthId, onCreated }: { monthId: string; onCreated: (id: string)
 
       {cuentas.length > 0 && (
         <div>
-          <label className="text-[12px] font-semibold text-muted">¿Con qué cuenta la vas a pagar?</label>
+          <label className="text-[12px] font-semibold text-muted">
+            {cerrada ? 'Cuenta con la que se pagó' : '¿Con qué cuenta la vas a pagar?'}
+          </label>
           <div className="flex gap-2 mt-2 overflow-x-auto no-scrollbar">
             <button
-              onClick={() => setAccountId('')}
-              className={`pressable chip shrink-0 ${accountId === '' ? 'chip-active' : ''}`}
+              onClick={() => !cerrada && setAccountId('')}
+              disabled={cerrada}
+              className={`pressable chip shrink-0 ${accountId === '' ? 'chip-active' : ''} disabled:opacity-60`}
             >
               La principal
             </button>
             {cuentas.map((a) => (
               <button
                 key={a.id}
-                onClick={() => setAccountId(a.id)}
-                className={`pressable chip shrink-0 ${accountId === a.id ? 'chip-active' : ''}`}
+                onClick={() => !cerrada && setAccountId(a.id)}
+                disabled={cerrada}
+                className={`pressable chip shrink-0 ${accountId === a.id ? 'chip-active' : ''} disabled:opacity-60`}
               >
                 <span style={{ color: accountColor(a) }}>
                   <ItemIcon icon={a.icon} name={a.name} size={12} />
@@ -114,11 +154,15 @@ function Form({ monthId, onCreated }: { monthId: string; onCreated: (id: string)
               </button>
             ))}
           </div>
-          {cuentaElegida && isCredit(cuentaElegida) && (
+          {cerrada ? (
+            <p className="text-[11px] text-muted mt-1.5 leading-snug">
+              La compra ya se cerró y la plata ya salió: para cambiar la cuenta, reabrila primero.
+            </p>
+          ) : cuentaElegida && isCredit(cuentaElegida) ? (
             <p className="text-[11.5px] mt-1.5 leading-snug" style={{ color: 'var(--c-warning)' }}>
               Al finalizar la compra se suma a la deuda de {cuentaElegida.name}, no baja tu efectivo.
             </p>
-          )}
+          ) : null}
         </div>
       )}
 
@@ -132,15 +176,17 @@ function Form({ monthId, onCreated }: { monthId: string; onCreated: (id: string)
       {error && <p className="text-[13px] anim-shake" style={{ color: 'var(--c-danger)' }}>{error}</p>}
 
       <button
-        onClick={crear}
+        onClick={guardar}
         className="pressable btn-primary w-full flex items-center justify-center gap-2"
       >
-        <ShoppingCart size={16} /> Crear la lista
+        {editing ? <><Save size={16} /> Guardar cambios</> : <><ShoppingCart size={16} /> Crear la lista</>}
       </button>
 
-      <p className="text-[11px] text-muted text-center leading-snug">
-        Aparece también en Pagos del mes. No mueve plata hasta que finalices la compra.
-      </p>
+      {!editing && (
+        <p className="text-[11px] text-muted text-center leading-snug">
+          Aparece también en Pagos del mes. No mueve plata hasta que finalices la compra.
+        </p>
+      )}
     </div>
   )
 }

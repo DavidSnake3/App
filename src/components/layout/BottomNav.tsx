@@ -18,12 +18,12 @@ export function BottomNav() {
   const sounds = useFinanceStore((s) => s.settings.animations.sounds)
 
   /**
-   * Tocar la pestaña que ya está abierta devuelve al MENÚ de cuadros de esa
-   * pestaña (así siempre hay una forma rápida de volver atrás).
+   * Tocar una pestaña lleva SIEMPRE a su menú de cuadros, venga de donde venga:
+   * nunca se aterriza en un submenú que quedó abierto de antes.
    */
   const ir = (id: TabId) => {
     if (sounds) playTap()
-    if (id === activeTab) setSub(id, '')
+    setSub(id, '')
     setActiveTab(id)
   }
 

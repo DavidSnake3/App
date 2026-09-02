@@ -37,6 +37,7 @@ interface Parada {
 }
 
 const PASOS: Parada[] = [
+  // ── Inicio ──────────────────────────────────────────────────────────────
   {
     ancla: 'home-widget-first', tab: 'home', sub: '', forma: 'tarjeta', aire: 8,
     titulo: 'Tu inicio, a tu gusto',
@@ -45,46 +46,100 @@ const PASOS: Parada[] = [
   {
     ancla: 'snake-launcher', forma: 'circulo', aire: 12,
     titulo: 'Snake anota por vos',
-    texto: 'Tocalo y contale lo que gastaste, o pasale la foto del comprobante.',
+    texto: 'Tocalo y contale lo que gastaste, o pasale la foto del comprobante. Él lo registra.',
   },
+  // ── Dinero ──────────────────────────────────────────────────────────────
   {
     ancla: 'tab-money', forma: 'tarjeta', aire: 6,
-    titulo: 'Aquí vive tu plata',
-    texto: 'Tus cuentas, tus tarjetas, tus ahorros y lo que prestaste o te prestaron.',
+    titulo: 'Dinero: dónde está tu plata',
+    texto: 'Cuentas, movimientos, tarjetas, ahorros y préstamos. Te muestro sus módulos.',
   },
   {
     ancla: 'hub-cuentas', tab: 'money', sub: '', forma: 'tarjeta', aire: 8,
-    titulo: 'Empezá por tus cuentas',
-    texto: 'Anotá dónde tenés tu plata y la app calcula tu saldo real sola.',
+    titulo: 'Cuentas',
+    texto: 'Efectivo, banco, ahorros y tarjetas. La suma de todas es tu saldo real.',
   },
   {
-    // el selector de mes se ve también dentro del submenú, así que entramos ya
-    // a "Pagos" y la parada siguiente (el botón +) no tiene que navegar
-    ancla: 'month-switcher', tab: 'month', sub: 'pagos', forma: 'tarjeta', aire: 10,
-    titulo: 'Un mes a la vez',
-    texto: 'Con las flechas cambiás de mes. Cada uno guarda sus pagos y su balance.',
+    ancla: 'hub-movimientos', tab: 'money', sub: '', forma: 'tarjeta', aire: 8,
+    titulo: 'Movimientos',
+    texto: 'Todo lo que entra y sale, con su categoría. Aquí queda el historial.',
   },
   {
-    ancla: 'fab-add', forma: 'circulo', aire: 10,
+    ancla: 'hub-tarjetas', tab: 'money', sub: '', forma: 'tarjeta', aire: 8,
+    titulo: 'Tarjetas de crédito',
+    texto: 'Corte, fecha de pago, intereses y cuotas. Lo que gastás con ellas es deuda.',
+  },
+  {
+    ancla: 'hub-prestamos', tab: 'money', sub: '', forma: 'tarjeta', aire: 8,
+    titulo: 'Le presté / Me prestaron',
+    texto: 'Lo que te deben y lo que debés, con cada abono anotado.',
+  },
+  // ── Mes ─────────────────────────────────────────────────────────────────
+  {
+    ancla: 'tab-month', forma: 'tarjeta', aire: 6,
+    titulo: 'Mes: lo que pagás',
+    texto: 'Cada mes guarda sus pagos, deudas, compras y presupuestos.',
+  },
+  {
+    ancla: 'hub-pagos', tab: 'month', sub: '', forma: 'tarjeta', aire: 8,
+    titulo: 'Pagos del mes',
+    texto: 'Servicios, gastos y personales. Marcalos pagados y salen de tu cuenta solos.',
+  },
+  {
+    ancla: 'hub-compras', tab: 'month', sub: '', forma: 'tarjeta', aire: 8,
+    titulo: 'Lista de compras',
+    texto: 'Armala con precios y en el súper vas marcando. Solo se cobra lo que marcaste.',
+  },
+  {
+    ancla: 'hub-deudas', tab: 'month', sub: '', forma: 'tarjeta', aire: 8,
+    titulo: 'Deudas',
+    texto: 'Tus cuotas mes a mes y el camino a cero.',
+  },
+  {
+    ancla: 'hub-presupuestos', tab: 'month', sub: '', forma: 'tarjeta', aire: 8,
+    titulo: 'Presupuestos',
+    texto: 'Un límite por categoría y un aviso cuando te acercás.',
+  },
+  {
+    ancla: 'fab-add', tab: 'month', sub: 'pagos', forma: 'circulo', aire: 10,
     titulo: 'Agregar es un toque',
-    texto: 'Este botón crea un pago nuevo: un gasto, un servicio o algo personal.',
+    texto: 'Este botón crea un pago nuevo. Si lo marcás recurrente, sale en todos los meses.',
+  },
+  // ── Reportes ────────────────────────────────────────────────────────────
+  {
+    ancla: 'tab-reports', forma: 'tarjeta', aire: 6,
+    titulo: 'Reportes: a dónde se va',
+    texto: 'Tu año, tus categorías y un reporte para compartir.',
   },
   {
-    ancla: 'tab-reports', tab: 'reports', sub: '', forma: 'tarjeta', aire: 6,
-    titulo: 'Mirá a dónde se va',
-    texto: 'Reportes te muestra en qué gastás más, mes a mes y por categoría.',
+    ancla: 'hub-categorias', tab: 'reports', sub: '', forma: 'tarjeta', aire: 8,
+    titulo: 'Por categoría',
+    texto: 'En qué gastás más: por mes, por año o el periodo que elijás.',
+  },
+  // ── Ajustes ─────────────────────────────────────────────────────────────
+  {
+    ancla: 'tab-settings', forma: 'tarjeta', aire: 6,
+    titulo: 'Ajustes: todo se personaliza',
+    texto: 'Tu salario y deducciones, categorías con color, tema, avisos y respaldo.',
   },
   {
-    ancla: 'tab-settings', tab: 'settings', sub: '', forma: 'tarjeta', aire: 6,
-    titulo: 'Todo se personaliza',
-    texto: 'Colores, ingresos y avisos. Si querés repetir esto, está en Ajustes › Ayuda.',
+    ancla: 'hub-ingresos', tab: 'settings', sub: '', forma: 'tarjeta', aire: 8,
+    titulo: 'Ingresos y planilla',
+    texto: 'Poné tu salario y la app calcula deducciones, adelantos y cuándo te pagan.',
+  },
+  {
+    ancla: 'hub-ayuda', tab: 'settings', sub: '', forma: 'tarjeta', aire: 8,
+    titulo: 'Eso es todo',
+    texto: 'Si querés repetir este recorrido, está aquí en Ayuda. ¡A ordenar la plata!',
   },
 ]
 
 interface Hueco { x: number; y: number; w: number; h: number; r: number }
 
-const cuadro = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms))
+// Un "cuadro" con temporizador, no con requestAnimationFrame: si la app se va
+// al fondo a media vuelta, rAF deja de disparar y el tour se quedaría trabado.
+const cuadro = () => espera(32)
 
 /**
  * Lleva la app a la pantalla de la parada. Nunca simulando un clic en la barra:
@@ -101,15 +156,19 @@ function navegar(p: Parada) {
   if (p.tab !== s.activeTab) s.setActiveTab(p.tab)
 }
 
-/** El nodo puede no existir todavía: React remonta <main> al cambiar de pestaña */
-function esperarNodo(sel: string, intentos = 45): Promise<HTMLElement | null> {
+/**
+ * El nodo puede no existir todavía: React remonta <main> al cambiar de pestaña.
+ * Se sondea con setTimeout (no con rAF) por lo mismo de arriba: tiene que
+ * funcionar aunque la pestaña esté al fondo o el renderer esté estrangulado.
+ */
+function esperarNodo(sel: string, intentos = 40): Promise<HTMLElement | null> {
   return new Promise((res) => {
     let n = 0
     const buscar = () => {
       const el = document.querySelector<HTMLElement>(sel)
       if (el) { res(el); return }
       if (++n >= intentos) { res(null); return }
-      requestAnimationFrame(buscar)
+      setTimeout(buscar, 40)
     }
     buscar()
   })
@@ -216,10 +275,19 @@ export function TourGuiado({ onDone }: { onDone: () => void }) {
     const paso = PASOS[i]
     navegar(paso)
 
+    // rastro para depurar el recorrido desde la consola (solo en desarrollo)
+    const traza = (msg: string) => {
+      if (!import.meta.env.DEV) return
+      const w = window as unknown as { __tourDebug?: string[] }
+      ;(w.__tourDebug ??= []).push(`${i}:${paso.ancla} ${msg}`)
+    }
+
     void (async () => {
+      traza('navegado')
       const el = await esperarNodo(`[data-tour="${paso.ancla}"]`)
-      if (cancelado) return
+      if (cancelado) { traza('cancelado tras nodo'); return }
       if (!el) {
+        traza('sin ancla: salto')
         // el ancla no existe (por ejemplo, quitó ese widget del inicio):
         // la parada se salta sola en vez de trabar el recorrido
         if (i >= PASOS.length - 1) cerrarRef.current()
@@ -227,13 +295,14 @@ export function TourGuiado({ onDone }: { onDone: () => void }) {
         return
       }
       await esperarAnimaciones(el)
-      if (cancelado) return
+      if (cancelado) { traza('cancelado tras anims'); return }
       const r = el.getBoundingClientRect()
       if (r.top < 76 || r.bottom > window.innerHeight - 96) {
         el.scrollIntoView({ block: 'center', behavior: 'auto' })
         await cuadro(); await cuadro()
       }
-      if (cancelado) return
+      if (cancelado) { traza('cancelado tras scroll'); return }
+      traza('medido')
       setVista({ idx: i, hueco: medir(el, paso) })
     })()
 

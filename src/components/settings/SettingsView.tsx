@@ -3,7 +3,7 @@ import {
   AlarmClock, Bell, BellRing, Bug, ChevronRight, Cloud, CloudOff,
   Briefcase, Camera, Compass, Database, Download, FileText, HandCoins, Image as ImageIcon,
   Landmark, LifeBuoy, LogOut, Mail, MessageCircleQuestion, Moon, Palette,
-  PartyPopper, PiggyBank, Play, Plus, Shapes, Sparkles, Sun, Trash2, Upload,
+  PartyPopper, Play, Plus, Shapes, Sparkles, Sun, Trash2, Upload,
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
 import type {
@@ -23,7 +23,6 @@ import {
   countryPreset, deductionLabel, formatPayday, hasPayrollDeductions, nextPaydays,
   payrollBreakdown, presetExtraPays, presetLabel, presetPct, presetStatutory,
 } from '../../lib/payroll'
-import { realBalance } from '../../lib/fund'
 import { debtIsSettled, uid } from '../../lib/finance'
 import { celebrate, payBurst } from '../../lib/fx'
 import { applyBackup, exportBackup, readBackup } from '../../lib/backup'
@@ -38,9 +37,7 @@ import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AlarmOverlay } from '../overlays/AlarmOverlay'
 import { HubHeader, HubMenu, HubTitle, type HubItem } from '../layout/HubMenu'
 import { payrollBreakdown as breakdown } from '../../lib/payroll'
-import { savingsTotal } from '../../lib/fund'
 import { plan as snakePlanOf } from '../../lib/plans'
-import { SavingsSection } from './SavingsSection'
 import { SnakeSection } from './SnakeSection'
 import { DeductionSheet } from './DeductionSheet'
 import { CategoriesSection } from './CategoriesSection'
@@ -48,7 +45,7 @@ import { ExtraPaysEditor, LegalNotice, StatutoryEditor, TaxEditor } from './Payr
 
 const ACCENT_CHOICES = ['#7c5cff', '#10b981', '#0ea5e9', '#f43f5e', '#d97706', '#ec4899', '#14b8a6', '#8b5cf6']
 
-type SectionId = 'cuenta' | 'ingresos' | 'ahorros' | 'categorias' | 'snake' | 'apariencia' | 'animaciones' | 'notificaciones' | 'datos' | 'ayuda'
+type SectionId = 'cuenta' | 'ingresos' | 'categorias' | 'snake' | 'apariencia' | 'animaciones' | 'notificaciones' | 'datos' | 'ayuda'
 
 const SUPPORT_EMAIL = 'davidjosuevillegassalas@gmail.com'
 
@@ -61,7 +58,6 @@ export function SettingsView({ auth }: { auth: AuthState }) {
   const profile = useFinanceStore((s) => s.profile)
   const settings = useFinanceStore((s) => s.settings)
   const bd = breakdown(settings.payroll)
-  const ahorrado = savingsTotal(settings)
   const totalCategorias = mergeCategories(settings.categories).filter((c) => !c.hidden).length
 
   const items: HubItem<SectionId>[] = [
@@ -80,14 +76,6 @@ export function SettingsView({ auth }: { auth: AuthState }) {
       icon: <Wallet size={19} />,
       stat: bd.monthlyNet > 0 ? formatMoney(Math.round(bd.monthlyNet)) : 'Configurar',
       tone: 'income',
-    },
-    {
-      id: 'ahorros',
-      title: 'Ahorros',
-      desc: 'Sobres, metas y aportes',
-      icon: <PiggyBank size={19} />,
-      stat: ahorrado > 0 ? formatMoney(Math.round(ahorrado)) : 'Crear un sobre',
-      tone: 'warning',
     },
     {
       id: 'categorias',
@@ -159,7 +147,6 @@ export function SettingsView({ auth }: { auth: AuthState }) {
           />
           {section === 'cuenta' && <CuentaSection auth={auth} />}
           {section === 'ingresos' && <IngresosSection />}
-          {section === 'ahorros' && <SavingsSection />}
           {section === 'categorias' && <CategoriesSection />}
           {section === 'snake' && <SnakeSection auth={auth} />}
           {section === 'apariencia' && <AparienciaSection />}
@@ -376,9 +363,6 @@ function IngresosSection() {
   const debts = useFinanceStore((s) => s.debts)
   const setPayroll = useFinanceStore((s) => s.setPayroll)
   const setPaySchedule = useFinanceStore((s) => s.setPaySchedule)
-  const setFundNow = useFinanceStore((s) => s.setFundNow)
-  const disableFund = useFinanceStore((s) => s.disableFund)
-  const months = useFinanceStore((s) => s.months)
   const setDefaultSalaryEverywhere = useFinanceStore((s) => s.setDefaultSalaryEverywhere)
   const setProfile = useFinanceStore((s) => s.setProfile)
   const updateDebt = useFinanceStore((s) => s.updateDebt)
@@ -386,8 +370,6 @@ function IngresosSection() {
   const p = settings.payroll
   const sch = settings.paySchedule
   const bd = payrollBreakdown(p)
-  const [fundAmount, setFundAmount] = useState(0)
-  const saldoReal = realBalance(months, debts, settings)
 
   const linkableDebts = debts.filter((d) => !debtIsSettled(d) && !d.viaPlanilla && !p.deductions.some((x) => x.debtId === d.id))
   const [dedSheet, setDedSheet] = useState<{ open: boolean; editing: PayrollDeduction | null }>({
@@ -732,39 +714,6 @@ function IngresosSection() {
         )}
       </Card>
 
-      {/* Saldo real: control total del dinero (se configura aquí y se ve en Mes) */}
-      <Card title="Saldo real (tu banco)" icon={<Landmark size={14} />}>
-        {settings.fund?.enabled && saldoReal != null && (
-          <div className="card bg-elevated/60 p-3.5 flex items-center justify-between">
-            <span className="text-[12.5px] text-muted">Saldo actual calculado</span>
-            <span className="num text-[17px] font-bold" style={{ color: saldoReal >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
-              {formatMoney(Math.round(saldoReal))}
-            </span>
-          </div>
-        )}
-        <Field label={settings.fund?.enabled ? 'Ajustar: ¿cuánto tienes HOY en el banco?' : 'Activar: ¿cuánto tienes HOY en el banco?'}>
-          <div className="flex gap-2">
-            <CurrencyInput value={fundAmount} onChange={setFundAmount} className="flex-1" />
-            <button
-              onClick={() => { setFundNow(fundAmount); setFundAmount(0) }}
-              className="pressable rounded-2xl px-4 text-[13px] font-semibold text-white shrink-0"
-              style={{ background: 'var(--app-gradient)' }}
-            >
-              {settings.fund?.enabled ? 'Ajustar' : 'Activar'}
-            </button>
-          </div>
-        </Field>
-        <p className="text-[11px] text-muted">
-          Desde ese momento la app lo lleva en vivo: suma tus pagos de salario al llegar y resta
-          cada pago, movimiento y aporte al ahorro. El sobrante del mes se arrastra solo al
-          siguiente (aparte del ahorro). Lo ves en la pestaña Mes y en el widget «Saldo real».
-        </p>
-        {settings.fund?.enabled && (
-          <button onClick={disableFund} className="pressable text-[12px] text-muted underline decoration-dotted self-start">
-            Desactivar el saldo real
-          </button>
-        )}
-      </Card>
 
     </>
   )

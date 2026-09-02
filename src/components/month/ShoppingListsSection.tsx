@@ -13,6 +13,7 @@ export function ShoppingListsSection({ monthId }: { monthId: string }) {
   const month = useFinanceStore((s) => s.months[monthId])
   const [nuevaOpen, setNuevaOpen] = useState(false)
   const [abiertaId, setAbiertaId] = useState<string | null>(null)
+  const [editandoId, setEditandoId] = useState<string | null>(null)
 
   const listas = (month?.expenses ?? []).filter((e) => e.shopping)
   const abiertas = listas.filter((e) => !e.shopping!.done)
@@ -131,17 +132,19 @@ export function ShoppingListsSection({ monthId }: { monthId: string }) {
       </Fab>
 
       <NewShoppingListSheet
-        open={nuevaOpen}
+        open={nuevaOpen || Boolean(editandoId)}
         monthId={monthId}
-        onClose={() => setNuevaOpen(false)}
+        editing={editandoId ? listas.find((e) => e.id === editandoId) ?? null : null}
+        onClose={() => { setNuevaOpen(false); setEditandoId(null) }}
         onCreated={(id) => { setNuevaOpen(false); setAbiertaId(id) }}
       />
 
       <ShoppingListSheet
-        open={Boolean(abiertaId)}
+        open={Boolean(abiertaId) && !editandoId}
         monthId={monthId}
         expenseId={abiertaId}
         onClose={() => setAbiertaId(null)}
+        onEdit={(id) => setEditandoId(id)}
       />
     </>
   )

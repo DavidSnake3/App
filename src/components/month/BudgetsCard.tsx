@@ -134,25 +134,16 @@ export function BudgetsCard() {
 function BudgetRow({ budget }: { budget: Budget }) {
   const monthId = useFinanceStore((s) => s.activeMonthId)
   const month = useFinanceStore((s) => s.months[monthId])
-  const addBudgetEntry = useFinanceStore((s) => s.addBudgetEntry)
   const deleteBudgetEntry = useFinanceStore((s) => s.deleteBudgetEntry)
   const updateBudget = useFinanceStore((s) => s.updateBudget)
   const deleteBudget = useFinanceStore((s) => s.deleteBudget)
 
-  const [amount, setAmount] = useState(0)
-  const [note, setNote] = useState('')
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
 
   const st = budgetStatus(budget, month)
   const color = st.level === 'over' ? 'var(--c-danger)' : st.level === 'warn' ? 'var(--c-warning)' : 'var(--c-income)'
-
-  const anotar = () => {
-    if (amount <= 0) return
-    addBudgetEntry(budget.id, Math.round(amount), note.trim() || undefined)
-    setAmount(0); setNote('')
-  }
 
   return (
     <div className="rounded-xl border border-edge p-3">
@@ -184,23 +175,6 @@ function BudgetRow({ budget }: { budget: Budget }) {
 
       {open && (
         <div className="mt-2.5 anim-fade flex flex-col gap-2">
-          <div className="flex gap-2">
-            <input
-              className="input-base flex-1 !py-2 !text-[13px]"
-              placeholder="¿En qué? (opcional)"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-            <CurrencyInput value={amount} onChange={setAmount} className="w-28 [&_input]:!py-2 [&_input]:!text-[13px]" />
-            <button
-              onClick={anotar}
-              aria-label={`Anotar gasto en ${budget.name}`}
-              className="pressable w-10 shrink-0 rounded-xl flex items-center justify-center text-white"
-              style={{ background: 'var(--app-accent)' }}
-            >
-              <Plus size={16} />
-            </button>
-          </div>
 
           {st.entries.length > 0 && (
             <div className="flex flex-col divide-y divide-[var(--c-border)]">

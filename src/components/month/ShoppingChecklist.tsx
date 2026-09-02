@@ -1,7 +1,7 @@
 // El checklist de una lista de compras: vas marcando lo que echás al carrito y
 // mirás el subtotal en vivo. La plata solo se mueve al finalizar la compra.
 import { useState } from 'react'
-import { Check, Minus, Plus, ShoppingCart, Store, Trash2, Undo2 } from 'lucide-react'
+import { Check, Minus, Pencil, Plus, ShoppingCart, Store, Trash2, Undo2 } from 'lucide-react'
 import type { Expense } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { lineTotal, shoppingChecked, shoppingPlanned } from '../../lib/shopping'
@@ -9,16 +9,25 @@ import { formatMoney } from '../../lib/format'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 
-export function ShoppingChecklist({ monthId, expense }: { monthId: string; expense: Expense }) {
+export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
+  monthId: string
+  expense: Expense
+  /** abre la hoja para cambiar nombre, tienda, cuenta o color */
+  onEdit?: () => void
+  /** se llama después de eliminar la lista, para cerrar lo que la mostraba */
+  onDeleted?: () => void
+}) {
   const addProduct = useFinanceStore((s) => s.addShoppingProduct)
   const updateProduct = useFinanceStore((s) => s.updateShoppingProduct)
   const deleteProduct = useFinanceStore((s) => s.deleteShoppingProduct)
   const toggleProduct = useFinanceStore((s) => s.toggleShoppingProduct)
   const toggleDone = useFinanceStore((s) => s.toggleShoppingDone)
+  const deleteExpense = useFinanceStore((s) => s.deleteExpense)
 
   const [name, setName] = useState('')
   const [price, setPrice] = useState(0)
   const [confirmCerrar, setConfirmCerrar] = useState(false)
+  const [confirmBorrar, setConfirmBorrar] = useState(false)
 
   const lista = expense.shopping
   if (!lista) return null
@@ -205,6 +214,41 @@ export function ShoppingChecklist({ monthId, expense }: { monthId: string; expen
           </p>
         </>
       )}
+
+      {/* Editar o eliminar la lista */}
+      <div className="flex gap-2.5 pt-1">
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            className="pressable btn-ghost flex-1 flex items-center justify-center gap-2 text-[13px]"
+          >
+            <Pencil size={14} /> Editar lista
+          </button>
+        )}
+        <button
+          onClick={() => setConfirmBorrar(true)}
+          className="pressable flex-1 rounded-2xl font-semibold py-2.5 text-[13px] flex items-center justify-center gap-2"
+          style={{ background: 'color-mix(in oklab, var(--c-danger) 12%, transparent)', color: 'var(--c-danger)' }}
+        >
+          <Trash2 size={14} /> Eliminar lista
+        </button>
+      </div>
+
+      <ConfirmDialog
+        open={confirmBorrar}
+        title="¿Eliminar esta lista?"
+        message={cerrada
+          ? 'Se borra la lista de este mes. El movimiento de la compra ya cerrada se conserva en Movimientos, porque esa plata sí salió.'
+          : 'Se borra la lista con todos sus productos. Como no la habías finalizado, no se mueve plata.'}
+        confirmLabel="Eliminar"
+        danger
+        onCancel={() => setConfirmBorrar(false)}
+        onConfirm={() => {
+          deleteExpense(monthId, expense.id, 'mes')
+          setConfirmBorrar(false)
+          onDeleted?.()
+        }}
+      />
 
       <ConfirmDialog
         open={confirmCerrar}
