@@ -3,8 +3,8 @@
 // datos del usuario para explicar cualquier número, armar planes de pago y
 // ahorro a la medida, y registrar deudas desde una factura (imagen o PDF).
 import type { ActionData } from './chatActions'
-import { actionSpec } from './chatActions'
-import { geminiChat, getLastUsage, type GeminiTurn } from './ai'
+import { actionSpec, catalogPrompt, toolDeclarations } from './chatActions'
+import { geminiChatFull, getLastUsage, type GeminiTurn } from './ai'
 import { BASIC_ACTIONS, planLimits } from './plans'
 import { buildPayables, debtEndMonthId, debtPaidCount, debtRemaining, getMonthSummary } from './finance'
 import { carryOver, envelopeTotal, realBalance, savingsTotal } from './fund'
@@ -25,9 +25,13 @@ export interface ChatMsg {
   text: string
   /** nombre del archivo adjuntado (solo informativo) */
   attachment?: string
-  /** acción propuesta por Snake pendiente de confirmar */
+  /** acción propuesta por Snake pendiente de confirmar (formato viejo, un solo bloque) */
   action?: ChatAction
   actionDone?: boolean
+  /** acciones propuestas en este mensaje (puede ser más de una) */
+  actions?: ChatAction[]
+  /** índices de `actions` ya ejecutadas o rechazadas */
+  actionsDone?: Record<number, 'ok' | 'no'>
   /** el envío falló: se ofrece "Intentar de nuevo" */
   failed?: boolean
 }
@@ -43,7 +47,7 @@ export interface ChatAction {
 
 // ─── Conocimiento de la app + datos del usuario ──────────────────────────────
 
-const APP_KNOWLEDGE = `
+const APP_KNOWLEDGE = () => `
 Eres "Snake", el asistente financiero oficial de SNFinance.
 Personalidad: cercano, claro, breve y motivador. SIEMPRE en español. Sin emojis.
 Formato: párrafos cortos; usa **negritas** para montos/nombres y listas con "- " cuando ayuden.
@@ -82,30 +86,14 @@ CONOCES LA APP COMPLETA (guía para el usuario):
 REGLAS:
 1) Cuando el usuario pregunte "por qué aparece tal monto", usa los DATOS DEL USUARIO de abajo y muestra la cuenta exacta (ej.: 665000 − 72019.50 de deducción de ley − 181014 préstamo = 411966.50). IMPORTANTÍSIMO: un ADELANTO jamás se resta al explicar el ingreso mensual (es parte del pago). Con pago QUINCENAL, cada quincena llega la MITAD del neto mensual (la deducción de ley y las demás deducciones se reparten mitad y mitad entre las dos quincenas).
 2) Para planes de cancelación de deudas o ahorro: usa su ingreso real, cuotas y fechas de pago; propone pasos concretos con montos y fechas, máximo 6 pasos, y una alternativa. Pregunta preferencias solo si faltan datos clave.
-3) PUEDES HACER COSAS EN LA APP. Cuando el usuario te pida registrar, cambiar o configurar algo (o cuando le leas una factura), termina tu respuesta con UN bloque de acción en UNA sola línea, sin comentarios dentro:
-[[ACCION]]{"tipo":"<tipo>","datos":{...}}[[/ACCION]]
-El usuario ve una tarjeta y decide: nada se guarda sin que él toque el botón. Nunca digas que ya lo guardaste: di que se lo dejas listo para confirmar.
-Tipos y datos disponibles:
-- agregar_deuda: {name, total, monthlyPayment, installments, dueDay, account}
-- agregar_gasto: {name, amount, kind:"gasto|servicio|personal", dueDay, recurrencia:"once|monthly|weekly|biweekly|annual"}
-  (un GASTO es un pago del mes con fecha límite; un MOVIMIENTO es plata que ya salió. Si el usuario dice "gasté", usa agregar_movimiento)
-- marcar_pagado: {nombre}
-- configurar_planilla: {bruto, periodo:"daily|weekly|fortnightly|biweekly|monthly", paisId:"cr|mx|co|...", deduccionNombre, deduccionPct}
-- agregar_deduccion: {name, amount, esAdelanto:true|false}
-- crear_sobre: {name, meta, actual}
-- aportar_ahorro: {monto, sobre}
-- agregar_movimiento: {name, amount, tipo:"gasto|ingreso", categoria:"comida|super|cafe|transporte|gasolina|casa|servicios|salud|educacion|ropa|ocio|tecnologia|mascotas|regalos|belleza|deudas|otros|salario|extra|venta|reembolso", cuenta:"<nombre de la cuenta>", fecha:"yyyy-MM-dd"}  (registra una salida o entrada real; si no das cuenta se usa la principal)
-- crear_cuenta: {name, tipo:"efectivo|corriente|ahorros|credito|inversion", saldo, limite, corte, pago, interes, interesPeriodo:"annual|monthly"}  (para tarjetas: corte = día de corte, pago = día de pago)
-- pagar_tarjeta: {tarjeta:"<nombre>", monto, cuenta:"<de dónde sale>"}
-- compra_cuotas: {name, tarjeta:"<nombre>", total, mensualidad, cuotas, dia}
-- fijar_saldo: {monto}
-- ingreso_extra: {monto}
-- prestar: {persona, monto, fecha, nota}  (plata que el usuario le prestó a alguien)
-- abono_prestamo: {persona, monto}
-- crear_presupuesto: {name, monto, periodo:"monthly|weekly"}
-- gasto_presupuesto: {presupuesto, monto, nota}
-- elegir_plan: {plan:"50-30-20|40-30-20-10|60-20-20|70-20-10|80-20"}
-Reglas: un solo bloque por respuesta; solo si tienes los datos mínimos (nombre/monto según el tipo); si falta algo pregúntalo antes; si el adjunto NO es una factura, dilo y no incluyas bloque.
+3) PUEDES HACER COSAS EN LA APP: crear, editar, borrar, mover plata y llevar al usuario a cualquier pantalla. Tienes FUNCIONES declaradas (una por acción): cuando el usuario pida registrar, cambiar, quitar o configurar algo, o te lea una factura, LLAMA a la función correspondiente con sus datos. Puedes llamar VARIAS en una misma respuesta (por ejemplo, tres movimientos de una factura) y acciones compuestas van en UNA sola llamada (una lista de compras con todos sus productos). El usuario ve una tarjeta por cada acción y decide: nada se guarda sin que confirme. Nunca digas que ya lo guardaste: di que se lo dejas listo para confirmar. Las de navegación (ir_a) y lectura (buscar_en_la_app) sí se ejecutan de inmediato.
+Antes de proponer, VERIFICA con los DATOS DEL USUARIO: nombres de cuentas y pagos tal como existen, montos reales; si falta un dato clave pregúntalo en vez de inventarlo. Si hay un pago o lista que coincide, úsalo en vez de crear otro.
+"Crea la lista del súper con lo de la factura de agosto" → busca en los datos los movimientos o listas de ese mes y llama crear_lista_compras con todos los productos y precios.
+Si preguntan "¿dónde está…?" o "¿cómo hago…?", responde con la ruta (Pestaña › Módulo) del MAPA DE LA APP y ofrece llevarlo con ir_a.
+Si por alguna razón no puedes llamar funciones, escribe al final UN bloque por acción, en una sola línea: [[ACCION]]{"tipo":"<tipo>","datos":{...}}[[/ACCION]]
+Catálogo de acciones (tipo: qué hace y datos):
+${catalogPrompt()}
+Reglas: solo propón acciones con los datos mínimos; si el adjunto NO es una factura, dilo y no propongas nada.
 4) No inventes números: si algo no está en los datos, dilo. Con tarjetas de crédito: NUNCA recomiendes pagar solo el mínimo; siempre da primero el pago de contado y, si no alcanza, la cuota para salir en 24 o 36 meses. Y explica el costo del mínimo con los números de la app.
 5) Respuestas de máximo ~120 palabras salvo que pidan un plan detallado.
 6) USUARIO NUEVO (sin planilla, sin gastos y sin deudas): acabas de darle la bienvenida. Guíalo paso a paso pidiéndole UNA cosa a la vez, empezando por su salario bruto y cada cuánto le pagan. Si te sube el comprobante, extrae el bruto, la deducción de ley y las demás deducciones, y dile los montos exactos. TÚ NO PUEDES escribir la planilla: dile dónde ponerlo (Ajustes → Ingresos y planilla) con los valores ya calculados, y ofrécele registrar sus deudas desde una factura. Nunca lo abrumes con todo de una vez.
@@ -290,26 +278,40 @@ export interface ChatAttachment {
   name: string
 }
 
-function parseAction(text: string): { clean: string; action?: ChatAction } {
-  const m = text.match(/\[\[ACCION\]\]([\s\S]*?)\[\[\/ACCION\]\]/)
-  // Nunca mostrar JSON crudo: quita bloques cerrados y aperturas sin cierre
+/** Valida una acción cruda (de una función o de un bloque de texto) contra el catálogo */
+function toAction(tipo: string, raw: unknown): ChatAction | null {
+  const spec = actionSpec(tipo)
+  if (!spec) return null
+  const datos = (raw && typeof raw === 'object' ? raw : {}) as ActionData
+  try {
+    return spec.valid(datos) ? { tipo, datos } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Acciones escritas como texto (respaldo cuando el modelo no llama funciones).
+ * Se aceptan TODOS los bloques del mensaje y nunca se muestra JSON crudo.
+ */
+function parseTextActions(text: string): { clean: string; actions: ChatAction[] } {
+  const actions: ChatAction[] = []
+  for (const m of text.matchAll(/\[\[ACCION\]\]([\s\S]*?)\[\[\/ACCION\]\]/g)) {
+    try {
+      const raw = JSON.parse(m[1]) as Record<string, unknown>
+      const tipo = String(raw?.tipo ?? '')
+      // se acepta {datos:{}} y también la forma vieja {deuda:{}} / {gasto:{}}…
+      const datos = raw.datos ?? raw.deuda ?? raw.gasto ?? raw.planilla
+        ?? raw.sobre ?? raw.aporte ?? raw.hormiga ?? raw.movimiento ?? raw
+      const a = toAction(tipo, datos)
+      if (a) actions.push(a)
+    } catch { /* JSON inválido: se ignora ese bloque */ }
+  }
   const clean = text
     .replace(/\[\[ACCION\]\][\s\S]*?\[\[\/ACCION\]\]/g, '')
     .replace(/\[\[ACCION\]\][\s\S]*$/, '')
     .trim()
-  if (!m) return { clean }
-  try {
-    const raw = JSON.parse(m[1]) as Record<string, unknown>
-    const tipo = String(raw?.tipo ?? '')
-    const spec = actionSpec(tipo)
-    if (!spec) return { clean }
-    // se acepta {datos:{}} y también la forma vieja {deuda:{}} / {gasto:{}}…
-    const datos = (raw.datos ?? raw.deuda ?? raw.gasto ?? raw.planilla
-      ?? raw.sobre ?? raw.aporte ?? raw.hormiga ?? raw.movimiento ?? raw) as ActionData
-    const action: ChatAction = { tipo, datos }
-    if (spec.valid(datos)) return { clean, action }
-  } catch { /* JSON inválido: ignorar la acción */ }
-  return { clean }
+  return { clean, actions }
 }
 
 /**
@@ -342,8 +344,10 @@ export async function sendToFin(
   history: ChatMsg[],
   userText: string,
   attachment?: ChatAttachment,
-): Promise<{ text: string; action?: ChatAction; usage: number }> {
+): Promise<{ text: string; actions: ChatAction[]; usage: number }> {
   const limits = planLimits(useFinanceStore.getState().profile.snakePlan)
+  // en el plan gratis solo se ofrecen las acciones básicas
+  const permitida = (tipo: string) => limits.allActions || BASIC_ACTIONS.has(tipo)
   const turns: GeminiTurn[] = [
     // contexto fresco en cada envío (los datos cambian)
     { role: 'user', parts: [{ text: `DATOS DEL USUARIO (actualizados ahora):\n${buildUserContext()}` }] },
@@ -358,21 +362,26 @@ export async function sendToFin(
     },
   ]
 
-  const raw = await geminiChat(turns, {
+  const res = await geminiChatFull(turns, {
+    tools: toolDeclarations(permitida),
     // el mapa de la app sale de appMap.ts: si la app cambia, Snake se entera solo
-    system: `${APP_KNOWLEDGE}\n\nMAPA DE LA APP (dónde está cada cosa; usa la ruta "Pestaña › Módulo" al indicar dónde ir):\n${mapaParaPrompt()}`,
+    system: `${APP_KNOWLEDGE()}\n\nMAPA DE LA APP (dónde está cada cosa; usa la ruta "Pestaña › Módulo" al indicar dónde ir):\n${mapaParaPrompt()}`,
     temperature: 0.6,
     maxTokens: limits.maxTokens,
     model: limits.model,
     thinking: limits.thinking,
     timeoutMs: attachment ? 40_000 : 18_000,
   })
-  const { clean, action } = parseAction(raw)
-  // en el plan gratis solo se ofrecen las acciones básicas
-  const allowed = action && (limits.allActions || BASIC_ACTIONS.has(action.tipo))
-  return {
-    text: clean || 'Listo.',
-    action: allowed ? action : undefined,
-    usage: getLastUsage().total,
-  }
+  // primero las llamadas nativas; después, por si acaso, los bloques en texto
+  const nativas = res.calls
+    .map((c) => toAction(c.name, c.args))
+    .filter((a): a is ChatAction => Boolean(a))
+  const { clean, actions: enTexto } = parseTextActions(res.text)
+  const actions = [...nativas, ...enTexto].filter((a) => permitida(a.tipo))
+
+  // si el modelo solo llamó funciones y no escribió nada, se arma un texto corto
+  const text = clean || (actions.length
+    ? `Te dejo ${actions.length === 1 ? 'esto listo' : `${actions.length} acciones listas`} para confirmar.`
+    : 'Listo.')
+  return { text, actions, usage: getLastUsage().total }
 }

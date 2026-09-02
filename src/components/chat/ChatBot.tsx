@@ -5,9 +5,9 @@ import { useChat } from '../../store/useChat'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import {
   clearChat, loadChat, saveChat, sendToFin, welcomeMessage,
-  type ChatAttachment, type ChatMsg,
+  type ChatAction, type ChatAttachment, type ChatMsg,
 } from '../../lib/chatbot'
-import { actionSpec } from '../../lib/chatActions'
+import { actionSpec, isAutoAction } from '../../lib/chatActions'
 import { plan as getPlan } from '../../lib/plans'
 import { PlansSheet } from './PlansSheet'
 import { aiAvailable } from '../../lib/ai'
@@ -119,7 +119,13 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
     try {
       const res = await withLoading(THINKING_MSGS, () => sendToFin(history, text, att ?? undefined))
       recordUsage(res.usage, Boolean(att))
-      persist([...base, { id: newId(), role: 'model', text: res.text, action: res.action }])
+      // navegación y lecturas no piden permiso: se ejecutan de una vez
+      const actionsDone: Record<number, 'ok' | 'no'> = {}
+      res.actions.forEach((a, i) => {
+        if (!isAutoAction(a.tipo)) return
+        try { actionSpec(a.tipo)?.run(a.datos); actionsDone[i] = 'ok' } catch { /* se queda pendiente */ }
+      })
+      persist([...base, { id: newId(), role: 'model', text: res.text, actions: res.actions, actionsDone }])
     } catch {
       persist([...base, {
         id: newId(), role: 'model', failed: true,
@@ -185,13 +191,37 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
     }
   }
 
-  /** Ejecuta la acción propuesta por Snake (solo si el usuario confirma) */
-  const confirmAction = (m: ChatMsg) => {
-    if (!m.action) return
-    const spec = actionSpec(m.action.tipo)
-    if (!spec) return
-    spec.run(m.action.datos)
-    persist(msgs.map((x) => x.id === m.id ? { ...x, actionDone: true } : x))
+  /** Las acciones de un mensaje: las nuevas (varias) o la vieja (una sola) */
+  const accionesDe = (m: ChatMsg): ChatAction[] => m.actions ?? (m.action ? [m.action] : [])
+
+  /** Ejecuta UNA acción propuesta por Snake (solo si el usuario confirma) */
+  const confirmAction = (m: ChatMsg, idx: number) => {
+    const a = accionesDe(m)[idx]
+    const spec = a && actionSpec(a.tipo)
+    if (!a || !spec) return
+    spec.run(a.datos)
+    persist(msgs.map((x) => (x.id === m.id
+      ? { ...x, actionDone: true, actionsDone: { ...(x.actionsDone ?? {}), [idx]: 'ok' } }
+      : x)))
+  }
+
+  /** "No, gracias": la acción queda descartada sin tocar nada */
+  const rejectAction = (m: ChatMsg, idx: number) => {
+    persist(msgs.map((x) => (x.id === m.id
+      ? { ...x, actionsDone: { ...(x.actionsDone ?? {}), [idx]: 'no' } }
+      : x)))
+  }
+
+  /** Confirma todas las pendientes del mensaje de una vez */
+  const confirmAll = (m: ChatMsg) => {
+    const done: Record<number, 'ok' | 'no'> = { ...(m.actionsDone ?? {}) }
+    accionesDe(m).forEach((a, i) => {
+      if (done[i]) return
+      const spec = actionSpec(a.tipo)
+      if (!spec) return
+      try { spec.run(a.datos); done[i] = 'ok' } catch { /* esa se queda pendiente */ }
+    })
+    persist(msgs.map((x) => (x.id === m.id ? { ...x, actionDone: true, actionsDone: done } : x)))
   }
 
   return (
@@ -305,30 +335,76 @@ function ChatSession({ uidKey }: { uidKey: string | null }) {
                 </p>
               )}
               <RichText text={m.text} />
-              {m.action && (() => {
-                const spec = actionSpec(m.action.tipo)
-                if (!spec) return null
+              {accionesDe(m).length > 0 && (() => {
+                const acciones = accionesDe(m)
+                const estado = m.actionsDone ?? (m.actionDone ? { 0: 'ok' as const } : {})
+                const pendientes = acciones.filter((_, i) => !estado[i]).length
                 return (
-                  <div className="mt-2.5 rounded-xl border border-edge bg-elevated/60 p-3">
-                    <p className="text-[12px] font-bold text-ink mb-1">{spec.title}</p>
-                    <p className="text-[12px] text-muted">{spec.summary(m.action.datos)}</p>
-                    {m.actionDone ? (
-                      <p className="text-[12px] font-semibold mt-2 flex items-center gap-1" style={{ color: 'var(--c-income)' }}>
-                        <Check size={13} /> {spec.done}
-                      </p>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => confirmAction(m)}
-                          className="pressable mt-2 w-full rounded-xl py-2 text-[13px] font-semibold text-white"
-                          style={{ background: 'var(--app-accent)' }}
+                  <div className="mt-2.5 flex flex-col gap-2">
+                    {acciones.map((a, i) => {
+                      const spec = actionSpec(a.tipo)
+                      if (!spec) return null
+                      const hecho = estado[i]
+                      const borra = spec.riesgo === 'borra'
+                      const auto = isAutoAction(a.tipo)
+                      return (
+                        <div
+                          key={i}
+                          className="rounded-xl border p-3 anim-rise"
+                          style={{
+                            animationDelay: `${i * 60}ms`,
+                            background: 'color-mix(in oklab, var(--c-elevated) 70%, transparent)',
+                            borderColor: borra && !hecho
+                              ? 'color-mix(in oklab, var(--c-danger) 40%, var(--c-border))'
+                              : 'var(--c-border)',
+                          }}
                         >
-                          {spec.cta}
-                        </button>
-                        <p className="text-[10.5px] text-muted text-center mt-1.5">
-                          Nada se guarda hasta que confirmes
-                        </p>
-                      </>
+                          <p className="text-[12px] font-bold text-ink mb-1">{spec.title}</p>
+                          <p className="text-[12px] text-muted">{spec.summary(a.datos)}</p>
+                          {hecho === 'ok' ? (
+                            <p className="text-[12px] font-semibold mt-2 flex items-center gap-1" style={{ color: 'var(--c-income)' }}>
+                              <Check size={13} /> {spec.done}
+                            </p>
+                          ) : hecho === 'no' ? (
+                            <p className="text-[11.5px] text-muted mt-2">Descartada</p>
+                          ) : auto ? null : (
+                            <>
+                              <div className="flex gap-2 mt-2">
+                                <button
+                                  onClick={() => rejectAction(m, i)}
+                                  className="pressable rounded-xl px-3 py-2 text-[12.5px] font-semibold text-muted bg-elevated border border-edge"
+                                >
+                                  No, gracias
+                                </button>
+                                <button
+                                  onClick={() => confirmAction(m, i)}
+                                  className="pressable flex-1 rounded-xl py-2 text-[13px] font-semibold text-white"
+                                  style={{ background: borra ? 'var(--c-danger)' : 'var(--app-accent)' }}
+                                >
+                                  {spec.cta}
+                                </button>
+                              </div>
+                              {borra && (
+                                <p className="text-[10.5px] text-center mt-1.5" style={{ color: 'var(--c-danger)' }}>
+                                  Esto no se puede deshacer
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {pendientes > 1 && (
+                      <button
+                        onClick={() => confirmAll(m)}
+                        className="pressable w-full rounded-xl py-2.5 text-[13px] font-semibold text-white"
+                        style={{ background: 'var(--app-gradient)' }}
+                      >
+                        Confirmar todo ({pendientes})
+                      </button>
+                    )}
+                    {pendientes > 0 && (
+                      <p className="text-[10.5px] text-muted text-center">Nada se guarda hasta que confirmes</p>
                     )}
                   </div>
                 )

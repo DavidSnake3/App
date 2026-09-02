@@ -1,6 +1,10 @@
 // Acciones que Snake puede ejecutar en la app. SIEMPRE se proponen con una
 // tarjeta de confirmación: nada se guarda sin que el usuario toque "Confirmar".
-import type { AccountType, ExpenseKind, MovementKind, Recurrence } from '../types/finance'
+import type { AccountType, ExpenseKind, MovementKind, Recurrence, TabId } from '../types/finance'
+import type { GeminiFunctionDecl } from './ai'
+import { APP_MAP, buscarLugar, rutaDe } from './appMap'
+import { loanKind, loanRemaining } from './loans'
+import { remainingAmount } from './finance'
 import { useFinanceStore } from '../store/useFinanceStore'
 import { buildPayables, uid } from './finance'
 import { countryPreset, presetExtraPays, presetStatutory } from './payroll'
@@ -18,7 +22,21 @@ import { PERIOD_LABEL } from './payroll'
  */
 export type ActionData = Record<string, unknown>
 
+/**
+ * Cuánto pesa una acción. `lectura` y `navegacion` se ejecutan solas; las
+ * demás SIEMPRE piden confirmación, y `borra` avisa que no se puede deshacer.
+ */
+export type Riesgo = 'lectura' | 'navegacion' | 'crea' | 'modifica' | 'mueve_plata' | 'borra'
+
+/** Esquema de parámetros en el subconjunto OpenAPI que entiende Gemini */
+export type ParamSchema = Record<string, unknown>
+
 export interface ActionSpec {
+  /** qué hace, para que la IA sepa cuándo usarla (va a Gemini) */
+  desc: string
+  /** parámetros que acepta (function calling) */
+  params: ParamSchema
+  riesgo: Riesgo
   /** título de la tarjeta de confirmación */
   title: string
   /** resumen legible de lo que se va a hacer */
@@ -49,6 +67,85 @@ function str(v: unknown, fallback = ''): string {
 
 function money(v: unknown): string {
   return formatMoney(Math.round(num(v)))
+}
+
+/** Lista de objetos, tolerante: acepta array o un solo objeto */
+function lista(v: unknown): Record<string, unknown>[] {
+  if (Array.isArray(v)) return v.filter((x) => x && typeof x === 'object') as Record<string, unknown>[]
+  if (v && typeof v === 'object') return [v as Record<string, unknown>]
+  return []
+}
+
+/** Atajos para escribir esquemas de Gemini sin repetir */
+const S = {
+  str: (description: string, extra: Record<string, unknown> = {}) => ({ type: 'STRING', description, ...extra }),
+  num: (description: string) => ({ type: 'NUMBER', description }),
+  int: (description: string) => ({ type: 'INTEGER', description }),
+  bool: (description: string) => ({ type: 'BOOLEAN', description }),
+  enum: (description: string, values: string[]) => ({ type: 'STRING', description, enum: values }),
+  obj: (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'OBJECT', properties, required }),
+  arr: (description: string, items: Record<string, unknown>) => ({ type: 'ARRAY', description, items }),
+}
+
+/** Busca un gasto del mes activo por nombre; devuelve el Expense real */
+function findExpense(name: string) {
+  const s = st()
+  const month = s.months[s.activeMonthId]
+  if (!month) return null
+  const q = name.toLowerCase().trim()
+  if (!q) return null
+  return month.expenses.find((e) => e.name.toLowerCase() === q)
+    ?? month.expenses.find((e) => e.name.toLowerCase().includes(q))
+    ?? month.expenses.find((e) => q.includes(e.name.toLowerCase()))
+    ?? null
+}
+
+/** Busca una lista de compras del mes activo por nombre (o la única abierta) */
+function findShoppingList(name: string) {
+  const s = st()
+  const month = s.months[s.activeMonthId]
+  if (!month) return null
+  const listas = month.expenses.filter((e) => e.shopping)
+  const q = name.toLowerCase().trim()
+  if (q) {
+    const hit = listas.find((e) => e.name.toLowerCase() === q)
+      ?? listas.find((e) => e.name.toLowerCase().includes(q))
+    if (hit) return hit
+  }
+  const abiertas = listas.filter((e) => !e.shopping!.done)
+  return abiertas.length === 1 ? abiertas[0] : (listas.length === 1 ? listas[0] : null)
+}
+
+/** Busca un movimiento reciente por nombre (mes activo y anterior) */
+function findMovement(name: string, amount?: number) {
+  const s = st()
+  const q = name.toLowerCase().trim()
+  const meses = Object.values(s.months).sort((a, b) => (a.id < b.id ? 1 : -1)).slice(0, 3)
+  for (const m of meses) {
+    const movs = [...(m.movements ?? [])].reverse()
+    const hit = movs.find((mv) => (!q || mv.name.toLowerCase().includes(q)) && (!amount || Math.round(mv.amount) === Math.round(amount)))
+    if (hit) return hit
+  }
+  return null
+}
+
+/** Busca una deuda formal por nombre */
+function findDebt(name: string) {
+  const q = name.toLowerCase().trim()
+  if (!q) return null
+  return st().debts.find((d) => d.name.toLowerCase() === q)
+    ?? st().debts.find((d) => d.name.toLowerCase().includes(q))
+    ?? null
+}
+
+/** Busca una cuenta por nombre y devuelve el objeto (o null) */
+function findAccountObj(nombre: unknown) {
+  const id = findAccount(nombre)
+  const q = str(nombre).toLowerCase()
+  const a = st().accounts.find((x) => x.id === id)
+  // si dio un nombre y no coincide con nada, no adivinar la principal
+  if (q && a && !a.name.toLowerCase().includes(q) && !q.includes(a.name.toLowerCase())) return null
+  return a ?? null
 }
 
 function st() {
@@ -125,10 +222,12 @@ function recurrenceOf(v: unknown): Recurrence {
 }
 
 /** Busca un préstamo por el nombre de la persona */
-function findLoan(person: string) {
+function findLoan(person: string, kind?: 'lent' | 'borrowed') {
   const q = person.toLowerCase().trim()
   if (!q) return null
-  const loans = st().loans.filter((l) => l.amount > l.payments.reduce((s, p) => s + p.amount, 0))
+  const loans = st().loans
+    .filter((l) => loanRemaining(l) > 0)
+    .filter((l) => !kind || loanKind(l) === kind)
   return loans.find((l) => l.person.toLowerCase() === q)
     ?? loans.find((l) => l.person.toLowerCase().includes(q))
     ?? null
@@ -161,6 +260,9 @@ function findPayable(name: string) {
 
 export const ACTIONS: Record<string, ActionSpec> = {
   agregar_deuda: {
+    desc: 'Registrar una DEUDA formal con cuota mensual (préstamo del banco, carro, casa, electrodoméstico a plazos).',
+    params: S.obj({ name: S.str('nombre de la deuda'), total: S.num('monto total'), monthlyPayment: S.num('cuota mensual'), installments: S.int('número de cuotas'), dueDay: S.int('día del mes en que vence la cuota'), account: S.str('banco o entidad') }, ['name', 'total']),
+    riesgo: 'crea',
     title: 'Nueva deuda',
     cta: 'Agregar esta deuda',
     done: 'Deuda agregada: la ves en la pestaña Deudas',
@@ -188,6 +290,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   agregar_gasto: {
+    desc: 'Agregar un PAGO del mes (servicio, gasto o personal) con fecha límite. Si el usuario dice que ya lo gastó, usa agregar_movimiento.',
+    params: S.obj({ name: S.str('nombre del pago'), amount: S.num('monto'), kind: S.enum('tipo', ['gasto', 'servicio', 'personal']), dueDay: S.int('día del mes en que vence'), recurrencia: S.enum('cada cuánto se repite', ['once', 'weekly', 'biweekly', 'monthly', 'bimonthly', 'quarterly', 'semiannual', 'annual']), cuenta: S.str('cuenta con la que se paga'), categoria: S.str('id de categoría') }, ['name', 'amount']),
+    riesgo: 'crea',
     title: 'Nuevo pago del mes',
     cta: 'Agregarlo a mi mes',
     done: 'Pago agregado a tu mes',
@@ -214,6 +319,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   marcar_pagado: {
+    desc: 'Marcar un pago del mes como PAGADO (crea su movimiento y sale de la cuenta).',
+    params: S.obj({ nombre: S.str('nombre del pago tal como aparece en el mes') }, ['nombre']),
+    riesgo: 'mueve_plata',
     title: 'Marcar como pagado',
     cta: 'Marcarlo pagado',
     done: 'Pago marcado como hecho',
@@ -231,6 +339,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   configurar_planilla: {
+    desc: 'Configurar el salario y la planilla del usuario.',
+    params: S.obj({ bruto: S.num('salario bruto'), periodo: S.enum('cada cuánto le pagan', ['daily', 'weekly', 'fortnightly', 'biweekly', 'monthly']), paisId: S.str('código de país: cr, mx, co…'), deduccionNombre: S.str('nombre de la deducción de ley'), deduccionPct: S.num('% de la deducción de ley') }, ['bruto']),
+    riesgo: 'modifica',
     title: 'Configurar tus ingresos',
     cta: 'Guardar mi planilla',
     done: 'Planilla guardada: tu salario ya se aplica al mes',
@@ -270,6 +381,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   agregar_deduccion: {
+    desc: 'Agregar una deducción al salario (crédito, embargo, adelanto).',
+    params: S.obj({ name: S.str('nombre'), amount: S.num('monto'), esAdelanto: S.bool('true si es un adelanto de salario') }, ['name', 'amount']),
+    riesgo: 'modifica',
     title: 'Nueva deducción de tu salario',
     cta: 'Agregar la deducción',
     done: 'Deducción agregada a tu planilla',
@@ -290,6 +404,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   crear_sobre: {
+    desc: 'Crear un sobre de ahorro con meta.',
+    params: S.obj({ name: S.str('nombre del sobre'), meta: S.num('meta'), actual: S.num('lo que ya tiene guardado') }, ['name']),
+    riesgo: 'crea',
     title: 'Nuevo sobre de ahorro',
     cta: 'Crear el sobre',
     done: 'Sobre creado: lo ves en Ajustes → Ahorros',
@@ -305,6 +422,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   aportar_ahorro: {
+    desc: 'Aportar plata a un sobre de ahorro.',
+    params: S.obj({ monto: S.num('monto'), sobre: S.str('nombre del sobre') }, ['monto']),
+    riesgo: 'mueve_plata',
     title: 'Aportar a tu ahorro',
     cta: 'Confirmar el aporte',
     done: 'Aporte registrado en tu ahorro',
@@ -324,6 +444,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   agregar_movimiento: {
+    desc: 'Registrar un MOVIMIENTO: plata que YA salió (gasto) o entró (ingreso), con categoría, cuenta y fecha.',
+    params: S.obj({ name: S.str('descripción'), amount: S.num('monto'), tipo: S.enum('tipo', ['gasto', 'ingreso']), categoria: S.str('id de categoría: comida, super, cafe, transporte, gasolina, casa, servicios, salud, educacion, ropa, entretenimiento, tecnologia, mascotas, regalos, belleza, deudas, otros, salario, extra, venta, reembolso'), cuenta: S.str('nombre de la cuenta'), fecha: S.str('yyyy-MM-dd') }, ['amount']),
+    riesgo: 'mueve_plata',
     title: 'Registrar movimiento',
     cta: 'Registrarlo',
     done: 'Movimiento registrado',
@@ -349,6 +472,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   crear_cuenta: {
+    desc: 'Crear una cuenta (efectivo, corriente, ahorros, inversión) o una TARJETA de crédito.',
+    params: S.obj({ name: S.str('nombre'), tipo: S.enum('tipo', ['efectivo', 'corriente', 'ahorros', 'credito', 'inversion']), saldo: S.num('saldo actual (no para tarjetas)'), limite: S.num('límite de la tarjeta'), corte: S.int('día de corte'), pago: S.int('día de pago'), interes: S.num('% de interés'), interesPeriodo: S.enum('el interés es', ['annual', 'monthly']), deuda: S.num('deuda actual de la tarjeta') }, ['name']),
+    riesgo: 'crea',
     title: 'Nueva cuenta',
     cta: 'Crearla',
     done: 'Cuenta creada',
@@ -386,6 +512,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   pagar_tarjeta: {
+    desc: 'Pagar la tarjeta de crédito desde una cuenta (baja la deuda y el efectivo).',
+    params: S.obj({ tarjeta: S.str('nombre de la tarjeta'), monto: S.num('monto'), cuenta: S.str('cuenta de la que sale'), fecha: S.str('yyyy-MM-dd') }, ['tarjeta', 'monto']),
+    riesgo: 'mueve_plata',
     title: 'Pagar la tarjeta',
     cta: 'Registrar el pago',
     done: 'Pago registrado',
@@ -410,6 +539,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   compra_cuotas: {
+    desc: 'Registrar una compra a cuotas con tarjeta de crédito.',
+    params: S.obj({ name: S.str('qué compró'), tarjeta: S.str('nombre de la tarjeta'), total: S.num('monto total'), mensualidad: S.num('cuota mensual'), cuotas: S.int('número de cuotas'), dia: S.int('día de pago') }, ['name', 'cuotas']),
+    riesgo: 'crea',
     title: 'Compra a cuotas',
     cta: 'Agregarla',
     done: 'Compra a cuotas agregada',
@@ -440,16 +572,11 @@ export const ACTIONS: Record<string, ActionSpec> = {
     },
   },
 
-  fijar_saldo: {
-    title: 'Tu saldo real en el banco',
-    cta: 'Fijar mi saldo',
-    done: 'Saldo real actualizado',
-    valid: (d) => num(d.monto ?? d.amount) >= 0 && (num(d.monto ?? d.amount) > 0 || d.monto === 0),
-    summary: (d) => `Hoy tienes ${money(d.monto ?? d.amount)} en el banco`,
-    run: (d) => st().setFundNow(Math.round(num(d.monto ?? d.amount))),
-  },
 
   prestar: {
+    desc: 'Registrar que el usuario LE PRESTÓ plata a alguien (le deben).',
+    params: S.obj({ persona: S.str('a quién'), monto: S.num('monto'), fecha: S.str('yyyy-MM-dd'), cuenta: S.str('cuenta de la que salió'), nota: S.str('nota') }, ['persona', 'monto']),
+    riesgo: 'mueve_plata',
     title: 'Le presté plata a alguien',
     cta: 'Registrar el préstamo',
     done: 'Préstamo registrado: lo ves en Deudas → Me deben',
@@ -464,6 +591,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   abono_prestamo: {
+    desc: 'Registrar un ABONO de un préstamo informal: si el usuario prestó, le abonaron; si a él le prestaron, él abonó.',
+    params: S.obj({ persona: S.str('nombre de la persona'), monto: S.num('monto'), fecha: S.str('yyyy-MM-dd'), cuenta: S.str('cuenta') }, ['persona', 'monto']),
+    riesgo: 'mueve_plata',
     title: 'Me abonaron un préstamo',
     cta: 'Registrar el abono',
     done: 'Abono registrado',
@@ -484,6 +614,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   crear_presupuesto: {
+    desc: 'Crear un presupuesto con límite mensual o semanal.',
+    params: S.obj({ name: S.str('nombre'), monto: S.num('límite'), periodo: S.enum('periodo', ['monthly', 'weekly']) }, ['name', 'monto']),
+    riesgo: 'crea',
     title: 'Nuevo presupuesto',
     cta: 'Crear el presupuesto',
     done: 'Presupuesto creado: lo ves en la pestaña Mes',
@@ -497,6 +630,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   gasto_presupuesto: {
+    desc: 'Anotar un gasto dentro de un presupuesto.',
+    params: S.obj({ presupuesto: S.str('nombre del presupuesto'), monto: S.num('monto'), nota: S.str('nota') }, ['presupuesto', 'monto']),
+    riesgo: 'modifica',
     title: 'Gasto en un presupuesto',
     cta: 'Anotarlo',
     done: 'Gasto anotado en tu presupuesto',
@@ -514,6 +650,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   elegir_plan: {
+    desc: 'Elegir la regla de reparto del ingreso (50/30/20, etc.).',
+    params: S.obj({ plan: S.enum('plan', ['50-30-20', '40-30-20-10', '60-20-20', '70-20-10', '80-20']) }, ['plan']),
+    riesgo: 'modifica',
     title: 'Plan financiero',
     cta: 'Usar este plan',
     done: 'Plan activado: lo ves en la pestaña Mes',
@@ -526,6 +665,9 @@ export const ACTIONS: Record<string, ActionSpec> = {
   },
 
   ingreso_extra: {
+    desc: 'Agregar un ingreso adicional al mes (aparte del salario).',
+    params: S.obj({ monto: S.num('monto') }, ['monto']),
+    riesgo: 'modifica',
     title: 'Ingreso adicional del mes',
     cta: 'Agregarlo al mes',
     done: 'Ingreso adicional guardado',
@@ -538,8 +680,438 @@ export const ACTIONS: Record<string, ActionSpec> = {
       s.updateIncome(s.activeMonthId, { additional: actual + Math.round(num(d.monto ?? d.amount)) })
     },
   },
+
+  /* ─── Listas de compras ──────────────────────────────────────────────── */
+
+  crear_lista_compras: {
+    desc: 'Crear una LISTA DE COMPRAS del mes con varios productos de una vez (nombre, precio y cantidad). Úsala cuando el usuario quiera armar la lista del súper, incluso a partir de una factura o de compras anteriores que veas en sus datos.',
+    params: S.obj({
+      name: S.str('nombre de la lista, ej. "Diario de la quincena"'),
+      tienda: S.str('dónde va a comprar (opcional)'),
+      cuenta: S.str('cuenta con la que pagará (opcional)'),
+      dia: S.int('día del mes en que hará la compra (opcional)'),
+      productos: S.arr('productos de la lista', S.obj({ name: S.str('producto'), price: S.num('precio unitario'), qty: S.int('cantidad, 1 si no se indica') }, ['name', 'price'])),
+    }, ['name', 'productos']),
+    riesgo: 'crea',
+    title: 'Nueva lista de compras',
+    cta: 'Crear la lista',
+    done: 'Lista creada: la ves en Mes → Lista de compras y en Pagos del mes',
+    valid: (d) => str(d.name).length > 0 && lista(d.productos).some((p) => str(p.name) && num(p.price) > 0),
+    summary: (d) => {
+      const ps = lista(d.productos).filter((p) => str(p.name) && num(p.price) > 0)
+      const total = ps.reduce((t, p) => t + num(p.price) * Math.max(1, Math.round(num(p.qty) || 1)), 0)
+      const primeros = ps.slice(0, 4).map((p) => str(p.name)).join(', ')
+      return `${str(d.name)} · ${ps.length} producto${ps.length === 1 ? '' : 's'} (${primeros}${ps.length > 4 ? '…' : ''}) · ${money(total)} planeados`
+        + (str(d.tienda) ? ` · ${str(d.tienda)}` : '')
+    },
+    run: (d) => {
+      const id = st().createShoppingList(activeMonth(), {
+        name: str(d.name, 'Lista de compras').slice(0, 40),
+        store: str(d.tienda) || undefined,
+        dueDay: num(d.dia) >= 1 && num(d.dia) <= 31 ? Math.round(num(d.dia)) : undefined,
+        accountId: str(d.cuenta) ? findAccount(d.cuenta) : undefined,
+        icon: 'super',
+      })
+      for (const p of lista(d.productos)) {
+        if (!str(p.name) || num(p.price) <= 0) continue
+        st().addShoppingProduct(activeMonth(), id, {
+          name: str(p.name).slice(0, 40),
+          price: Math.round(num(p.price)),
+          qty: Math.max(1, Math.round(num(p.qty) || 1)),
+        })
+      }
+    },
+  },
+
+  agregar_producto_lista: {
+    desc: 'Agregar uno o varios productos a una lista de compras que ya existe.',
+    params: S.obj({
+      lista: S.str('nombre de la lista (si hay una sola abierta puede omitirse)'),
+      productos: S.arr('productos', S.obj({ name: S.str('producto'), price: S.num('precio'), qty: S.int('cantidad') }, ['name', 'price'])),
+    }, ['productos']),
+    riesgo: 'modifica',
+    title: 'Agregar a la lista',
+    cta: 'Agregarlos',
+    done: 'Productos agregados a la lista',
+    valid: (d) => Boolean(findShoppingList(str(d.lista))) && lista(d.productos).some((p) => str(p.name) && num(p.price) > 0),
+    summary: (d) => {
+      const l = findShoppingList(str(d.lista))
+      const ps = lista(d.productos)
+      return l ? `${ps.map((p) => str(p.name)).join(', ')} → ${l.name}` : `No encontré la lista "${str(d.lista)}"`
+    },
+    run: (d) => {
+      const l = findShoppingList(str(d.lista))
+      if (!l) return
+      for (const p of lista(d.productos)) {
+        if (!str(p.name) || num(p.price) <= 0) continue
+        st().addShoppingProduct(activeMonth(), l.id, { name: str(p.name).slice(0, 40), price: Math.round(num(p.price)), qty: Math.max(1, Math.round(num(p.qty) || 1)) })
+      }
+    },
+  },
+
+  marcar_producto: {
+    desc: 'Marcar (o desmarcar) productos de una lista de compras como ya echados al carrito. NO mueve plata.',
+    params: S.obj({ lista: S.str('nombre de la lista'), productos: S.arr('nombres de los productos', S.str('producto')) }, ['productos']),
+    riesgo: 'modifica',
+    title: 'Marcar en la lista',
+    cta: 'Marcarlos',
+    done: 'Listo, marcados en el carrito',
+    valid: (d) => Boolean(findShoppingList(str(d.lista))) && (Array.isArray(d.productos) ? d.productos.length > 0 : Boolean(str(d.productos))),
+    summary: (d) => {
+      const l = findShoppingList(str(d.lista))
+      const nombres = (Array.isArray(d.productos) ? d.productos : [d.productos]).map((x) => str(x)).filter(Boolean)
+      return l ? `${nombres.join(', ')} en ${l.name}` : `No encontré la lista "${str(d.lista)}"`
+    },
+    run: (d) => {
+      const l = findShoppingList(str(d.lista))
+      if (!l?.shopping) return
+      const nombres = (Array.isArray(d.productos) ? d.productos : [d.productos]).map((x) => str(x).toLowerCase()).filter(Boolean)
+      for (const prod of l.shopping.items) {
+        if (nombres.some((n) => prod.name.toLowerCase().includes(n) || n.includes(prod.name.toLowerCase()))) {
+          st().toggleShoppingProduct(activeMonth(), l.id, prod.id)
+        }
+      }
+    },
+  },
+
+  cerrar_lista: {
+    desc: 'FINALIZAR una lista de compras: ahí sí sale de la cuenta lo marcado. Solo si el usuario ya terminó de comprar.',
+    params: S.obj({ lista: S.str('nombre de la lista') }, []),
+    riesgo: 'mueve_plata',
+    title: 'Finalizar la compra',
+    cta: 'Finalizar y cobrar lo marcado',
+    done: 'Compra cerrada: salió de tu cuenta lo que marcaste',
+    valid: (d) => { const l = findShoppingList(str(d.lista)); return Boolean(l?.shopping && !l.shopping.done && l.shopping.items.some((p) => p.checked)) },
+    summary: (d) => {
+      const l = findShoppingList(str(d.lista))
+      if (!l?.shopping) return `No encontré la lista "${str(d.lista)}"`
+      const marcado = l.shopping.items.filter((p) => p.checked).reduce((t, p) => t + p.price * Math.max(1, p.qty), 0)
+      return `${l.name} · ${money(marcado)} marcados de ${money(l.amount)} planeados`
+    },
+    run: (d) => { const l = findShoppingList(str(d.lista)); if (l) st().toggleShoppingDone(activeMonth(), l.id) },
+  },
+
+  eliminar_lista: {
+    desc: 'Eliminar una lista de compras del mes.',
+    params: S.obj({ lista: S.str('nombre de la lista') }, ['lista']),
+    riesgo: 'borra',
+    title: 'Eliminar lista de compras',
+    cta: 'Eliminarla',
+    done: 'Lista eliminada',
+    valid: (d) => Boolean(findShoppingList(str(d.lista))),
+    summary: (d) => { const l = findShoppingList(str(d.lista)); return l ? `${l.name} · ${l.shopping?.items.length ?? 0} productos` : `No encontré la lista "${str(d.lista)}"` },
+    run: (d) => { const l = findShoppingList(str(d.lista)); if (l) st().deleteExpense(activeMonth(), l.id, 'mes') },
+  },
+
+  /* ─── Pagos del mes: adelantos, editar, eliminar ─────────────────────── */
+
+  adelantar_pago: {
+    desc: 'ADELANTAR una parte de un pago del mes antes de pagarlo del todo (ej. abonar 15 000 al recibo de 30 000). Sale plata real y baja lo pendiente.',
+    params: S.obj({ nombre: S.str('nombre del pago'), monto: S.num('cuánto adelanta'), fecha: S.str('yyyy-MM-dd'), cuenta: S.str('cuenta de la que sale') }, ['nombre', 'monto']),
+    riesgo: 'mueve_plata',
+    title: 'Adelantar parte de un pago',
+    cta: 'Registrar el adelanto',
+    done: 'Adelanto registrado: bajó lo pendiente de ese pago',
+    valid: (d) => { const e = findExpense(str(d.nombre)); return Boolean(e && !e.paid && !e.shopping) && num(d.monto) > 0 },
+    summary: (d) => {
+      const e = findExpense(str(d.nombre))
+      if (!e) return `No encontré "${str(d.nombre)}" en tu mes`
+      const falta = remainingAmount(e)
+      const monto = Math.min(num(d.monto), falta)
+      return `${money(monto)} a ${e.name} · quedarían ${money(falta - monto)} pendientes`
+    },
+    run: (d) => {
+      const e = findExpense(str(d.nombre))
+      if (!e) return
+      st().addExpenseAdvance(activeMonth(), e.id, { amount: Math.round(num(d.monto)), dateISO: str(d.fecha) ? dateOf(d.fecha) : undefined, accountId: str(d.cuenta) ? findAccount(d.cuenta) : undefined })
+    },
+  },
+
+  editar_gasto: {
+    desc: 'Cambiar un pago del mes: nombre, monto, día de vencimiento o cuenta. Si es recurrente, se aplica también a los meses siguientes.',
+    params: S.obj({ nombre: S.str('nombre actual del pago'), nuevoNombre: S.str('nuevo nombre'), monto: S.num('nuevo monto'), dia: S.int('nuevo día de vencimiento'), cuenta: S.str('nueva cuenta') }, ['nombre']),
+    riesgo: 'modifica',
+    title: 'Editar pago',
+    cta: 'Guardar el cambio',
+    done: 'Pago actualizado',
+    valid: (d) => Boolean(findExpense(str(d.nombre))) && (Boolean(str(d.nuevoNombre)) || num(d.monto) > 0 || num(d.dia) > 0 || Boolean(str(d.cuenta))),
+    summary: (d) => {
+      const e = findExpense(str(d.nombre))
+      if (!e) return `No encontré "${str(d.nombre)}" en tu mes`
+      const cambios = [str(d.nuevoNombre) && `nombre → ${str(d.nuevoNombre)}`, num(d.monto) > 0 && `monto → ${money(d.monto)}`, num(d.dia) > 0 && `vence → día ${Math.round(num(d.dia))}`, str(d.cuenta) && `cuenta → ${accountName(findAccount(d.cuenta))}`].filter(Boolean)
+      return `${e.name}: ${cambios.join(' · ')}`
+    },
+    run: (d) => {
+      const e = findExpense(str(d.nombre))
+      if (!e) return
+      const patch: Record<string, unknown> = {}
+      if (str(d.nuevoNombre)) patch.name = str(d.nuevoNombre).slice(0, 60)
+      if (num(d.monto) > 0) patch.amount = Math.round(num(d.monto))
+      if (num(d.dia) >= 1 && num(d.dia) <= 31) { patch.dueDay = Math.round(num(d.dia)); patch.period = num(d.dia) <= 15 ? 'q1' : 'q2' }
+      if (str(d.cuenta)) patch.accountId = findAccount(d.cuenta)
+      st().updateExpense(activeMonth(), e.id, patch, e.templateId ? 'siempre' : 'mes')
+    },
+  },
+
+  eliminar_gasto: {
+    desc: 'Eliminar un pago del mes. Si es recurrente, puede quitarse solo de este mes o dejar de repetirse.',
+    params: S.obj({ nombre: S.str('nombre del pago'), alcance: S.enum('solo este mes o dejar de repetirlo', ['mes', 'siempre']) }, ['nombre']),
+    riesgo: 'borra',
+    title: 'Eliminar pago',
+    cta: 'Eliminarlo',
+    done: 'Pago eliminado',
+    valid: (d) => Boolean(findExpense(str(d.nombre))),
+    summary: (d) => {
+      const e = findExpense(str(d.nombre))
+      if (!e) return `No encontré "${str(d.nombre)}" en tu mes`
+      return `${e.name} · ${money(e.amount)}` + (e.templateId ? (str(d.alcance) === 'siempre' ? ' · deja de repetirse' : ' · solo este mes') : '')
+    },
+    run: (d) => { const e = findExpense(str(d.nombre)); if (e) st().deleteExpense(activeMonth(), e.id, str(d.alcance) === 'siempre' ? 'siempre' : 'mes') },
+  },
+
+  /* ─── Movimientos: editar y eliminar ────────────────────────────────── */
+
+  editar_movimiento: {
+    desc: 'Corregir un movimiento ya registrado: monto, nombre, categoría, cuenta o fecha.',
+    params: S.obj({ nombre: S.str('nombre del movimiento'), montoActual: S.num('monto actual, para ubicarlo si hay varios'), nuevoNombre: S.str('nuevo nombre'), monto: S.num('nuevo monto'), categoria: S.str('nueva categoría (id)'), cuenta: S.str('nueva cuenta'), fecha: S.str('nueva fecha yyyy-MM-dd') }, ['nombre']),
+    riesgo: 'modifica',
+    title: 'Editar movimiento',
+    cta: 'Guardar el cambio',
+    done: 'Movimiento actualizado',
+    valid: (d) => Boolean(findMovement(str(d.nombre), num(d.montoActual) || undefined)),
+    summary: (d) => {
+      const mv = findMovement(str(d.nombre), num(d.montoActual) || undefined)
+      if (!mv) return `No encontré el movimiento "${str(d.nombre)}"`
+      const cambios = [str(d.nuevoNombre) && `nombre → ${str(d.nuevoNombre)}`, num(d.monto) > 0 && `monto → ${money(d.monto)}`, str(d.categoria) && `categoría → ${str(d.categoria)}`, str(d.cuenta) && `cuenta → ${accountName(findAccount(d.cuenta))}`, str(d.fecha) && `fecha → ${dateOf(d.fecha)}`].filter(Boolean)
+      return `${mv.name} (${money(mv.amount)}): ${cambios.join(' · ') || 'sin cambios'}`
+    },
+    run: (d) => {
+      const mv = findMovement(str(d.nombre), num(d.montoActual) || undefined)
+      if (!mv) return
+      const patch: Record<string, unknown> = {}
+      if (str(d.nuevoNombre)) patch.name = str(d.nuevoNombre).slice(0, 40)
+      if (num(d.monto) > 0) patch.amount = Math.round(num(d.monto))
+      if (str(d.categoria)) patch.categoryId = str(d.categoria)
+      if (str(d.cuenta)) patch.accountId = findAccount(d.cuenta)
+      if (str(d.fecha)) patch.dateISO = dateOf(d.fecha)
+      st().updateMovement(mv.id, patch)
+    },
+  },
+
+  eliminar_movimiento: {
+    desc: 'Eliminar un movimiento registrado por error (la plata vuelve a la cuenta).',
+    params: S.obj({ nombre: S.str('nombre del movimiento'), monto: S.num('monto, para ubicarlo si hay varios') }, ['nombre']),
+    riesgo: 'borra',
+    title: 'Eliminar movimiento',
+    cta: 'Eliminarlo',
+    done: 'Movimiento eliminado',
+    valid: (d) => Boolean(findMovement(str(d.nombre), num(d.monto) || undefined)),
+    summary: (d) => { const mv = findMovement(str(d.nombre), num(d.monto) || undefined); return mv ? `${mv.name} · ${money(mv.amount)} · ${mv.dateISO}` : `No encontré el movimiento "${str(d.nombre)}"` },
+    run: (d) => { const mv = findMovement(str(d.nombre), num(d.monto) || undefined); if (mv) st().deleteMovement(mv.id) },
+  },
+
+  /* ─── Cuentas: transferir, retiro con tarjeta, editar, eliminar ──────── */
+
+  transferir: {
+    desc: 'Mover plata entre dos cuentas del usuario (traslado). No es un gasto.',
+    params: S.obj({ monto: S.num('monto'), desde: S.str('cuenta de origen'), hacia: S.str('cuenta de destino'), fecha: S.str('yyyy-MM-dd'), nota: S.str('nota') }, ['monto', 'desde', 'hacia']),
+    riesgo: 'mueve_plata',
+    title: 'Mover plata entre cuentas',
+    cta: 'Hacer el traslado',
+    done: 'Traslado registrado',
+    valid: (d) => num(d.monto) > 0 && Boolean(findAccountObj(d.desde)) && Boolean(findAccountObj(d.hacia)) && findAccount(d.desde) !== findAccount(d.hacia),
+    summary: (d) => `${money(d.monto)} de ${accountName(findAccount(d.desde))} a ${accountName(findAccount(d.hacia))}`,
+    run: (d) => st().addMovement({
+      name: str(d.nota, 'Traslado').slice(0, 40), amount: Math.round(num(d.monto)), kind: 'transferencia',
+      categoryId: 'transferencia', accountId: findAccount(d.desde), toAccountId: findAccount(d.hacia), dateISO: dateOf(d.fecha),
+    }),
+  },
+
+  retiro_tarjeta: {
+    desc: 'Retiro de efectivo con TARJETA de crédito: sube la deuda de la tarjeta y sube el efectivo.',
+    params: S.obj({ monto: S.num('monto'), tarjeta: S.str('nombre de la tarjeta'), hacia: S.str('cuenta donde entra el efectivo'), fecha: S.str('yyyy-MM-dd') }, ['monto', 'tarjeta']),
+    riesgo: 'mueve_plata',
+    title: 'Retiro de efectivo con tarjeta',
+    cta: 'Registrar el retiro',
+    done: 'Retiro registrado: subió la deuda de la tarjeta',
+    valid: (d) => num(d.monto) > 0 && Boolean(findAccount(d.tarjeta, true)),
+    summary: (d) => `${money(d.monto)} de ${accountName(findAccount(d.tarjeta, true))} a ${accountName(findAccount(d.hacia))} · ojo: genera intereses desde hoy`,
+    run: (d) => st().addMovement({
+      name: 'Retiro con tarjeta', amount: Math.round(num(d.monto)), kind: 'transferencia', categoryId: 'transferencia',
+      accountId: findAccount(d.tarjeta, true), toAccountId: findAccount(d.hacia), dateISO: dateOf(d.fecha),
+    }),
+  },
+
+  editar_cuenta: {
+    desc: 'Cambiar el nombre o el color de una cuenta, o marcarla como principal.',
+    params: S.obj({ cuenta: S.str('nombre actual'), nuevoNombre: S.str('nuevo nombre'), principal: S.bool('marcarla como principal') }, ['cuenta']),
+    riesgo: 'modifica',
+    title: 'Editar cuenta',
+    cta: 'Guardar',
+    done: 'Cuenta actualizada',
+    valid: (d) => Boolean(findAccountObj(d.cuenta)) && (Boolean(str(d.nuevoNombre)) || d.principal === true),
+    summary: (d) => `${accountName(findAccount(d.cuenta))}${str(d.nuevoNombre) ? ` → ${str(d.nuevoNombre)}` : ''}${d.principal === true ? ' · pasa a ser la principal' : ''}`,
+    run: (d) => {
+      const id = findAccount(d.cuenta)
+      if (str(d.nuevoNombre)) st().updateAccount(id, { name: str(d.nuevoNombre).slice(0, 30) })
+      if (d.principal === true) st().setMainAccount(id)
+    },
+  },
+
+  eliminar_cuenta: {
+    desc: 'Eliminar una cuenta del usuario.',
+    params: S.obj({ cuenta: S.str('nombre de la cuenta') }, ['cuenta']),
+    riesgo: 'borra',
+    title: 'Eliminar cuenta',
+    cta: 'Eliminarla',
+    done: 'Cuenta eliminada',
+    valid: (d) => Boolean(findAccountObj(d.cuenta)),
+    summary: (d) => `${accountName(findAccount(d.cuenta))} · sus movimientos quedan sin cuenta`,
+    run: (d) => st().deleteAccount(findAccount(d.cuenta)),
+  },
+
+  /* ─── Préstamos informales ───────────────────────────────────────────── */
+
+  me_prestaron: {
+    desc: 'Registrar que ALGUIEN LE PRESTÓ plata al usuario (él debe). Entra a la cuenta.',
+    params: S.obj({ persona: S.str('quién le prestó'), monto: S.num('monto'), fecha: S.str('yyyy-MM-dd'), cuenta: S.str('cuenta donde entró'), nota: S.str('nota') }, ['persona', 'monto']),
+    riesgo: 'mueve_plata',
+    title: 'Me prestaron plata',
+    cta: 'Registrarlo',
+    done: 'Registrado: lo ves en Dinero → Me prestaron',
+    valid: (d) => str(d.persona).length > 0 && num(d.monto) > 0,
+    summary: (d) => `${str(d.persona)} te prestó ${money(d.monto)}${str(d.cuenta) ? ` → ${accountName(findAccount(d.cuenta))}` : ''}`,
+    run: (d) => st().addLoan({
+      kind: 'borrowed', person: str(d.persona, 'Alguien').slice(0, 40), amount: Math.round(num(d.monto)),
+      dateISO: str(d.fecha) ? dateOf(d.fecha) : todayLocalISO(), accountId: str(d.cuenta) ? findAccount(d.cuenta) : undefined, note: str(d.nota) || undefined,
+    }),
+  },
+
+  prestar_mas: {
+    desc: 'Prestarle MÁS plata a alguien que ya te debe (se suma a su préstamo).',
+    params: S.obj({ persona: S.str('nombre'), monto: S.num('monto'), fecha: S.str('yyyy-MM-dd'), cuenta: S.str('cuenta de la que sale') }, ['persona', 'monto']),
+    riesgo: 'mueve_plata',
+    title: 'Prestarle más',
+    cta: 'Registrarlo',
+    done: 'Sumado a lo que te debe',
+    valid: (d) => Boolean(findLoan(str(d.persona), 'lent')) && num(d.monto) > 0,
+    summary: (d) => { const l = findLoan(str(d.persona), 'lent'); return l ? `${money(d.monto)} más a ${l.person} · te debería ${money(loanRemaining(l) + num(d.monto))}` : `No encontré a "${str(d.persona)}" en Le presté` },
+    run: (d) => { const l = findLoan(str(d.persona), 'lent'); if (l) st().addLoanAdvance(l.id, Math.round(num(d.monto)), 'Le presté más', str(d.fecha) ? dateOf(d.fecha) : undefined, str(d.cuenta) ? findAccount(d.cuenta) : undefined) },
+  },
+
+  /* ─── Deudas y presupuestos: eliminar ────────────────────────────────── */
+
+  eliminar_deuda: {
+    desc: 'Eliminar una deuda formal.',
+    params: S.obj({ nombre: S.str('nombre de la deuda') }, ['nombre']),
+    riesgo: 'borra',
+    title: 'Eliminar deuda',
+    cta: 'Eliminarla',
+    done: 'Deuda eliminada',
+    valid: (d) => Boolean(findDebt(str(d.nombre))),
+    summary: (d) => { const x = findDebt(str(d.nombre)); return x ? `${x.name} · ${money(x.total)}` : `No encontré la deuda "${str(d.nombre)}"` },
+    run: (d) => { const x = findDebt(str(d.nombre)); if (x) st().deleteDebt(x.id) },
+  },
+
+  eliminar_presupuesto: {
+    desc: 'Eliminar un presupuesto.',
+    params: S.obj({ nombre: S.str('nombre del presupuesto') }, ['nombre']),
+    riesgo: 'borra',
+    title: 'Eliminar presupuesto',
+    cta: 'Eliminarlo',
+    done: 'Presupuesto eliminado',
+    valid: (d) => Boolean(findBudget(str(d.nombre))),
+    summary: (d) => { const b = findBudget(str(d.nombre)); return b ? `${b.name} · ${money(b.amount)}` : `No encontré el presupuesto "${str(d.nombre)}"` },
+    run: (d) => { const b = findBudget(str(d.nombre)); if (b) st().deleteBudget(b.id) },
+  },
+
+  /* ─── Categorías y tema ──────────────────────────────────────────────── */
+
+  crear_categoria: {
+    desc: 'Crear una categoría propia con ícono y color (ej. "Gimnasio", "Universidad").',
+    params: S.obj({ name: S.str('nombre'), icono: S.str('id de ícono del catálogo: casa, luz, agua, wifi, celular, super, comida, cafe, carro, gasolina, bus, salud, gym, ropa, cine, juegos, regalo, bebe, mascota, educacion, banco, tarjeta, belleza, farmacia, libros, trabajo, seguro, deporte, ahorro…'), color: S.str('color hex, ej. #7c5cff'), tipo: S.enum('para qué sirve', ['gasto', 'ingreso', 'ambos']) }, ['name']),
+    riesgo: 'crea',
+    title: 'Nueva categoría',
+    cta: 'Crearla',
+    done: 'Categoría creada: la ves en Ajustes → Categorías',
+    valid: (d) => str(d.name).length > 0,
+    summary: (d) => `${str(d.name)}${str(d.icono) ? ` · ícono ${str(d.icono)}` : ''}${str(d.color) ? ` · color ${str(d.color)}` : ''}`,
+    run: (d) => st().addCategory({
+      name: str(d.name).slice(0, 30), icon: str(d.icono, 'efectivo'), color: /^#[0-9a-f]{6}$/i.test(str(d.color)) ? str(d.color) : undefined,
+      kind: (['gasto', 'ingreso', 'ambos'] as const).find((k) => k === str(d.tipo)) ?? 'gasto', builtin: false,
+    }),
+  },
+
+  cambiar_tema: {
+    desc: 'Cambiar el tema de la app a claro u oscuro.',
+    params: S.obj({ modo: S.enum('modo', ['light', 'dark']) }, ['modo']),
+    riesgo: 'modifica',
+    title: 'Cambiar tema',
+    cta: 'Cambiarlo',
+    done: 'Tema cambiado',
+    valid: (d) => str(d.modo) === 'light' || str(d.modo) === 'dark',
+    summary: (d) => `Modo ${str(d.modo) === 'dark' ? 'oscuro' : 'claro'}`,
+    run: (d) => st().setTheme({ mode: str(d.modo) === 'dark' ? 'dark' : 'light' }),
+  },
+
+  /* ─── Navegación y búsqueda (se ejecutan solas, sin confirmar) ────────── */
+
+  ir_a: {
+    desc: 'LLEVAR al usuario a una pantalla de la app. Úsala cuando pregunte dónde está algo o pida ir a un módulo. El destino es el id del MAPA DE LA APP (ej. compras, tarjetas, medebo, ingresos).',
+    params: S.obj({ destino: S.str('id del lugar del mapa de la app') }, ['destino']),
+    riesgo: 'navegacion',
+    title: 'Ir a',
+    cta: 'Llevame',
+    done: 'Listo, ahí lo tenés',
+    valid: (d) => Boolean(APP_MAP.find((p) => p.id === str(d.destino)) ?? buscarLugar(str(d.destino), 1)[0]),
+    summary: (d) => { const p = APP_MAP.find((x) => x.id === str(d.destino)) ?? buscarLugar(str(d.destino), 1)[0]; return p ? rutaDe(p) : str(d.destino) },
+    run: (d) => {
+      const p = APP_MAP.find((x) => x.id === str(d.destino)) ?? buscarLugar(str(d.destino), 1)[0]
+      if (!p) return
+      const s = st()
+      if (s.subs[s.activeTab]) s.setSub(s.activeTab as TabId, '')
+      s.setSub(p.tab, p.sub ?? '')
+      s.setActiveTab(p.tab)
+    },
+  },
+
+  buscar_en_la_app: {
+    desc: 'Buscar en qué módulo de la app está una funcionalidad (por palabras). Devuelve la ruta para explicársela al usuario.',
+    params: S.obj({ texto: S.str('qué busca el usuario') }, ['texto']),
+    riesgo: 'lectura',
+    title: 'Buscar en la app',
+    cta: 'Buscar',
+    done: 'Encontrado',
+    valid: (d) => str(d.texto).length > 0,
+    summary: (d) => buscarLugar(str(d.texto), 3).map(rutaDe).join(' · ') || 'No encontré ese módulo',
+    run: () => { /* solo lectura: el resumen ya trae la ruta */ },
+  },
 }
 
 export function actionSpec(tipo: string): ActionSpec | undefined {
   return ACTIONS[tipo]
+}
+
+/** ¿Se ejecuta sola, sin tarjeta de confirmación? */
+export function isAutoAction(tipo: string): boolean {
+  const r = ACTIONS[tipo]?.riesgo
+  return r === 'lectura' || r === 'navegacion'
+}
+
+/** Declaraciones de función para Gemini: salen del catálogo, nunca a mano */
+export function toolDeclarations(allowed?: (tipo: string) => boolean): GeminiFunctionDecl[] {
+  return Object.entries(ACTIONS)
+    .filter(([tipo]) => !allowed || allowed(tipo))
+    .map(([tipo, spec]) => ({ name: tipo, description: spec.desc, parameters: spec.params }))
+}
+
+/** El catálogo en texto, para el prompt (respaldo si el modelo no llama funciones) */
+export function catalogPrompt(): string {
+  return Object.entries(ACTIONS)
+    .map(([tipo, spec]) => {
+      const props = (spec.params as { properties?: Record<string, { description?: string }> }).properties ?? {}
+      const campos = Object.entries(props).map(([k, v]) => `${k}${v.description ? ` (${v.description})` : ''}`).join(', ')
+      return `- ${tipo}: ${spec.desc} Datos: {${campos}}`
+    })
+    .join('\n')
 }

@@ -144,6 +144,9 @@ export function planLimits(id?: string): PlanLimits {
 /** Acciones permitidas en el plan gratis (las demás piden mejorar de plan) */
 export const BASIC_ACTIONS = new Set([
   'agregar_gasto', 'agregar_deuda', 'marcar_pagado', 'agregar_movimiento',
+  // lo del día a día también en el plan gratis: compras, adelantos y moverse por la app
+  'crear_lista_compras', 'agregar_producto_lista', 'marcar_producto', 'cerrar_lista',
+  'adelantar_pago', 'ir_a', 'buscar_en_la_app',
 ])
 
 /* ─── Precios en la moneda del usuario ─────────────────────────────────── */
