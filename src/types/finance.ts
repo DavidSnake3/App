@@ -622,9 +622,6 @@ export type PaySoundId = 'ding' | 'caja' | 'monedas'
 export type AlarmSoundId = 'clasica' | 'digital' | 'suave'
 
 /** Qué animaciones prefiere el usuario (punto 25) */
-/** Cómo se celebra el mes completado */
-export type CelebrationStyle = 'estallido' | 'trofeo' | 'aurora' | 'fuegos' | 'racha'
-
 /** Cómo entra cada pantalla al cambiar de pestaña */
 export type TransitionStyle =
   | 'deslizar' | 'desvanecer' | 'zoom' | 'subir' | 'voltear' | 'ninguna'
@@ -640,10 +637,6 @@ export interface AnimationPrefs {
   alarmSound: AlarmSoundId
   /** estilo de la transición entre pestañas */
   transitionStyle?: TransitionStyle
-  /** cuánto confeti: discreto, normal o fiesta */
-  celebrationLevel?: 'suave' | 'normal' | 'fiesta'
-  /** estilo de la pantalla de "mes completado" */
-  celebrationStyle?: CelebrationStyle
 }
 
 // ─── Planilla / comprobante salarial ─────────────────────────────────────────
@@ -759,6 +752,10 @@ export interface SavingsDeposit {
   amount: number // negativo = retiro del ahorro
   dateISO: string
   note?: string
+  /** cuenta de la que salió (o a la que volvió, si es un retiro) */
+  accountId?: string
+  /** movimiento que generó: así la plata sale de verdad de la cuenta */
+  movementId?: string
 }
 
 /** Sobre de ahorro: una meta con su propio dinero y sus aportes */

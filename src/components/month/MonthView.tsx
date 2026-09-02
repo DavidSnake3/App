@@ -44,7 +44,9 @@ const TITULOS: Record<MonthSub, { title: string; subtitle: string }> = {
 }
 
 export function MonthView() {
-  const sub = (useFinanceStore((s) => s.subs.month) ?? '') as MonthSub | ''
+  const guardado = useFinanceStore((s) => s.subs.month) ?? ''
+  // si una version vieja dejo guardado un submenu que ya no existe, abrimos el menu
+  const sub = (guardado in TITULOS ? guardado : '') as MonthSub | ''
   const setSub = useFinanceStore((s) => s.setSub)
   const monthId = useFinanceStore((s) => s.activeMonthId)
   const month = useFinanceStore((s) => s.months[monthId])

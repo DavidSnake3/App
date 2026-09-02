@@ -18,7 +18,9 @@ const TITULOS: Record<ReportsSub, { title: string; subtitle: string }> = {
 
 /** Hub "Reportes": el año, los movimientos por tipo y el reporte financiero */
 export function ReportsView() {
-  const sub = (useFinanceStore((s) => s.subs.reports) ?? '') as ReportsSub | ''
+  const guardado = useFinanceStore((s) => s.subs.reports) ?? ''
+  // si una version vieja dejo guardado un submenu que ya no existe, abrimos el menu
+  const sub = (guardado in TITULOS ? guardado : '') as ReportsSub | ''
   const setSub = useFinanceStore((s) => s.setSub)
   const activeMonthId = useFinanceStore((s) => s.activeMonthId)
   const months = useFinanceStore((s) => s.months)

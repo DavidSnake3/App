@@ -114,6 +114,56 @@ export function hormigasTotal(m: MonthData): number {
 }
 
 /**
+ * Lo que DE VERDAD se gastó en un mes, repartido por tipo. Es lo que va en los
+ * reportes: solo cuenta lo pagado y lo adelantado, nunca lo que sigue pendiente.
+ *
+ * Sin doble conteo: al marcar un pago como pagado se crea su movimiento, así
+ * que ese movimiento se atribuye a su tipo (servicio/gasto/personal/deuda) y se
+ * excluye de la bolsa de "movimientos sueltos".
+ */
+export function monthSpend(m: MonthData | undefined, debts: Debt[]): {
+  servicio: number
+  gasto: number
+  personal: number
+  deuda: number
+  movimientos: number
+  total: number
+} {
+  const vacio = { servicio: 0, gasto: 0, personal: 0, deuda: 0, movimientos: 0, total: 0 }
+  if (!m) return vacio
+
+  // movimientos que nacieron de un pago o de un adelanto: ya se cuentan por su tipo
+  const deUnPago = new Set<string>()
+  for (const e of m.expenses) {
+    if (e.movementId) deUnPago.add(e.movementId)
+    for (const ad of e.advances ?? []) if (ad.movementId) deUnPago.add(ad.movementId)
+  }
+  for (const d of debts) {
+    const p = d.payments[m.id]
+    if (p?.movementId) deUnPago.add(p.movementId)
+  }
+
+  const porTipo = { servicio: 0, gasto: 0, personal: 0, deuda: 0 }
+  for (const k of kindTotals(m, debts)) porTipo[k.kind] += k.paid
+
+  const movimientos = round2(
+    (m.movements ?? [])
+      .filter((x) => x.kind === 'gasto' && !deUnPago.has(x.id))
+      .reduce((s, x) => s + x.amount, 0)
+    + hormigasTotal(m),
+  )
+
+  return {
+    servicio: round2(porTipo.servicio),
+    gasto: round2(porTipo.gasto),
+    personal: round2(porTipo.personal),
+    deuda: round2(porTipo.deuda),
+    movimientos,
+    total: round2(porTipo.servicio + porTipo.gasto + porTipo.personal + porTipo.deuda + movimientos),
+  }
+}
+
+/**
  * Lo PAGADO del mes que salio de efectivo. Un pago hecho con tarjeta de
  * credito no baja el banco: se convierte en deuda de la tarjeta.
  */
@@ -162,6 +212,18 @@ export function depositsInMonth(settings: AppSettings, monthId: string): number 
 }
 
 /**
+ * Lo apartado al ahorro que TODAVÍA no movió una cuenta.
+ *
+ * Un aporte con cuenta genera su propio movimiento, y ese movimiento ya baja
+ * el saldo. Restarlo otra vez aquí lo contaría dos veces.
+ */
+export function depositsWithoutMovement(settings: AppSettings, monthId: string): number {
+  return round2(allDeposits(settings)
+    .filter((d) => monthOfISO(d.dateISO) === monthId && !d.movementId)
+    .reduce((s, d) => s + d.amount, 0))
+}
+
+/**
  * Total ahorrado real: lo que ya tenía guardado en cada sobre (initial) más
  * los aportes hechos desde la app, menos los retiros.
  */
@@ -194,7 +256,7 @@ export function monthFlow(
   const movs = cashMovementsNet(m, accounts)
   return round2(
     receivedInMonth(m, settings, today) - pagado - hormigasTotal(m) + movs
-    - depositsInMonth(settings, m.id) + loanFlowInMonth(loans, m.id),
+    - depositsWithoutMovement(settings, m.id) + loanFlowInMonth(loans, m.id),
   )
 }
 
@@ -212,7 +274,7 @@ export function generalMonthFlow(
 ): number {
   return round2(
     receivedInMonth(m, settings, today) - paidInCash(m, debts, accounts) - hormigasTotal(m)
-    - depositsInMonth(settings, m.id) + loanFlowInMonth(loans, m.id),
+    - depositsWithoutMovement(settings, m.id) + loanFlowInMonth(loans, m.id),
   )
 }
 

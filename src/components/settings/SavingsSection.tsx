@@ -5,6 +5,9 @@ import { Minus, PiggyBank, Plus, ShieldCheck, Target, Trash2, X } from 'lucide-r
 import type { SavingsEnvelope } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { envelopeTotal, savingsTotal, suggestedEmergencyGoal } from '../../lib/fund'
+import { activeAccounts, isCredit } from '../../lib/accounts'
+import { accountColor } from '../../lib/itemColors'
+import { ItemIcon } from '../../lib/icons'
 import { payrollBreakdown } from '../../lib/payroll'
 import { formatMoney, money2 } from '../../lib/format'
 import { CurrencyInput } from '../ui/CurrencyInput'
@@ -179,7 +182,12 @@ function EnvelopeCard({ env }: { env: SavingsEnvelope }) {
   const updateEnvelope = useFinanceStore((s) => s.updateEnvelope)
   const deleteEnvelope = useFinanceStore((s) => s.deleteEnvelope)
 
+  const accounts = useFinanceStore((s) => s.accounts)
+  const cuentas = activeAccounts(accounts).filter((a) => !isCredit(a))
+  const principal = cuentas.find((a) => a.isMain) ?? cuentas[0]
+
   const [amount, setAmount] = useState(0)
+  const [cuentaId, setCuentaId] = useState('')
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -190,7 +198,7 @@ function EnvelopeCard({ env }: { env: SavingsEnvelope }) {
 
   const aportar = (signo: 1 | -1) => {
     if (amount <= 0) return
-    addEnvelopeDeposit(env.id, signo * amount, signo > 0 ? 'Aporte' : 'Retiro')
+    addEnvelopeDeposit(env.id, signo * amount, signo > 0 ? 'Aporte' : 'Retiro', cuentaId || undefined)
     setAmount(0)
   }
 
@@ -224,6 +232,32 @@ function EnvelopeCard({ env }: { env: SavingsEnvelope }) {
           <Target size={13} />
         </button>
       </div>
+
+      {/* ¿De qué cuenta sale la plata? El aporte se anota como movimiento */}
+      {cuentas.length > 0 && (
+        <div>
+          <p className="text-[11.5px] text-muted mb-1.5">¿De qué cuenta sale?</p>
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            <button
+              onClick={() => setCuentaId('')}
+              className={`pressable chip shrink-0 ${cuentaId === '' ? 'chip-active' : ''}`}
+            >
+              {principal ? principal.name : 'La principal'}
+            </button>
+            {cuentas.filter((a) => a.id !== principal?.id).map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setCuentaId(a.id)}
+                className={`pressable chip shrink-0 ${cuentaId === a.id ? 'chip-active' : ''}`}
+              >
+                <span style={{ color: accountColor(a) }}>
+                  <ItemIcon icon={a.icon} name={a.name} size={12} />
+                </span> {a.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Aportar o retirar en cualquier momento */}
       <div className="flex gap-2">

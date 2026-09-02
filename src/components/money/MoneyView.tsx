@@ -24,7 +24,9 @@ const TITULOS: Record<MoneySub, { title: string; subtitle: string }> = {
 
 /** Hub "Dinero": dónde está tu plata y por dónde se mueve */
 export function MoneyView() {
-  const sub = (useFinanceStore((s) => s.subs.money) ?? '') as MoneySub | ''
+  const guardado = useFinanceStore((s) => s.subs.money) ?? ''
+  // si una version vieja dejo guardado un submenu que ya no existe, abrimos el menu
+  const sub = (guardado in TITULOS ? guardado : '') as MoneySub | ''
   const setSub = useFinanceStore((s) => s.setSub)
   const monthId = useFinanceStore((s) => s.activeMonthId)
   const month = useFinanceStore((s) => s.months[monthId])

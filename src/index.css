@@ -632,7 +632,7 @@ input, select, textarea, button { font-family: inherit; }
   }
 }
 
-/* ─── Celebración de mes completado (5 estilos, se eligen en Ajustes) ───── */
+/* ─── Celebración de mes completado ────────────────────────────────────── */
 .cel-capa { animation: fadeIn 0.25s ease both; }
 .cel-fondo {
   background: rgb(5 7 14 / 0.78);
@@ -663,7 +663,7 @@ input, select, textarea, button { font-family: inherit; }
 }
 .cel-boton { background: var(--app-gradient); animation: riseIn 0.4s ease 0.55s both; }
 
-/* Halo que respira detrás de la tarjeta (estallido, racha) */
+/* Halo que respira detrás de la tarjeta */
 .cel-halo {
   position: absolute; width: 380px; height: 380px; border-radius: 50%;
   background: radial-gradient(circle, color-mix(in oklab, var(--app-accent) 55%, transparent) 0%, transparent 62%);
@@ -676,89 +676,11 @@ input, select, textarea, button { font-family: inherit; }
   50%      { transform: scale(1.12); opacity: 0.9; }
 }
 
-/* ESTALLIDO: el anillo se dibuja y el check aparece al final */
-.cel-check { display: inline-flex; animation: celPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s both; }
-.cel-check-ring {
-  stroke-dasharray: 264; stroke-dashoffset: 264;
-  animation: celRing 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) 0.3s forwards;
-}
-@keyframes celRing { to { stroke-dashoffset: 0; } }
-.cel-check-mark {
-  stroke-dasharray: 60; stroke-dashoffset: 60;
-  animation: celRing 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) 1.05s forwards;
-}
-
-/* TROFEO: cae con rebote, luz debajo y un destello que lo recorre */
-.cel-trofeo-icono {
-  position: relative; display: inline-flex; align-items: center; justify-content: center;
-  width: 112px; height: 112px;
-  animation: celDrop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s both;
-  filter: drop-shadow(0 12px 24px rgb(255 209 102 / 0.45));
-}
-@keyframes celDrop {
-  0%   { opacity: 0; transform: translateY(-90px) rotate(-8deg); }
-  60%  { opacity: 1; transform: translateY(8px) rotate(3deg); }
-  100% { opacity: 1; transform: translateY(0) rotate(0); }
-}
-.cel-trofeo-luz {
-  position: absolute; bottom: 6px; width: 90px; height: 16px; border-radius: 50%;
-  background: radial-gradient(ellipse, rgb(255 209 102 / 0.55), transparent 70%);
-  animation: celHalo 2s ease-in-out infinite;
-}
-.cel-brillo {
-  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
-  background: linear-gradient(115deg, transparent 35%, rgb(255 255 255 / 0.65) 50%, transparent 65%);
-  mix-blend-mode: screen;
-  animation: celShine 1.4s ease 1s both;
-}
-@keyframes celShine {
-  from { transform: translateX(-120%) skewX(-12deg); opacity: 0; }
-  30%  { opacity: 1; }
-  to   { transform: translateX(120%) skewX(-12deg); opacity: 0; }
-}
-
-/* AURORA: tres ondas de color que se mueven despacio detrás */
-.cel-aurora .cel-fondo { background: rgb(5 7 14 / 0.72); }
-.cel-onda {
-  position: absolute; width: 140vmax; height: 140vmax; border-radius: 45%;
-  opacity: 0.55; filter: blur(60px); pointer-events: none; mix-blend-mode: screen;
-}
-.cel-onda-1 { background: radial-gradient(circle at 30% 30%, var(--app-accent), transparent 60%); animation: celAurora 9s ease-in-out infinite; }
-.cel-onda-2 { background: radial-gradient(circle at 70% 60%, var(--c-income), transparent 60%); animation: celAurora 11s ease-in-out infinite reverse; }
-.cel-onda-3 { background: radial-gradient(circle at 50% 80%, #ff7ab8, transparent 60%); animation: celAurora 13s ease-in-out infinite 1s; }
-@keyframes celAurora {
-  0%   { transform: translate(-12%, -10%) rotate(0deg); }
-  50%  { transform: translate(10%, 8%) rotate(180deg); }
-  100% { transform: translate(-12%, -10%) rotate(360deg); }
-}
-.cel-aurora .cel-tarjeta {
-  background: rgb(255 255 255 / 0.08);
-  border-color: rgb(255 255 255 / 0.18);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-}
-.cel-aurora-icono {
-  display: inline-flex; width: 88px; height: 88px; border-radius: 50%; align-items: center; justify-content: center;
-  background: linear-gradient(145deg, var(--app-accent), var(--c-income));
-  box-shadow: 0 16px 40px -14px var(--app-accent);
-  animation: celPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both, celHalo 3s ease-in-out 1s infinite;
-}
-
-/* FUEGOS: fondo más oscuro para que luzcan las explosiones */
-.cel-fuegos .cel-fondo { background: rgb(3 4 10 / 0.86); }
-.cel-fuegos-icono {
-  display: inline-flex; width: 92px; height: 92px; border-radius: 28px; align-items: center; justify-content: center;
-  background: linear-gradient(145deg, var(--c-income), color-mix(in oklab, var(--c-income) 55%, #000));
-  box-shadow: 0 18px 44px -14px var(--c-income);
-  animation: celPop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 0.6s both;
-}
-
-/* RACHA: el anillo con el contador */
-.cel-racha-icono { position: relative; display: inline-flex; width: 112px; height: 112px; animation: celPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both; }
+/* El anillo con el contador */
+.cel-anillo { position: relative; display: inline-flex; width: 112px; height: 112px; animation: celPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .cel-tarjeta, .cel-check, .cel-trofeo-icono, .cel-aurora-icono, .cel-fuegos-icono, .cel-racha-icono,
+  .cel-tarjeta, .cel-anillo,
   .cel-kicker, .cel-titulo, .cel-sub, .cel-pill, .cel-boton { animation: fadeIn 0.2s ease both; }
-  .cel-halo, .cel-onda, .cel-trofeo-luz, .cel-brillo { animation: none; }
-  .cel-check-ring, .cel-check-mark { stroke-dashoffset: 0; animation: none; }
+  .cel-halo { animation: none; }
 }

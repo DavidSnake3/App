@@ -7,7 +7,7 @@ import {
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
 import type {
-  AlarmSoundId, CelebrationStyle, Debt, PayPeriod, PayrollDeduction, PaySoundId, PendingAlarm,
+  AlarmSoundId, Debt, PayPeriod, PayrollDeduction, PaySoundId, PendingAlarm,
   TransitionStyle, WorkerType,
 } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -17,7 +17,7 @@ import { CURRENCIES, LOCALES, formatMoney, formatMoneyExact, money2 } from '../.
 import { mergeCategories } from '../../lib/categories'
 import { useBackClose } from '../../hooks/useBackClose'
 import { requestPermission, sendTestNotification } from '../../lib/notifications'
-import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm, playSuccess } from '../../lib/sound'
+import { ALARM_SOUNDS, PAY_SOUNDS, previewAlarm } from '../../lib/sound'
 import { firebaseReady, logout } from '../../lib/firebase'
 import {
   COUNTRY_PRESETS, INPUT_PERIODS, PERIOD_LABEL, PERIOD_UNIT, WORKER_LABEL, convertPeriod,
@@ -25,9 +25,8 @@ import {
   payrollBreakdown, presetExtraPays, presetLabel, presetPct, presetStatutory,
 } from '../../lib/payroll'
 import { debtIsSettled, uid } from '../../lib/finance'
-import { celebrate, payBurst } from '../../lib/fx'
+import { payBurst } from '../../lib/fx'
 import { MonthCelebration } from '../overlays/MonthCelebration'
-import { CELEBRATION_STYLES } from '../../lib/celebrations'
 import { applyBackup, exportBackup, readBackup } from '../../lib/backup'
 import { exportState } from '../../store/useFinanceStore'
 import { withLoading } from '../../store/useLoading'
@@ -55,21 +54,18 @@ const TRANSITION_STYLES: { id: TransitionStyle; label: string }[] = [
   { id: 'ninguna', label: 'Sin transición' },
 ]
 
-const CELEBRATION_LEVELS: { id: 'suave' | 'normal' | 'fiesta'; label: string }[] = [
-  { id: 'suave', label: 'Discreta' },
-  { id: 'normal', label: 'Normal' },
-  { id: 'fiesta', label: 'Fiesta' },
-]
-
 const ACCENT_CHOICES = ['#7c5cff', '#10b981', '#0ea5e9', '#f43f5e', '#d97706', '#ec4899', '#14b8a6', '#8b5cf6']
 
 type SectionId = 'cuenta' | 'ingresos' | 'categorias' | 'snake' | 'apariencia' | 'animaciones' | 'notificaciones' | 'datos' | 'ayuda'
+const SECCIONES: SectionId[] = ['cuenta', 'ingresos', 'categorias', 'snake', 'apariencia', 'animaciones', 'notificaciones', 'datos', 'ayuda']
 
 const SUPPORT_EMAIL = 'davidjosuevillegassalas@gmail.com'
 
 /** Ajustes organizado por submenús (mejora 16) */
 export function SettingsView({ auth }: { auth: AuthState }) {
-  const section = (useFinanceStore((s) => s.subs.settings) ?? '') as SectionId | ''
+  const guardado = useFinanceStore((s) => s.subs.settings) ?? ''
+  // si una version vieja dejo guardada una seccion que ya no existe, abrimos el menu
+  const section = (SECCIONES.includes(guardado as SectionId) ? guardado : '') as SectionId | ''
   const setSub = useFinanceStore((s) => s.setSub)
   const setSection = (id: SectionId | null) => setSub('settings', id ?? '')
 
@@ -192,7 +188,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNFinance v3.7.1</p>
+  return <p className="text-[11px] text-muted text-center">SNFinance v3.8.0</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -847,8 +843,8 @@ export function AnimacionesSection() {
   const a = useFinanceStore((s) => s.settings.animations)
   const setAnimations = useFinanceStore((s) => s.setAnimations)
   const monthId = useFinanceStore((s) => s.activeMonthId)
-  // vista previa de la pantalla de mes completado con el estilo que se toque
-  const [previa, setPrevia] = useState<CelebrationStyle | null>(null)
+  // vista previa de la pantalla de mes completado
+  const [previa, setPrevia] = useState(false)
 
   return (
     <>
@@ -884,55 +880,15 @@ export function AnimacionesSection() {
           <Toggle checked={a.celebration} onChange={(v) => setAnimations({ celebration: v })} label="Celebración" />
         </RowToggle>
         {a.celebration && (
-          <div>
-            <p className="text-[12px] text-muted mb-1.5">Estilo de la pantalla de mes completado (toca para verla):</p>
-            <div className="grid grid-cols-1 gap-2 mb-3">
-              {CELEBRATION_STYLES.map((c) => {
-                const activo = (a.celebrationStyle ?? 'estallido') === c.id
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => { setAnimations({ celebrationStyle: c.id }); setPrevia(c.id) }}
-                    className="pressable tile px-3.5 py-2.5 flex items-center gap-3 text-left"
-                    style={activo
-                      ? { borderColor: 'var(--app-accent)', background: 'color-mix(in oklab, var(--app-accent) 12%, var(--c-card))' }
-                      : undefined}
-                  >
-                    <span
-                      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ background: activo ? 'var(--app-gradient)' : 'var(--c-elevated)', color: activo ? '#fff' : 'var(--c-muted)' }}
-                    >
-                      <PartyPopper size={16} />
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-[13px] font-semibold text-ink">{c.label}</span>
-                      <span className="block text-[11px] text-muted leading-snug">{c.desc}</span>
-                    </span>
-                    {activo && <Play size={13} style={{ color: 'var(--app-accent-soft)' }} />}
-                  </button>
-                )
-              })}
-            </div>
-            <MonthCelebration
-              open={Boolean(previa)}
-              monthId={monthId}
-              style={previa ?? undefined}
-              preview
-              onClose={() => setPrevia(null)}
-            />
-            <p className="text-[12px] text-muted mb-1.5">¿Qué tan grande la fiesta?</p>
-            <div className="flex gap-1.5">
-              {CELEBRATION_LEVELS.map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => { setAnimations({ celebrationLevel: n.id }); celebrate({ ...a, celebrationLevel: n.id }) }}
-                  className={`pressable chip flex-1 justify-center ${(a.celebrationLevel ?? 'normal') === n.id ? 'chip-active' : ''}`}
-                >
-                  {n.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <>
+            <button
+              onClick={() => setPrevia(true)}
+              className="pressable btn-ghost w-full flex items-center justify-center gap-2 text-[13px]"
+            >
+              <PartyPopper size={13} /> Ver la celebración del mes
+            </button>
+            <MonthCelebration open={previa} monthId={monthId} onClose={() => setPrevia(false)} />
+          </>
         )}
         <RowToggle title="Vibración" desc="Respuesta háptica en acciones">
           <Toggle checked={a.haptics} onChange={(v) => setAnimations({ haptics: v })} label="Vibración" />
@@ -940,9 +896,6 @@ export function AnimacionesSection() {
         <div className="flex gap-2">
           <button onClick={(e) => payBurst(e.currentTarget, a)} className="pressable btn-ghost flex-1 flex items-center justify-center gap-2 text-[13px]">
             <Play size={13} /> Probar pago
-          </button>
-          <button onClick={() => { celebrate(a); if (a.sounds) playSuccess() }} className="pressable btn-ghost flex-1 flex items-center justify-center gap-2 text-[13px]">
-            <PartyPopper size={13} /> Probar celebración
           </button>
         </div>
       </Card>
@@ -1194,7 +1147,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNFinance v3.7.1 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNFinance v3.8.0 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

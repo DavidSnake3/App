@@ -6,6 +6,7 @@ import { MONTH_SHORT, currentMonthId, monthDiff, monthIdOf, monthLabel, parseMon
 import { formatMoney, formatMoneyShort } from '../../lib/format'
 import { LineChart } from './LineChart'
 import { FinancialReport, YearCharts } from './YearInsights'
+import { MonthReportSheet } from './MonthReportSheet'
 
 /**
  * Vista Año: calendario anual, proyecciones P/G y Gantt de deudas.
@@ -17,8 +18,7 @@ export function YearView({ embedded = false, showReport = true }: { embedded?: b
   const settings = useFinanceStore((s) => s.settings)
   const profile = useFinanceStore((s) => s.profile)
   const activeMonthId = useFinanceStore((s) => s.activeMonthId)
-  const setActiveMonth = useFinanceStore((s) => s.setActiveMonth)
-  const setActiveTab = useFinanceStore((s) => s.setActiveTab)
+  const [reporteMes, setReporteMes] = useState<string | null>(null)
 
   const [year, setYear] = useState(() => parseMonthId(activeMonthId).year)
 
@@ -68,7 +68,7 @@ export function YearView({ embedded = false, showReport = true }: { embedded?: b
             return (
               <button
                 key={id}
-                onClick={() => { setActiveMonth(id); setActiveTab('month') }}
+                onClick={() => setReporteMes(id)}
                 className="pressable card p-2.5 text-left relative overflow-hidden"
                 style={{
                   borderColor: isActive
@@ -190,6 +190,9 @@ export function YearView({ embedded = false, showReport = true }: { embedded?: b
             </div>
           </section>
         )}
+
+        {/* Al tocar un mes se abre su reporte, sin sacarte de aqui */}
+        <MonthReportSheet monthId={reporteMes} onClose={() => setReporteMes(null)} />
     </>
   )
 

@@ -6,8 +6,7 @@ import { useMemo, useState } from 'react'
 import { ChartColumnBig, ChartPie, FileText, Landmark, Share2, TrendingUp } from 'lucide-react'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { debtRemaining, getMonthSummary } from '../../lib/finance'
-import { hormigasTotal, depositsInMonth, kindTotals, realBalance, savingsTotal } from '../../lib/fund'
-import { movementsExpense } from '../../lib/accounts'
+import { depositsInMonth, monthSpend, realBalance, savingsTotal } from '../../lib/fund'
 import { MONTH_SHORT, addMonthsToId, currentMonthId, monthIdOf, monthLabel } from '../../lib/dates'
 import { formatMoney, formatMoneyShort } from '../../lib/format'
 import { buildStatementBlob } from '../../lib/shareCard'
@@ -34,17 +33,18 @@ export function YearCharts({ year }: { year: number }) {
       const m = months[id]
       if (!m) return { id, label: MONTH_SHORT[i], income: 0, expenses: 0, has: false }
       const s = getMonthSummary(m, debts)
-      const movs = movementsExpense(m) + hormigasTotal(m)
-      return { id, label: MONTH_SHORT[i], income: s.totalIncome, expenses: s.totalExpenses + movs, has: true }
+      return { id, label: MONTH_SHORT[i], income: s.totalIncome, expenses: monthSpend(m, debts).total, has: true }
     })
     // dona: distribución del año por tipo
     const acc: Record<string, number> = { servicio: 0, gasto: 0, personal: 0, deuda: 0 }
     let movimientos = 0
     for (const id of ids) {
-      const m = months[id]
-      if (!m) continue
-      for (const k of kindTotals(m, debts)) acc[k.kind] += k.total
-      movimientos += movementsExpense(m) + hormigasTotal(m)
+      const g = monthSpend(months[id], debts)
+      acc.servicio += g.servicio
+      acc.gasto += g.gasto
+      acc.personal += g.personal
+      acc.deuda += g.deuda
+      movimientos += g.movimientos
     }
     const parts = [
       { key: 'servicio', label: 'Servicios', value: acc.servicio },
@@ -299,9 +299,13 @@ export function FinancialReport({ year }: { year: number }) {
       acc.adicional += m.income.additional
       acc.pagado += s.paidAmount
       acc.pendiente += s.pendingAmount
-      acc.movimiento += movementsExpense(m) + hormigasTotal(m)
       acc.ahorro += depositsInMonth(settings, id)
-      for (const k of kindTotals(m, debts)) acc[k.kind] += k.total
+      const g = monthSpend(m, debts)
+      acc.movimiento += g.movimientos
+      acc.servicio += g.servicio
+      acc.gasto += g.gasto
+      acc.personal += g.personal
+      acc.deuda += g.deuda
     }
     const ingresos = acc.salario + acc.adicional
     const egresos = acc.servicio + acc.gasto + acc.personal + acc.deuda + acc.movimiento

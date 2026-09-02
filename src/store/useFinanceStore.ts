@@ -69,8 +69,6 @@ export const DEFAULT_ANIMATIONS: AnimationPrefs = {
   paySound: 'caja',
   alarmSound: 'clasica',
   transitionStyle: 'deslizar',
-  celebrationLevel: 'normal',
-  celebrationStyle: 'estallido',
 }
 
 const CR = countryPreset('cr')!
@@ -229,7 +227,7 @@ interface FinanceActions {
   setPaySchedule(patch: Partial<PaySchedule>): void
   setSavings(patch: Partial<SavingsConfig>): void
   /** aporta (o retira, con monto negativo) al sobre principal */
-  addSavingsDeposit(amount: number, note?: string): void
+  addSavingsDeposit(amount: number, note?: string, accountId?: string): void
   deleteSavingsDeposit(id: string): void
 
   /** sobres de ahorro: varios ahorros a la vez (mejora 5) */
@@ -237,7 +235,8 @@ interface FinanceActions {
   updateEnvelope(id: string, patch: Partial<Omit<SavingsEnvelope, 'id' | 'deposits'>>): void
   deleteEnvelope(id: string): void
   /** aporte (+) o retiro (−) a un sobre concreto */
-  addEnvelopeDeposit(envelopeId: string, amount: number, note?: string): void
+  /** Aporta (o retira, con monto negativo) a un sobre. Si hay cuenta, mueve la plata de verdad. */
+  addEnvelopeDeposit(envelopeId: string, amount: number, note?: string, accountId?: string): void
   deleteEnvelopeDeposit(envelopeId: string, depositId: string): void
 
   /** activa/ajusta el saldo real: "hoy tengo X en el banco" */
@@ -690,10 +689,18 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           if (!mes || !gasto) return {}
           const tid = gasto.templateId
 
+          // La plata vuelve: si el pago (o sus adelantos) ya movio una cuenta,
+          // al borrarlo se borran tambien esos movimientos. Si no, la cuenta
+          // quedaria rebajada por un gasto que ya no existe.
+          const suyos = new Set<string>()
+          if (gasto.movementId) suyos.add(gasto.movementId)
+          for (const ad of gasto.advances ?? []) if (ad.movementId) suyos.add(ad.movementId)
+
           let months: Record<string, MonthData> = {
             ...s.months,
             [monthId]: {
               ...mes,
+              movements: (mes.movements ?? []).filter((mv) => !suyos.has(mv.id)),
               expenses: mes.expenses.filter((e) => e.id !== id),
               // lápida: en ESTE mes no se vuelve a sembrar, en los demás sí
               skipTemplates: tid && scope === 'mes'
@@ -709,6 +716,12 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
               mid > monthId
                 ? { ...m, expenses: m.expenses.filter((e) => e.templateId !== tid || e.paid) }
                 : m]))
+          }
+          if (suyos.size) {
+            months = Object.fromEntries(Object.entries(months).map(([mid, m]) => [mid, {
+              ...m,
+              movements: (m.movements ?? []).filter((mv) => !suyos.has(mv.id)),
+            }]))
           }
           return { months, recurring, ...touch() }
         }),
@@ -1156,10 +1169,23 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       setSavings: (patch) =>
         set((s) => ({ settings: { ...s.settings, savings: { ...s.settings.savings, ...patch } }, ...touch() })),
       // El aporte "rápido" va al primer sobre; si no hay, crea "Mi ahorro"
-      addSavingsDeposit: (amount, note) =>
+      addSavingsDeposit: (amount, note, accountId) =>
         set((s) => {
           const sav = s.settings.savings
-          const dep = { id: uid(), amount, dateISO: todayLocalISO(), note }
+          const cuenta = accountId || cuentaPorDefecto(s)
+          const movementId = cuenta && amount !== 0
+            ? get().addMovementReturningId({
+                name: (amount > 0 ? 'Ahorro' : 'Retiro del ahorro').slice(0, 40),
+                amount: Math.abs(amount),
+                kind: amount > 0 ? 'gasto' : 'ingreso',
+                categoryId: 'ahorro',
+                accountId: cuenta,
+                dateISO: todayLocalISO(),
+                icon: 'ahorro',
+                note,
+              })
+            : undefined
+          const dep = { id: uid(), amount, dateISO: todayLocalISO(), note, accountId: cuenta || undefined, movementId }
           const envelopes = sav.envelopes.length
             ? sav.envelopes.map((e, i) => (i === 0 ? { ...e, deposits: [...e.deposits, dep] } : e))
             : [{
@@ -1226,20 +1252,47 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           },
           ...touch(),
         })),
-      addEnvelopeDeposit: (envelopeId, amount, note) =>
+      /**
+       * Aporte (o retiro) a un sobre de ahorro. La plata se mueve DE VERDAD:
+       * apartar 10 000 saca 10 000 de la cuenta elegida y deja su movimiento;
+       * un retiro (monto negativo) los devuelve.
+       */
+      addEnvelopeDeposit: (envelopeId, amount, note, accountId) => {
+        const s0 = get()
+        const sobre = s0.settings.savings.envelopes.find((e) => e.id === envelopeId)
+        const cuenta = accountId || cuentaPorDefecto(s0)
+        const esAporte = amount > 0
+        const movementId = cuenta && amount !== 0
+          ? get().addMovementReturningId({
+              name: (esAporte ? `Ahorro: ${sobre?.name ?? 'sobre'}` : `Retiro de ${sobre?.name ?? 'ahorro'}`).slice(0, 40),
+              amount: Math.abs(amount),
+              kind: esAporte ? 'gasto' : 'ingreso',
+              categoryId: 'ahorro',
+              accountId: cuenta,
+              dateISO: todayLocalISO(),
+              icon: 'ahorro',
+              note,
+            })
+          : undefined
+
         set((s) => ({
           settings: {
             ...s.settings,
             savings: {
               ...s.settings.savings,
               envelopes: s.settings.savings.envelopes.map((e) => e.id === envelopeId
-                ? { ...e, deposits: [...e.deposits, { id: uid(), amount, dateISO: todayLocalISO(), note }] }
+                ? { ...e, deposits: [...e.deposits, { id: uid(), amount, dateISO: todayLocalISO(), note, accountId: cuenta || undefined, movementId }] }
                 : e),
             },
           },
           ...touch(),
-        })),
-      deleteEnvelopeDeposit: (envelopeId, depositId) =>
+        }))
+      },
+      deleteEnvelopeDeposit: (envelopeId, depositId) => {
+        // si el aporte movió una cuenta, al borrarlo la plata vuelve
+        const dep = get().settings.savings.envelopes
+          .find((e) => e.id === envelopeId)?.deposits.find((d) => d.id === depositId)
+        if (dep?.movementId) get().deleteMovement(dep.movementId)
         set((s) => ({
           settings: {
             ...s.settings,
@@ -1251,7 +1304,8 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             },
           },
           ...touch(),
-        })),
+        }))
+      },
 
       /**
        * "Hoy tengo X": ajusta el EFECTIVO REAL a ese monto. Si ya hay cuentas,
