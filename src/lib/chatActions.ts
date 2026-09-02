@@ -11,7 +11,12 @@ import { FINANCIAL_PLANS } from './financialPlans'
 import { formatMoney } from './format'
 import { PERIOD_LABEL } from './payroll'
 
-export type ActionData = Record<string, string | number | boolean | undefined>
+/**
+ * Datos de una acción tal como los manda la IA. Es `unknown` a propósito: una
+ * acción puede traer listas (los productos de una lista de compras) y cada
+ * acción valida y convierte lo suyo con `num()`, `str()` y `lista()`.
+ */
+export type ActionData = Record<string, unknown>
 
 export interface ActionSpec {
   /** título de la tarjeta de confirmación */

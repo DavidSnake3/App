@@ -26,6 +26,16 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
   }
 }
 
+/**
+ * Declaración de una función que el modelo puede "llamar" (function calling).
+ * Es el subconjunto OpenAPI que acepta Gemini: type, properties, required…
+ */
+export interface GeminiFunctionDecl {
+  name: string
+  description: string
+  parameters?: Record<string, unknown>
+}
+
 export interface GeminiOpts {
   system?: string
   json?: boolean
@@ -36,6 +46,19 @@ export interface GeminiOpts {
   model?: string
   /** presupuesto de razonamiento: 0 = rápido, más = respuestas más pensadas */
   thinking?: number
+  /** funciones que el modelo puede llamar (acciones de Snake) */
+  tools?: GeminiFunctionDecl[]
+}
+
+/** Una llamada a función que devolvió el modelo, con sus argumentos ya como objeto */
+export interface GeminiCall {
+  name: string
+  args: Record<string, unknown>
+}
+
+export interface GeminiResult {
+  text: string
+  calls: GeminiCall[]
 }
 
 /** Tokens REALES que reportó Gemini en la respuesta */
@@ -55,6 +78,10 @@ export function getLastUsage(): GeminiUsage {
 export interface GeminiPart {
   text?: string
   inlineData?: { mimeType: string; data: string }
+  /** el modelo pidió ejecutar una función (turno 'model') */
+  functionCall?: { name: string; args: Record<string, unknown> }
+  /** lo que la app le responde a esa llamada (turno 'user') */
+  functionResponse?: { name: string; response: Record<string, unknown> }
 }
 
 export interface GeminiTurn {
@@ -69,7 +96,7 @@ export async function askGemini(prompt: string, opts: GeminiOpts = {}): Promise<
 type ApiError = Error & { status?: number }
 
 /** Un intento contra un modelo. `fast` apaga el razonamiento interno (mucho más rápido). */
-async function requestOnce(model: string, turns: GeminiTurn[], opts: GeminiOpts, fast: boolean): Promise<string> {
+async function requestOnce(model: string, turns: GeminiTurn[], opts: GeminiOpts, fast: boolean): Promise<GeminiResult> {
   const key = getGeminiKey()
   const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
@@ -80,6 +107,13 @@ async function requestOnce(model: string, turns: GeminiTurn[], opts: GeminiOpts,
         contents: turns,
         ...(opts.system
           ? { systemInstruction: { parts: [{ text: opts.system }] } }
+          : {}),
+        // acciones de Snake como funciones: el modelo decide cuándo llamarlas
+        ...(opts.tools?.length
+          ? {
+              tools: [{ functionDeclarations: opts.tools }],
+              toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
+            }
           : {}),
         generationConfig: {
           temperature: opts.temperature ?? 0.7,
@@ -108,11 +142,19 @@ async function requestOnce(model: string, turns: GeminiTurn[], opts: GeminiOpts,
     total: Number(meta.totalTokenCount)
       || (Number(meta.promptTokenCount) || 0) + (Number(meta.candidatesTokenCount) || 0),
   }
-  const parts: { text?: string; thought?: boolean }[] = data?.candidates?.[0]?.content?.parts ?? []
+  const parts: {
+    text?: string
+    thought?: boolean
+    functionCall?: { name?: string; args?: Record<string, unknown> }
+  }[] = data?.candidates?.[0]?.content?.parts ?? []
   // ignorar las partes de razonamiento interno del modelo
-  const text = parts.filter((p) => !p.thought).map((p) => p.text ?? '').join('')
-  if (!text) throw new Error(`Respuesta vacía de ${model}`)
-  return text.trim()
+  const text = parts.filter((p) => !p.thought).map((p) => p.text ?? '').join('').trim()
+  const calls: GeminiCall[] = parts
+    .filter((p) => p.functionCall?.name)
+    .map((p) => ({ name: String(p.functionCall!.name), args: p.functionCall!.args ?? {} }))
+  // sin texto y sin llamadas es una respuesta vacía de verdad
+  if (!text && !calls.length) throw new Error(`Respuesta vacía de ${model}`)
+  return { text, calls }
 }
 
 /** 4xx que ningún reintento arregla (clave inválida, petición mal formada…) */
@@ -121,8 +163,11 @@ function isPermanent(e: unknown): boolean {
   return typeof s === 'number' && s >= 400 && s < 500 && s !== 404 && s !== 429
 }
 
-/** Conversación multi-turno con adjuntos (imágenes/PDF), usada por el chatbot */
-export async function geminiChat(turns: GeminiTurn[], opts: GeminiOpts = {}): Promise<string> {
+/**
+ * Conversación multi-turno con adjuntos y funciones, usada por el chatbot.
+ * Devuelve el texto Y las llamadas a función que pidió el modelo.
+ */
+export async function geminiChatFull(turns: GeminiTurn[], opts: GeminiOpts = {}): Promise<GeminiResult> {
   if (!getGeminiKey()) throw new Error('Sin clave de IA')
 
   let lastErr: unknown = null
@@ -131,7 +176,8 @@ export async function geminiChat(turns: GeminiTurn[], opts: GeminiOpts = {}): Pr
     : MODELS
   for (const model of models) {
     // 1º en modo rápido (sin razonamiento). Si el modelo rechaza la opción
-    // (400), un único reintento en modo normal; otros errores → siguiente modelo.
+    // (400), un único reintento en modo normal; si tampoco acepta las
+    // funciones, un último intento sin ellas; otros errores → siguiente modelo.
     try {
       return await requestOnce(model, turns, opts, true)
     } catch (e) {
@@ -140,6 +186,15 @@ export async function geminiChat(turns: GeminiTurn[], opts: GeminiOpts = {}): Pr
         try {
           return await requestOnce(model, turns, opts, false)
         } catch (e2) {
+          if (isPermanent(e2) && opts.tools?.length) {
+            try {
+              return await requestOnce(model, turns, { ...opts, tools: undefined }, false)
+            } catch (e3) {
+              if (isPermanent(e3)) throw e3
+              lastErr = e3
+              continue
+            }
+          }
           if (isPermanent(e2)) throw e2 // sí era permanente (p. ej. clave inválida)
           lastErr = e2
         }
@@ -148,6 +203,12 @@ export async function geminiChat(turns: GeminiTurn[], opts: GeminiOpts = {}): Pr
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('IA no disponible')
+}
+
+/** Versión que solo devuelve el texto (consejo del día, resúmenes…) */
+export async function geminiChat(turns: GeminiTurn[], opts: GeminiOpts = {}): Promise<string> {
+  const r = await geminiChatFull(turns, opts)
+  return r.text
 }
 
 // ─── Consejo financiero diario (punto 16) ────────────────────────────────────
