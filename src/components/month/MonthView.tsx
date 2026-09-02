@@ -8,7 +8,6 @@ import { useFinanceStore } from '../../store/useFinanceStore'
 import { buildPayables, getMonthSummary, recurringCandidates } from '../../lib/finance'
 import { addMonthsToId, isCurrentMonth, monthLabel } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
-import { celebrate } from '../../lib/fx'
 import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { AddExpenseSheet } from './AddExpenseSheet'
@@ -25,6 +24,7 @@ import { ListView } from './views/ListView'
 import { TableView } from './views/TableView'
 import { MonthCalendarView } from './views/MonthCalendarView'
 import { GanttView } from './views/GanttView'
+import { MonthCelebration } from '../overlays/MonthCelebration'
 import { ShoppingListsSection } from './ShoppingListsSection'
 
 const VIEW_OPTIONS: { value: ViewMode; label: React.ReactNode; ariaLabel: string }[] = [
@@ -55,7 +55,6 @@ export function MonthView() {
   const ensureMonthExists = useFinanceStore((s) => s.ensureMonthExists)
   const deleteMonth = useFinanceStore((s) => s.deleteMonth)
   const markCelebrated = useFinanceStore((s) => s.markCelebrated)
-  const animPrefs = useFinanceStore((s) => s.settings.animations)
   const importRecurring = useFinanceStore((s) => s.importRecurring)
   const markCarryAsked = useFinanceStore((s) => s.markCarryAsked)
   const prevMonth = useFinanceStore((s) => s.months[addMonthsToId(s.activeMonthId, -1)])
@@ -99,12 +98,9 @@ export function MonthView() {
     if (!summary.allPaid || month.celebrated) return
     if (yaCelebrado.current === monthId) return
     yaCelebrado.current = monthId
-    celebrate(animPrefs)
     setShowCongrats(true)
     markCelebrated(monthId)
-    const hide = setTimeout(() => setShowCongrats(false), 4200)
-    return () => clearTimeout(hide)
-  }, [summary, month, monthId, markCelebrated, animPrefs])
+  }, [summary, month, monthId, markCelebrated])
 
   if (!month || !summary) return null
 
@@ -306,14 +302,11 @@ export function MonthView() {
       )}
 
       {/* Felicitación pequeña (punto 22) */}
-      {showCongrats && (
-        <div className="absolute inset-x-6 top-16 z-40 anim-pop">
-          <div className="card p-4 text-center" style={{ borderColor: 'color-mix(in oklab, var(--c-income) 55%, var(--c-border))' }}>
-            <p className="font-display text-[17px] font-bold text-ink">¡Mes completado! 🎉</p>
-            <p className="text-[13px] text-muted mt-1">Pagaste todo lo de {monthLabel(monthId)}. Excelente disciplina.</p>
-          </div>
-        </div>
-      )}
+      <MonthCelebration
+        open={showCongrats}
+        monthId={monthId}
+        onClose={() => setShowCongrats(false)}
+      />
 
       <CopyMonthSheet
         open={copyOpen}

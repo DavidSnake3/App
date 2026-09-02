@@ -7,7 +7,7 @@ import {
   User as UserIcon, Vibrate, Volume2, Wallet, X,
 } from 'lucide-react'
 import type {
-  AlarmSoundId, Debt, PayPeriod, PayrollDeduction, PaySoundId, PendingAlarm,
+  AlarmSoundId, CelebrationStyle, Debt, PayPeriod, PayrollDeduction, PaySoundId, PendingAlarm,
   TransitionStyle, WorkerType,
 } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -26,6 +26,8 @@ import {
 } from '../../lib/payroll'
 import { debtIsSettled, uid } from '../../lib/finance'
 import { celebrate, payBurst } from '../../lib/fx'
+import { MonthCelebration } from '../overlays/MonthCelebration'
+import { CELEBRATION_STYLES } from '../../lib/celebrations'
 import { applyBackup, exportBackup, readBackup } from '../../lib/backup'
 import { exportState } from '../../store/useFinanceStore'
 import { withLoading } from '../../store/useLoading'
@@ -190,7 +192,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNFinance v3.7.0</p>
+  return <p className="text-[11px] text-muted text-center">SNFinance v3.7.1</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -844,6 +846,9 @@ export function AparienciaSection() {
 export function AnimacionesSection() {
   const a = useFinanceStore((s) => s.settings.animations)
   const setAnimations = useFinanceStore((s) => s.setAnimations)
+  const monthId = useFinanceStore((s) => s.activeMonthId)
+  // vista previa de la pantalla de mes completado con el estilo que se toque
+  const [previa, setPrevia] = useState<CelebrationStyle | null>(null)
 
   return (
     <>
@@ -880,6 +885,41 @@ export function AnimacionesSection() {
         </RowToggle>
         {a.celebration && (
           <div>
+            <p className="text-[12px] text-muted mb-1.5">Estilo de la pantalla de mes completado (toca para verla):</p>
+            <div className="grid grid-cols-1 gap-2 mb-3">
+              {CELEBRATION_STYLES.map((c) => {
+                const activo = (a.celebrationStyle ?? 'estallido') === c.id
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => { setAnimations({ celebrationStyle: c.id }); setPrevia(c.id) }}
+                    className="pressable tile px-3.5 py-2.5 flex items-center gap-3 text-left"
+                    style={activo
+                      ? { borderColor: 'var(--app-accent)', background: 'color-mix(in oklab, var(--app-accent) 12%, var(--c-card))' }
+                      : undefined}
+                  >
+                    <span
+                      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ background: activo ? 'var(--app-gradient)' : 'var(--c-elevated)', color: activo ? '#fff' : 'var(--c-muted)' }}
+                    >
+                      <PartyPopper size={16} />
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[13px] font-semibold text-ink">{c.label}</span>
+                      <span className="block text-[11px] text-muted leading-snug">{c.desc}</span>
+                    </span>
+                    {activo && <Play size={13} style={{ color: 'var(--app-accent-soft)' }} />}
+                  </button>
+                )
+              })}
+            </div>
+            <MonthCelebration
+              open={Boolean(previa)}
+              monthId={monthId}
+              style={previa ?? undefined}
+              preview
+              onClose={() => setPrevia(null)}
+            />
             <p className="text-[12px] text-muted mb-1.5">¿Qué tan grande la fiesta?</p>
             <div className="flex gap-1.5">
               {CELEBRATION_LEVELS.map((n) => (
@@ -1154,7 +1194,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNFinance v3.7.0 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNFinance v3.7.1 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

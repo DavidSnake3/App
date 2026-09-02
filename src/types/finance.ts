@@ -622,6 +622,9 @@ export type PaySoundId = 'ding' | 'caja' | 'monedas'
 export type AlarmSoundId = 'clasica' | 'digital' | 'suave'
 
 /** Qué animaciones prefiere el usuario (punto 25) */
+/** Cómo se celebra el mes completado */
+export type CelebrationStyle = 'estallido' | 'trofeo' | 'aurora' | 'fuegos' | 'racha'
+
 /** Cómo entra cada pantalla al cambiar de pestaña */
 export type TransitionStyle =
   | 'deslizar' | 'desvanecer' | 'zoom' | 'subir' | 'voltear' | 'ninguna'
@@ -639,6 +642,8 @@ export interface AnimationPrefs {
   transitionStyle?: TransitionStyle
   /** cuánto confeti: discreto, normal o fiesta */
   celebrationLevel?: 'suave' | 'normal' | 'fiesta'
+  /** estilo de la pantalla de "mes completado" */
+  celebrationStyle?: CelebrationStyle
 }
 
 // ─── Planilla / comprobante salarial ─────────────────────────────────────────

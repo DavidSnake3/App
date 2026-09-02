@@ -70,6 +70,7 @@ export const DEFAULT_ANIMATIONS: AnimationPrefs = {
   alarmSound: 'clasica',
   transitionStyle: 'deslizar',
   celebrationLevel: 'normal',
+  celebrationStyle: 'estallido',
 }
 
 const CR = countryPreset('cr')!
