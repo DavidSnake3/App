@@ -74,6 +74,38 @@ export function playCoins() {
   tone(ac, 1046.5, 0.4, 0.3, 'sine', 0.07)
 }
 
+/** Soplido corto al abrir una hoja o cambiar de pantalla */
+export function playSwoosh() {
+  const ac = audio()
+  if (!ac) return
+  const osc = ac.createOscillator()
+  const g = ac.createGain()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(220, ac.currentTime)
+  osc.frequency.exponentialRampToValueAtTime(880, ac.currentTime + 0.14)
+  g.gain.setValueAtTime(0.0001, ac.currentTime)
+  g.gain.exponentialRampToValueAtTime(0.05, ac.currentTime + 0.03)
+  g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.18)
+  osc.connect(g).connect(ac.destination)
+  osc.start()
+  osc.stop(ac.currentTime + 0.22)
+}
+
+/** "Pop" al agregar o marcar un producto */
+export function playPop() {
+  const ac = audio()
+  if (!ac) return
+  tone(ac, 660, 0, 0.06, 'triangle', 0.09)
+  tone(ac, 990, 0.03, 0.07, 'sine', 0.06)
+}
+
+/** Tic seco al desmarcar o quitar algo */
+export function playTick() {
+  const ac = audio()
+  if (!ac) return
+  tone(ac, 330, 0, 0.05, 'square', 0.04)
+}
+
 export type PaySoundId = 'ding' | 'caja' | 'monedas'
 export const PAY_SOUNDS: { id: PaySoundId; label: string; play: () => void }[] = [
   { id: 'caja', label: 'Cha-ching (caja)', play: playCash },

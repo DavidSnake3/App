@@ -8,6 +8,8 @@ import { lineTotal, shoppingChecked, shoppingPlanned } from '../../lib/shopping'
 import { formatMoney } from '../../lib/format'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { playPop, playTick } from '../../lib/sound'
+import { vibrate } from '../../lib/fx'
 
 export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
   monthId: string
@@ -23,6 +25,14 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
   const toggleProduct = useFinanceStore((s) => s.toggleShoppingProduct)
   const toggleDone = useFinanceStore((s) => s.toggleShoppingDone)
   const deleteExpense = useFinanceStore((s) => s.deleteExpense)
+  const anims = useFinanceStore((s) => s.settings.animations)
+
+  // marcar suena a "pop" y vibra; desmarcar hace un tic seco
+  const marcar = (productId: string, estabaMarcado: boolean) => {
+    toggleProduct(monthId, expense.id, productId)
+    if (anims.sounds) (estabaMarcado ? playTick : playPop)()
+    if (!estabaMarcado) vibrate(10, anims)
+  }
 
   const [name, setName] = useState('')
   const [price, setPrice] = useState(0)
@@ -41,6 +51,7 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
   const agregar = () => {
     if (!name.trim() || price <= 0) return
     addProduct(monthId, expense.id, { name: name.trim(), price, qty: 1 })
+    if (anims.sounds) playPop()
     setName('')
     setPrice(0)
   }
@@ -93,7 +104,7 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
           {lista.items.map((p) => (
             <div key={p.id} className="flex items-center gap-2.5 px-3 py-2.5">
               <button
-                onClick={() => !cerrada && toggleProduct(monthId, expense.id, p.id)}
+                onClick={() => !cerrada && marcar(p.id, p.checked)}
                 disabled={cerrada}
                 aria-label={p.checked ? `Desmarcar ${p.name}` : `Marcar ${p.name}`}
                 className="pressable w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 transition-all duration-200 disabled:opacity-60"

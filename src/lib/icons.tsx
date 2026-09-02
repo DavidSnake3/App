@@ -1,13 +1,14 @@
 /* eslint-disable react-refresh/only-export-components -- catálogo compartido, no es una vista */
 // Catálogo de íconos para gastos, servicios y deudas (mejora 10)
 import {
-  Baby, Banknote, Bike, BookOpen, Briefcase, Building2, Bus, Camera, Car,
-  Cat, Coffee, CreditCard, Dog, Droplets, Dumbbell, Film, Flower2, Fuel,
-  Gamepad2, Gift, GraduationCap, HandCoins, Headphones, Heart, House,
-  Landmark, Laptop, Lightbulb, Music, PartyPopper, PawPrint, Phone,
-  PiggyBank, Pill, Pizza, Plane, Receipt, Scissors, Shirt, ShoppingBag,
-  ShoppingCart, Smartphone, Sofa, Sparkles, Stethoscope, Store, Trophy,
-  Tv, Umbrella, Utensils, Wifi, Wrench,
+  Baby, Banknote, Beer, Bike, BookOpen, Briefcase, Building2, Bus, Cake, Camera, Car,
+  Cat, Church, Cigarette, Coffee, CreditCard, Dog, Droplets, Dumbbell, Film, Flower2,
+  Fuel, Gamepad2, Gift, GraduationCap, Hammer, HandCoins, HeartHandshake, Headphones,
+  Heart, House, IceCream, Landmark, Laptop, Lightbulb, Martini, Music, Palette,
+  ParkingCircle, PartyPopper, PawPrint, Phone, PiggyBank, Pill, Pizza, Plane, Receipt,
+  Scissors, Shield, Shirt, ShoppingBag, ShoppingCart, Smartphone, Sofa, Sparkles,
+  Stethoscope, Store, Tent, Ticket, Train, TreePine, Trophy, Tv, Umbrella, Utensils,
+  Watch, Waves, Wifi, Wine, Wrench, Zap,
 } from 'lucide-react'
 
 export const ITEM_ICONS: Record<string, { label: string; Icon: typeof House }> = {
@@ -63,6 +64,26 @@ export const ITEM_ICONS: Record<string, { label: string; Icon: typeof House }> =
   fiesta: { label: 'Fiestas', Icon: PartyPopper },
   deporte: { label: 'Deportes', Icon: Trophy },
   ahorro: { label: 'Ahorro', Icon: PiggyBank },
+  // ── más íconos ──────────────────────────────────────────────────────────
+  cerveza: { label: 'Cervezas', Icon: Beer },
+  vino: { label: 'Vino / licor', Icon: Wine },
+  coctel: { label: 'Salidas', Icon: Martini },
+  cigarros: { label: 'Cigarros', Icon: Cigarette },
+  postre: { label: 'Postres', Icon: Cake },
+  helado: { label: 'Helados', Icon: IceCream },
+  iglesia: { label: 'Iglesia / diezmo', Icon: Church },
+  donacion: { label: 'Donaciones', Icon: HeartHandshake },
+  parqueo: { label: 'Parqueo', Icon: ParkingCircle },
+  tren: { label: 'Tren', Icon: Train },
+  entradas: { label: 'Entradas / boletos', Icon: Ticket },
+  camping: { label: 'Camping', Icon: Tent },
+  naturaleza: { label: 'Paseos', Icon: TreePine },
+  playa: { label: 'Playa', Icon: Waves },
+  arte: { label: 'Arte / hobbies', Icon: Palette },
+  herramientas: { label: 'Herramientas', Icon: Hammer },
+  reloj: { label: 'Accesorios', Icon: Watch },
+  seguridad: { label: 'Seguridad', Icon: Shield },
+  energia: { label: 'Energía', Icon: Zap },
 }
 
 export const ICON_IDS = Object.keys(ITEM_ICONS)

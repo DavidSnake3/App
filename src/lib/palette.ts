@@ -14,4 +14,12 @@ export const APP_COLORS = [
   '#a78bfa', // lavanda
   '#94a3b8', // gris
   '#0ea5e9', // cian
+  '#14b8a6', // turquesa
+  '#84cc16', // verde lima oscuro
+  '#eab308', // mostaza
+  '#f43f5e', // frambuesa
+  '#8b5cf6', // púrpura
+  '#06b6d4', // agua
+  '#d946ef', // magenta
+  '#78716c', // piedra
 ]

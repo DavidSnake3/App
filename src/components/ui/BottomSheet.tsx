@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { useBackClose } from '../../hooks/useBackClose'
+import { useFinanceStore } from '../../store/useFinanceStore'
+import { playSwoosh } from '../../lib/sound'
 
 interface Props {
   open: boolean
@@ -17,6 +19,8 @@ export function BottomSheet({ open, onClose, title, subtitle, children }: Props)
 
   useEffect(() => {
     if (!open) return
+    // un soplido suave al abrirse, si el usuario tiene los sonidos activos
+    if (useFinanceStore.getState().settings.animations.sounds) playSwoosh()
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', handleKey)
     // el fondo no se mueve mientras la hoja está abierta
