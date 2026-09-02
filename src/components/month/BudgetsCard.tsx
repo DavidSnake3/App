@@ -5,7 +5,7 @@ import { AlertTriangle, ChevronDown, Plus, Target, Trash2, X } from 'lucide-reac
 import type { Budget } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { budgetStatus, budgetsNeedingAttention } from '../../lib/budgets'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, money2 } from '../../lib/format'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { Segmented } from '../ui/Segmented'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -25,7 +25,7 @@ export function BudgetsCard() {
   const alertas = budgetsNeedingAttention(budgets, month)
   const crear = () => {
     if (!name.trim() || amount <= 0) return
-    addBudget({ name: name.trim(), amount: Math.round(amount), period })
+    addBudget({ name: name.trim(), amount: money2(amount), period })
     setName(''); setAmount(0); setAdding(false); setOpen(true)
   }
 
@@ -154,7 +154,7 @@ function BudgetRow({ budget }: { budget: Budget }) {
             <span className="text-[10.5px] text-muted font-normal"> · {budget.period === 'weekly' ? 'semanal' : 'mensual'}</span>
           </span>
           <span className="num text-[12.5px] font-bold shrink-0" style={{ color }}>
-            {formatMoney(Math.round(st.spent))}
+            {formatMoney(money2(st.spent))}
             <span className="text-[10.5px] text-muted font-normal"> / {formatMoney(st.limit)}</span>
           </span>
         </div>
@@ -166,10 +166,10 @@ function BudgetRow({ budget }: { budget: Budget }) {
         </div>
         <p className="text-[10.5px] mt-1" style={{ color: st.level === 'ok' ? 'var(--c-muted)' : color }}>
           {st.level === 'over'
-            ? `Te pasaste por ${formatMoney(Math.abs(Math.round(st.left)))}`
+            ? `Te pasaste por ${formatMoney(Math.abs(money2(st.left)))}`
             : st.level === 'warn'
-              ? `¡Cuidado! Te quedan ${formatMoney(Math.round(st.left))}`
-              : `Te quedan ${formatMoney(Math.round(st.left))}`}
+              ? `¡Cuidado! Te quedan ${formatMoney(money2(st.left))}`
+              : `Te quedan ${formatMoney(money2(st.left))}`}
         </p>
       </button>
 

@@ -15,7 +15,7 @@ import {
 import { cashMovementsNet, movementsExpense, movementsIncome } from '../../lib/accounts'
 import { PERIOD_LABEL, PERIOD_UNIT, convertPeriod } from '../../lib/payroll'
 import { isCurrentMonth, monthLabel } from '../../lib/dates'
-import { formatMoney, formatSecond } from '../../lib/format'
+import { formatMoney, formatSecond, money2 } from '../../lib/format'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CurrencyInput } from '../ui/CurrencyInput'
 
@@ -121,10 +121,10 @@ export function BalanceCard({ compact = false }: { compact?: boolean }) {
               className="display-money text-[30px] font-bold mt-1.5 anim-money"
               style={{ color: positivo ? 'var(--c-income)' : 'var(--c-danger)' }}
             >
-              {formatMoney(Math.round(view.balance))}
+              {formatMoney(money2(view.balance))}
             </p>
-            {formatSecond(Math.round(view.balance)) && (
-              <p className="text-[11px] text-muted num mt-0.5">≈ {formatSecond(Math.round(view.balance))}</p>
+            {formatSecond(money2(view.balance)) && (
+              <p className="text-[11px] text-muted num mt-0.5">≈ {formatSecond(money2(view.balance))}</p>
             )}
           </div>
           <PeriodTabs value={viewPeriod} onChange={(p) => setPayroll({ viewPeriod: p })} />
@@ -176,7 +176,7 @@ export function BalanceCard({ compact = false }: { compact?: boolean }) {
               className="num text-[15px] font-bold"
               style={{ color: saldo >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}
             >
-              {formatMoney(Math.round(saldo))}
+              {formatMoney(money2(saldo))}
             </span>
           </div>
         )}

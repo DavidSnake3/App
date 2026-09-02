@@ -4,7 +4,7 @@ import { buildPayables, getMonthSummary } from './finance'
 import { hormigasTotal, realBalance } from './fund'
 import { movementsExpense } from './accounts'
 import { monthLabel } from './dates'
-import { formatMoney } from './format'
+import { formatMoney, money2 } from './format'
 import { SN_GRADIENT } from './logo'
 
 const W = 1080
@@ -83,7 +83,7 @@ export async function buildMonthCardBlob(
     ['Pendiente', formatMoney(s.pendingAmount), s.pendingAmount > 0 ? '#f5a524' : '#8b93a7'],
     ['Movimientos', formatMoney(Math.round(movimientos)), movimientos > 0 ? '#f5a524' : '#8b93a7'],
   ]
-  if (saldo != null) rows.push(['Saldo real (banco)', formatMoney(Math.round(saldo)), saldo >= 0 ? '#3fc3ae' : '#f4587a'])
+  if (saldo != null) rows.push(['Saldo real (banco)', formatMoney(money2(saldo)), saldo >= 0 ? '#3fc3ae' : '#f4587a'])
 
   let y = 590
   for (const [label, value, color] of rows) {

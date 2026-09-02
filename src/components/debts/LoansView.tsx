@@ -15,7 +15,7 @@ import {
   loanRemaining, loanTotals, loansOfKind, sinceLabel,
 } from '../../lib/loans'
 import { accountById, activeAccounts, isCredit } from '../../lib/accounts'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, money2 } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
 import { todayLocalISO } from '../../lib/dates'
 import { accountColor } from '../../lib/itemColors'
@@ -55,7 +55,7 @@ export function LoansView({ kind = 'lent' }: { kind?: LoanKind }) {
         <div>
           <p className="text-[11.5px] text-muted">{copy.saldo}</p>
           <p className="num text-[22px] font-bold leading-tight" style={{ color }}>
-            {formatMoney(Math.round(totals.pendiente))}
+            {formatMoney(money2(totals.pendiente))}
           </p>
           <p className="text-[11px] text-muted mt-0.5">
             {totals.personas} persona{totals.personas === 1 ? '' : 's'} · {totals.activos} préstamo{totals.activos === 1 ? '' : 's'}
@@ -67,7 +67,7 @@ export function LoansView({ kind = 'lent' }: { kind?: LoanKind }) {
             {formatMoney(Math.round(totals.abonado))}
           </p>
           <p className="text-[11px] text-muted mt-0.5">
-            de {formatMoney(Math.round(totals.prestado))} {copy.totalLabel}
+            de {formatMoney(money2(totals.prestado))} {copy.totalLabel}
           </p>
         </div>
       </div>
@@ -163,7 +163,7 @@ function LoanCard({ loan, kind, onEdit }: { loan: Loan; kind: LoanKind; onEdit: 
             </span>
           ) : (
             <span className="num block text-[17px] font-bold" style={{ color }}>
-              {formatMoney(Math.round(pendiente))}
+              {formatMoney(money2(pendiente))}
               <span className="text-[11.5px] text-muted font-normal"> de {formatMoney(prestado)}</span>
             </span>
           )}
@@ -228,7 +228,7 @@ function LoanCard({ loan, kind, onEdit }: { loan: Loan; kind: LoanKind; onEdit: 
                 Historial ({historial.length})
               </p>
               <p className="text-[11px] text-muted">
-                {meprestaron ? 'te prestaron' : 'prestado'} <span className="num">{formatMoney(Math.round(prestado))}</span> · abonado{' '}
+                {meprestaron ? 'te prestaron' : 'prestado'} <span className="num">{formatMoney(money2(prestado))}</span> · abonado{' '}
                 <span className="num">{formatMoney(Math.round(abonado))}</span>
               </p>
             </div>
@@ -426,7 +426,7 @@ function LendMoreForm({ loan, kind, onDone }: { loan: Loan; kind: LoanKind; onDo
           if (amount <= 0) return
           addLoanAdvance(
             loan.id,
-            Math.round(amount),
+            money2(amount),
             note.trim() || (meprestaron ? 'Me prestó más' : 'Le presté más'),
             dateISO,
             accountId || undefined,
@@ -493,7 +493,7 @@ function LoanForm({ loan, kind, onClose }: { loan: Loan | null; kind: LoanKind; 
     const data = {
       kind,
       person: person.trim(),
-      amount: Math.round(amount),
+      amount: money2(amount),
       phone: phone.trim() || undefined,
       dateISO,
       dueDateISO: conFecha && dueDateISO ? dueDateISO : undefined,

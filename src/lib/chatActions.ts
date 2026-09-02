@@ -12,7 +12,7 @@ import { activeAccounts, isCredit, mainAccount } from './accounts'
 import { guessCategory } from './categories'
 import { currentMonthId, todayLocalISO } from './dates'
 import { FINANCIAL_PLANS } from './financialPlans'
-import { formatMoney } from './format'
+import { formatMoney, money2 } from './format'
 import { PERIOD_LABEL } from './payroll'
 
 /**
@@ -123,7 +123,7 @@ function findMovement(name: string, amount?: number) {
   const meses = Object.values(s.months).sort((a, b) => (a.id < b.id ? 1 : -1)).slice(0, 3)
   for (const m of meses) {
     const movs = [...(m.movements ?? [])].reverse()
-    const hit = movs.find((mv) => (!q || mv.name.toLowerCase().includes(q)) && (!amount || Math.round(mv.amount) === Math.round(amount)))
+    const hit = movs.find((mv) => (!q || mv.name.toLowerCase().includes(q)) && (!amount || money2(mv.amount) === money2(amount)))
     if (hit) return hit
   }
   return null
@@ -274,7 +274,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
         + (num(d.dueDay) ? ` · vence día ${Math.round(num(d.dueDay))}` : '')
     },
     run: (d) => {
-      const total = Math.max(1, Math.round(num(d.total)))
+      const total = Math.max(1, money2(num(d.total)))
       const rawPago = num(d.monthlyPayment)
       const installments = Math.max(1, Math.round(num(d.installments) || (rawPago > 0 ? Math.ceil(total / rawPago) : 12)))
       st().addDebt({
@@ -308,7 +308,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
       const dueDay = Math.max(1, Math.min(31, Math.round(num(d.dueDay) || 15)))
       st().addExpense(activeMonth(), {
         name: str(d.name, 'Pago').slice(0, 60),
-        amount: Math.round(num(d.amount)),
+        amount: money2(num(d.amount)),
         paid: false,
         dueDay,
         period: dueDay <= 15 ? 'q1' : 'q2',
@@ -363,7 +363,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
       const nombre = str(d.deduccionNombre)
       st().setPayroll({
         inputPeriod: period,
-        gross: Math.round(num(d.bruto ?? d.gross)),
+        gross: money2(num(d.bruto ?? d.gross)),
         ...(preset
           ? {
               countryId: preset.id,
@@ -396,7 +396,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
         deductions: [...p.deductions, {
           id: uid(),
           name: str(d.name, 'Deducción').slice(0, 40),
-          amount: Math.round(num(d.amount)),
+          amount: money2(num(d.amount)),
           isAdvance: Boolean(d.esAdelanto),
         }],
       })
@@ -416,8 +416,8 @@ export const ACTIONS: Record<string, ActionSpec> = {
       + (num(d.actual) > 0 ? ` · ya tienes ${money(d.actual)}` : ''),
     run: (d) => st().addEnvelope({
       name: str(d.name, 'Ahorro').slice(0, 40),
-      goal: Math.round(num(d.meta)),
-      initial: Math.round(num(d.actual)),
+      goal: money2(num(d.meta)),
+      initial: money2(num(d.actual)),
     }),
   },
 
@@ -437,7 +437,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
     run: (d) => {
       const envs = st().settings.savings.envelopes ?? []
       const target = str(d.sobre) && envs.find((e) => e.name.toLowerCase().includes(str(d.sobre).toLowerCase()))
-      const amount = Math.round(num(d.monto ?? d.amount))
+      const amount = money2(num(d.monto ?? d.amount))
       if (target) st().addEnvelopeDeposit(target.id, amount, 'Aporte con Snake')
       else st().addSavingsDeposit(amount, 'Aporte con Snake')
     },
@@ -462,7 +462,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
       const name = str(d.name, tipo === 'ingreso' ? 'Ingreso' : 'Gasto').slice(0, 40)
       st().addMovement({
         name,
-        amount: Math.round(num(d.amount ?? d.monto)),
+        amount: money2(num(d.amount ?? d.monto)),
         kind: tipo === 'transferencia' ? 'gasto' : tipo,
         categoryId: str(d.categoria ?? d.category) || guessCategory(name, tipo === 'ingreso' ? 'ingreso' : 'gasto'),
         accountId: findAccount(d.cuenta ?? d.account),
@@ -494,17 +494,17 @@ export const ACTIONS: Record<string, ActionSpec> = {
       st().addAccount({
         name: str(d.name).slice(0, 30),
         type: tipo,
-        openingBalance: esCredito ? 0 : Math.round(num(d.saldo ?? d.balance)),
+        openingBalance: esCredito ? 0 : money2(num(d.saldo ?? d.balance)),
         openingISO: todayLocalISO(),
         includeInTotal: !esCredito,
         credit: esCredito
           ? {
-              limit: Math.round(num(d.limite ?? d.limit)),
+              limit: money2(num(d.limite ?? d.limit)),
               cutoffDay: dayOf(d.corte ?? d.cutoffDay, 20),
               dueDay: dayOf(d.pago ?? d.dueDay, 5),
               rate: num(d.interes ?? d.rate),
               ratePeriod: str(d.interesPeriodo, 'annual') === 'monthly' ? 'monthly' : 'annual',
-              openingDebt: Math.round(num(d.deuda ?? d.openingDebt)),
+              openingDebt: money2(num(d.deuda ?? d.openingDebt)),
             }
           : undefined,
       })
@@ -528,7 +528,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
       const tarjeta = findAccount(d.tarjeta ?? d.card, true)
       st().addMovement({
         name: `Pago ${accountName(tarjeta)}`,
-        amount: Math.round(num(d.monto ?? d.amount)),
+        amount: money2(num(d.monto ?? d.amount)),
         kind: 'transferencia',
         categoryId: 'pago-tarjeta',
         accountId: findAccount(d.cuenta ?? d.from),
@@ -551,19 +551,19 @@ export const ACTIONS: Record<string, ActionSpec> = {
       && Boolean(findAccount(d.tarjeta ?? d.card, true)),
     summary: (d) => {
       const cuotas = Math.max(1, Math.round(num(d.cuotas ?? d.count)))
-      const mensual = num(d.mensualidad ?? d.monthly) || Math.round(num(d.total) / cuotas)
+      const mensual = num(d.mensualidad ?? d.monthly) || money2(num(d.total) / cuotas)
       const tarjeta = findAccount(d.tarjeta ?? d.card, true)
       return `${str(d.name)} · ${cuotas} cuotas de ${money(mensual)} · ${accountName(tarjeta)}`
     },
     run: (d) => {
       const cuotas = Math.max(1, Math.round(num(d.cuotas ?? d.count)))
-      const mensual = Math.round(num(d.mensualidad ?? d.monthly) || num(d.total) / cuotas)
+      const mensual = money2(num(d.mensualidad ?? d.monthly) || num(d.total) / cuotas)
       const tarjeta = findAccount(d.tarjeta ?? d.card, true)
       const dueDay = dayOf(d.dia ?? d.dueDay, st().accounts.find((a) => a.id === tarjeta)?.credit?.dueDay ?? 5)
       st().addInstallment({
         name: str(d.name).slice(0, 40),
         accountId: tarjeta,
-        total: Math.round(num(d.total)) || mensual * cuotas,
+        total: money2(num(d.total)) || mensual * cuotas,
         monthly: mensual,
         count: cuotas,
         dueDay,
@@ -584,7 +584,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
     summary: (d) => `${str(d.persona ?? d.name)} · ${money(d.monto ?? d.amount)}`,
     run: (d) => st().addLoan({
       person: str(d.persona ?? d.name, 'Alguien').slice(0, 40),
-      amount: Math.round(num(d.monto ?? d.amount)),
+      amount: money2(num(d.monto ?? d.amount)),
       dateISO: str(d.fecha) || new Date().toISOString().slice(0, 10),
       note: str(d.nota) || undefined,
     }),
@@ -609,7 +609,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
     },
     run: (d) => {
       const l = findLoan(str(d.persona ?? d.name))
-      if (l) st().addLoanPayment(l.id, Math.round(num(d.monto ?? d.amount)), 'Abono')
+      if (l) st().addLoanPayment(l.id, money2(num(d.monto ?? d.amount)), 'Abono')
     },
   },
 
@@ -624,7 +624,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
     summary: (d) => `${str(d.name)} · ${money(d.monto ?? d.amount)} ${str(d.periodo) === 'weekly' ? 'por semana' : 'por mes'}`,
     run: (d) => st().addBudget({
       name: str(d.name, 'Presupuesto').slice(0, 40),
-      amount: Math.round(num(d.monto ?? d.amount)),
+      amount: money2(num(d.monto ?? d.amount)),
       period: str(d.periodo) === 'weekly' ? 'weekly' : 'monthly',
     }),
   },
@@ -645,7 +645,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
     },
     run: (d) => {
       const b = findBudget(str(d.presupuesto ?? d.name))
-      if (b) st().addBudgetEntry(b.id, Math.round(num(d.monto ?? d.amount)), str(d.nota) || undefined)
+      if (b) st().addBudgetEntry(b.id, money2(num(d.monto ?? d.amount)), str(d.nota) || undefined)
     },
   },
 
@@ -677,7 +677,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
       const s = st()
       const m = s.months[s.activeMonthId]
       const actual = m?.income.additional ?? 0
-      s.updateIncome(s.activeMonthId, { additional: actual + Math.round(num(d.monto ?? d.amount)) })
+      s.updateIncome(s.activeMonthId, { additional: actual + money2(num(d.monto ?? d.amount)) })
     },
   },
 
@@ -716,7 +716,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
         if (!str(p.name) || num(p.price) <= 0) continue
         st().addShoppingProduct(activeMonth(), id, {
           name: str(p.name).slice(0, 40),
-          price: Math.round(num(p.price)),
+          price: money2(num(p.price)),
           qty: Math.max(1, Math.round(num(p.qty) || 1)),
         })
       }
@@ -744,7 +744,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
       if (!l) return
       for (const p of lista(d.productos)) {
         if (!str(p.name) || num(p.price) <= 0) continue
-        st().addShoppingProduct(activeMonth(), l.id, { name: str(p.name).slice(0, 40), price: Math.round(num(p.price)), qty: Math.max(1, Math.round(num(p.qty) || 1)) })
+        st().addShoppingProduct(activeMonth(), l.id, { name: str(p.name).slice(0, 40), price: money2(num(p.price)), qty: Math.max(1, Math.round(num(p.qty) || 1)) })
       }
     },
   },
@@ -823,7 +823,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
     run: (d) => {
       const e = findExpense(str(d.nombre))
       if (!e) return
-      st().addExpenseAdvance(activeMonth(), e.id, { amount: Math.round(num(d.monto)), dateISO: str(d.fecha) ? dateOf(d.fecha) : undefined, accountId: str(d.cuenta) ? findAccount(d.cuenta) : undefined })
+      st().addExpenseAdvance(activeMonth(), e.id, { amount: money2(num(d.monto)), dateISO: str(d.fecha) ? dateOf(d.fecha) : undefined, accountId: str(d.cuenta) ? findAccount(d.cuenta) : undefined })
     },
   },
 
@@ -846,7 +846,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
       if (!e) return
       const patch: Record<string, unknown> = {}
       if (str(d.nuevoNombre)) patch.name = str(d.nuevoNombre).slice(0, 60)
-      if (num(d.monto) > 0) patch.amount = Math.round(num(d.monto))
+      if (num(d.monto) > 0) patch.amount = money2(num(d.monto))
       if (num(d.dia) >= 1 && num(d.dia) <= 31) { patch.dueDay = Math.round(num(d.dia)); patch.period = num(d.dia) <= 15 ? 'q1' : 'q2' }
       if (str(d.cuenta)) patch.accountId = findAccount(d.cuenta)
       st().updateExpense(activeMonth(), e.id, patch, e.templateId ? 'siempre' : 'mes')
@@ -890,7 +890,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
       if (!mv) return
       const patch: Record<string, unknown> = {}
       if (str(d.nuevoNombre)) patch.name = str(d.nuevoNombre).slice(0, 40)
-      if (num(d.monto) > 0) patch.amount = Math.round(num(d.monto))
+      if (num(d.monto) > 0) patch.amount = money2(num(d.monto))
       if (str(d.categoria)) patch.categoryId = str(d.categoria)
       if (str(d.cuenta)) patch.accountId = findAccount(d.cuenta)
       if (str(d.fecha)) patch.dateISO = dateOf(d.fecha)
@@ -922,7 +922,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
     valid: (d) => num(d.monto) > 0 && Boolean(findAccountObj(d.desde)) && Boolean(findAccountObj(d.hacia)) && findAccount(d.desde) !== findAccount(d.hacia),
     summary: (d) => `${money(d.monto)} de ${accountName(findAccount(d.desde))} a ${accountName(findAccount(d.hacia))}`,
     run: (d) => st().addMovement({
-      name: str(d.nota, 'Traslado').slice(0, 40), amount: Math.round(num(d.monto)), kind: 'transferencia',
+      name: str(d.nota, 'Traslado').slice(0, 40), amount: money2(num(d.monto)), kind: 'transferencia',
       categoryId: 'transferencia', accountId: findAccount(d.desde), toAccountId: findAccount(d.hacia), dateISO: dateOf(d.fecha),
     }),
   },
@@ -937,7 +937,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
     valid: (d) => num(d.monto) > 0 && Boolean(findAccount(d.tarjeta, true)),
     summary: (d) => `${money(d.monto)} de ${accountName(findAccount(d.tarjeta, true))} a ${accountName(findAccount(d.hacia))} · ojo: genera intereses desde hoy`,
     run: (d) => st().addMovement({
-      name: 'Retiro con tarjeta', amount: Math.round(num(d.monto)), kind: 'transferencia', categoryId: 'transferencia',
+      name: 'Retiro con tarjeta', amount: money2(num(d.monto)), kind: 'transferencia', categoryId: 'transferencia',
       accountId: findAccount(d.tarjeta, true), toAccountId: findAccount(d.hacia), dateISO: dateOf(d.fecha),
     }),
   },
@@ -982,7 +982,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
     valid: (d) => str(d.persona).length > 0 && num(d.monto) > 0,
     summary: (d) => `${str(d.persona)} te prestó ${money(d.monto)}${str(d.cuenta) ? ` → ${accountName(findAccount(d.cuenta))}` : ''}`,
     run: (d) => st().addLoan({
-      kind: 'borrowed', person: str(d.persona, 'Alguien').slice(0, 40), amount: Math.round(num(d.monto)),
+      kind: 'borrowed', person: str(d.persona, 'Alguien').slice(0, 40), amount: money2(num(d.monto)),
       dateISO: str(d.fecha) ? dateOf(d.fecha) : todayLocalISO(), accountId: str(d.cuenta) ? findAccount(d.cuenta) : undefined, note: str(d.nota) || undefined,
     }),
   },
@@ -996,7 +996,7 @@ export const ACTIONS: Record<string, ActionSpec> = {
     done: 'Sumado a lo que te debe',
     valid: (d) => Boolean(findLoan(str(d.persona), 'lent')) && num(d.monto) > 0,
     summary: (d) => { const l = findLoan(str(d.persona), 'lent'); return l ? `${money(d.monto)} más a ${l.person} · te debería ${money(loanRemaining(l) + num(d.monto))}` : `No encontré a "${str(d.persona)}" en Le presté` },
-    run: (d) => { const l = findLoan(str(d.persona), 'lent'); if (l) st().addLoanAdvance(l.id, Math.round(num(d.monto)), 'Le presté más', str(d.fecha) ? dateOf(d.fecha) : undefined, str(d.cuenta) ? findAccount(d.cuenta) : undefined) },
+    run: (d) => { const l = findLoan(str(d.persona), 'lent'); if (l) st().addLoanAdvance(l.id, money2(num(d.monto)), 'Le presté más', str(d.fecha) ? dateOf(d.fecha) : undefined, str(d.cuenta) ? findAccount(d.cuenta) : undefined) },
   },
 
   /* ─── Deudas y presupuestos: eliminar ────────────────────────────────── */

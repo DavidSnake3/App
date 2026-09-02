@@ -6,6 +6,7 @@ import type {
   PayPeriod, PayrollConfig, PayrollDeduction, PaySchedule, StatutoryDeduction, TaxBracket,
 } from '../types/finance'
 import { daysInMonth } from './dates'
+import { money2 } from './format'
 
 export const DEFAULT_CCSS_PCT = 10.83 // CCSS empleado (Costa Rica)
 export const DEFAULT_STATUTORY_NAME = 'CCSS'
@@ -237,7 +238,7 @@ export function extraPaysInMonth(
     .filter((e) => e.month === monthNumber)
     .map((e) => ({
       name: e.name,
-      amount: Math.round(e.mode === 'fixed' ? e.amount : monthlyNet * (e.factor || 1)),
+      amount: money2(e.mode === 'fixed' ? e.amount : monthlyNet * (e.factor || 1)),
     }))
     .filter((e) => e.amount > 0)
 }

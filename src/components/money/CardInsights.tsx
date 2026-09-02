@@ -8,7 +8,7 @@ import {
 import type { Account } from '../../types/finance'
 import type { CardStatement } from '../../lib/accounts'
 import { fixedPaymentFor, minSettings, payToReachUsage, payoffWithMinimum } from '../../lib/accounts'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, money2 } from '../../lib/format'
 import { useFinanceStore } from '../../store/useFinanceStore'
 
 /** Los tres montos + el desglose del mínimo + la simulación */
@@ -25,9 +25,9 @@ export function CardInsights({ account, st, onPay }: {
 
   const aCapital = Math.round(min.toCapital * 100)
   const cuota24 = fixedPaymentFor(account, st.pending, 24)
-  const sim24Intereses = Math.max(0, Math.round(cuota24 * 24 - st.pending))
+  const sim24Intereses = Math.max(0, money2(cuota24 * 24 - st.pending))
   const ahorro = sim.months == null
-    ? Math.max(0, Math.round(sim.paidAtHorizon + sim.balanceAtHorizon - st.pending - sim24Intereses))
+    ? Math.max(0, money2(sim.paidAtHorizon + sim.balanceAtHorizon - st.pending - sim24Intereses))
     : Math.max(0, Math.round(sim.interest - sim24Intereses))
 
   return (
@@ -39,7 +39,7 @@ export function CardInsights({ account, st, onPay }: {
         </p>
 
         <button
-          onClick={() => onPay(Math.round(st.pending))}
+          onClick={() => onPay(money2(st.pending))}
           className="pressable w-full mt-2.5 rounded-2xl p-3.5 text-left"
           style={{
             background: 'color-mix(in oklab, var(--c-income) 12%, transparent)',
@@ -68,7 +68,7 @@ export function CardInsights({ account, st, onPay }: {
             <span className="block text-[10px] text-muted mt-0.5">al mes, cuota fija</span>
           </button>
           <button
-            onClick={() => onPay(Math.round(min.total))}
+            onClick={() => onPay(money2(min.total))}
             className="pressable rounded-2xl p-3 text-left border border-edge"
             style={{ background: 'var(--c-card)' }}
           >

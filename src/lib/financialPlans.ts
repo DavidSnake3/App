@@ -8,6 +8,7 @@
 // - 40/30/20/10 — versión de cuatro sobres que separa la deuda del ahorro.
 // - Presupuesto base cero — cada unidad de dinero tiene un destino asignado
 //   (popularizado por Zero-Based Budgeting y por YNAB).
+import { money2 } from './format'
 import type { AppSettings, Debt, MonthData } from '../types/finance'
 import { kindTotals } from './fund'
 
@@ -210,9 +211,9 @@ export function planStatus(
       ...b,
       pct,
       target,
-      actual: Math.round(actual),
+      actual: money2(actual),
       actualPct: income > 0 ? Math.round((actual / income) * 100) : 0,
-      diff: Math.round(target - actual),
+      diff: money2(target - actual),
     }
   })
   return { income, buckets }

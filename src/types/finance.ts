@@ -597,6 +597,7 @@ export type WidgetId =
   | 'saldo'       // saldo real: lo que tienes en el banco ahora
   | 'cuentas'     // efectivo real por cuenta (efectivo, banco, ahorros)
   | 'tarjetas'    // tarjetas de crédito: deuda y próxima fecha de pago
+  | 'movimientos' // últimos movimientos del mes (lo que entró y salió)
   | 'divisas'     // tipo de cambio del dólar, euro y otras monedas
 
 export type WidgetSize = 'sm' | 'lg' | 'xl'

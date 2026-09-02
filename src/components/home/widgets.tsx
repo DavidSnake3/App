@@ -12,7 +12,7 @@ import { loanRemaining } from '../../lib/loans'
 import { buildAnnualProjection, buildMonthFlow, buildPayables, debtIsActiveInMonth, debtIsSettled, debtRemaining, getMonthSummary } from '../../lib/finance'
 import { getDailyTip } from '../../lib/ai'
 import { WEEKDAY_SHORT, daysInMonth, firstWeekday, getUrgency, isCurrentMonth, monthLabel, todayDay, urgencyColor, urgencyLabel } from '../../lib/dates'
-import { formatMoney, formatMoneyShort } from '../../lib/format'
+import { formatMoney, formatMoneyShort, money2 } from '../../lib/format'
 import { ProgressRing } from '../ui/ProgressRing'
 import { LoaderDots } from '../ui/Loader'
 import { PaidCheck } from '../month/ItemBits'
@@ -22,6 +22,7 @@ import { DonaGastosWidget, PilaresWidget } from './chartWidgets'
 import { SaldoWidget } from './fundWidget'
 import { CuentasWidget, TarjetasWidget } from './accountWidgets'
 import { DivisasWidget } from './ratesWidget'
+import { MovimientosWidget } from './movementsWidget'
 
 export function RenderWidget({ id, size, ctx }: { id: WidgetId; size: WidgetSize; ctx: WidgetCtx }) {
   switch (id) {
@@ -41,6 +42,7 @@ export function RenderWidget({ id, size, ctx }: { id: WidgetId; size: WidgetSize
     case 'dona': return <DonaGastosWidget size={size} />
     case 'pilares': return <PilaresWidget size={size} />
     case 'saldo': return <SaldoWidget size={size} ctx={ctx} />
+    case 'movimientos': return <MovimientosWidget size={size} ctx={ctx} />
     case 'divisas': return <DivisasWidget size={size} />
   }
 }
@@ -421,7 +423,7 @@ function CalendarioWidget({ ctx }: { ctx: WidgetCtx }) {
         {hoyInfo && !hoyInfo.paid ? (
           <>
             <span className="font-bold" style={{ color: 'var(--c-danger)' }}>Hoy pagas</span>
-            {' '}<span className="num font-semibold text-ink">{formatMoney(Math.round(hoyInfo.amount))}</span>
+            {' '}<span className="num font-semibold text-ink">{formatMoney(money2(hoyInfo.amount))}</span>
             {hoyInfo.count > 1 && <> · {hoyInfo.count} pagos</>}
           </>
         ) : proximo ? (

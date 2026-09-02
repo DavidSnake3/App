@@ -6,7 +6,7 @@ import { ArrowLeftRight, ChevronRight, Plus, X } from 'lucide-react'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { monthMovements, movementsExpense } from '../../lib/accounts'
 import { category, movementIcon } from '../../lib/categories'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, money2 } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
 import { MovementSheet } from '../money/MovementSheet'
 
@@ -78,7 +78,7 @@ export function MovementsCard() {
             return (
               <span key={catId} className="chip shrink-0">
                 <ItemIcon icon={c.icon} size={12} /> {c.name}
-                <span className="num font-semibold text-ink ml-0.5">{formatMoney(Math.round(monto))}</span>
+                <span className="num font-semibold text-ink ml-0.5">{formatMoney(money2(monto))}</span>
               </span>
             )
           })}

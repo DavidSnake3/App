@@ -6,7 +6,7 @@ import { Capacitor } from '@capacitor/core'
 import type { AppSettings, Debt, MonthData, PendingAlarm, ReminderPref } from '../types/finance'
 import { buildPayables, remainingAmount } from './finance'
 import { dueDate } from './dates'
-import { formatMoney } from './format'
+import { formatMoney, money2 } from './format'
 import { nextPaydays, payrollBreakdown } from './payroll'
 
 export interface ReminderTask {
@@ -138,11 +138,11 @@ export function buildReminderTasks(
       tasks.push({
         id: `payday-${mid}-${pd.date.getDate()}`,
         title: 'Hoy es tu día de pago 💰',
-        body: `Te llegan ${formatMoney(Math.round(pd.amount))}${pd.label ? ` (${pd.label})` : ''}.${detalle}`,
+        body: `Te llegan ${formatMoney(money2(pd.amount))}${pd.label ? ` (${pd.label})` : ''}.${detalle}`,
         fireAt,
         alarm: false,
         itemName: 'Día de pago',
-        amount: Math.round(pd.amount),
+        amount: money2(pd.amount),
       })
     }
   }

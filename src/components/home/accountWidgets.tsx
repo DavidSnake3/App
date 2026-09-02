@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowRight, CreditCard, Plus, Wallet } from 'lucide-reac
 import type { WidgetSize } from '../../types/finance'
 import type { WidgetCtx } from './widgetMeta'
 import { useMoney } from '../../hooks/useLedger'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, money2 } from '../../lib/format'
 import { AccountFace } from '../ui/AccountFace'
 
 /** Efectivo real repartido por cuenta */
@@ -47,7 +47,7 @@ export function CuentasWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx 
         className="display-money text-[25px] font-bold mt-1.5 anim-money"
         style={{ color: money.cash >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}
       >
-        {formatMoney(Math.round(money.cash))}
+        {formatMoney(money2(money.cash))}
       </p>
 
       {size !== 'sm' && (
@@ -57,7 +57,7 @@ export function CuentasWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx 
               <AccountFace account={account} size={22} />
               <span className="text-[12px] text-ink flex-1 truncate">{account.name}</span>
               <span className="num text-[12px] font-semibold text-ink shrink-0">
-                {formatMoney(Math.round(balance))}
+                {formatMoney(money2(balance))}
               </span>
             </div>
           ))}
@@ -139,7 +139,7 @@ export function TarjetasWidget({ ctx }: { ctx: WidgetCtx }) {
                   : `paga en ${statement.daysToDue}d`}
             </span>
             <span className="num text-[12px] font-semibold text-ink shrink-0">
-              {formatMoney(Math.round(statement.debt))}
+              {formatMoney(money2(statement.debt))}
             </span>
           </div>
         ))}

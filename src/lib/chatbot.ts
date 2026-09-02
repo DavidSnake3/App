@@ -10,7 +10,7 @@ import { buildPayables, debtEndMonthId, debtPaidCount, debtRemaining, getMonthSu
 import { carryOver, envelopeTotal, realBalance, savingsTotal } from './fund'
 import { PERIOD_LABEL, WORKER_LABEL, formatPayday, nextPaydays, payrollBreakdown, statutoryLabel } from './payroll'
 import { addMonthsToId, currentMonthId, monthLabel, todayDay } from './dates'
-import { formatDate } from './format'
+import { formatDate, money2 } from './format'
 import { useFinanceStore } from '../store/useFinanceStore'
 import { makeLedger } from '../hooks/useLedger'
 import {
@@ -118,7 +118,7 @@ export function buildUserContext(): string {
       `Líquido del comprobante: ${bd.net}. Ingreso mensual real: ${bd.monthlyNet}.`,
     )
     const pays = nextPaydays(settings.paySchedule, bd, 3)
-    lines.push(`Próximos pagos de salario: ${pays.map((p) => `${formatPayday(p.date)} ${Math.round(p.amount)}${p.label ? ` (${p.label})` : ''}`).join(' · ')}.`)
+    lines.push(`Próximos pagos de salario: ${pays.map((p) => `${formatPayday(p.date)} ${money2(p.amount)}${p.label ? ` (${p.label})` : ''}`).join(' · ')}.`)
   } else {
     lines.push(`Sin planilla configurada. Salario neto mensual configurado: ${settings.defaultSalary}.`)
   }
@@ -146,9 +146,9 @@ export function buildUserContext(): string {
   for (const t of tarjetas) {
     const st = cardStatement(t, ledger)
     lines.push(
-      `TARJETA ${t.name}: debe ${Math.round(st.debt)}${t.credit?.limit ? ` de un límite de ${t.credit.limit} (${Math.round(st.usage * 100)}% usado, disponible ${Math.round(st.available)})` : ''}. ` +
+      `TARJETA ${t.name}: debe ${money2(st.debt)}${t.credit?.limit ? ` de un límite de ${t.credit.limit} (${Math.round(st.usage * 100)}% usado, disponible ${Math.round(st.available)})` : ''}. ` +
       `Corte ${st.cutoffISO || '—'}, pago ${st.dueISO || '—'} (${st.overdue ? `VENCIDO hace ${Math.abs(st.daysToDue)} días` : `en ${st.daysToDue} días`}). ` +
-      `Del corte hay que pagar ${Math.round(st.statementBalance)}, ya abonó ${Math.round(st.paidAfterCutoff)}, falta ${Math.round(st.pending)}. ` +
+      `Del corte hay que pagar ${Math.round(st.statementBalance)}, ya abonó ${Math.round(st.paidAfterCutoff)}, falta ${money2(st.pending)}. ` +
       `Interés ${st.monthlyRate.toFixed(2)}% mensual${st.interest > 0 ? `, interés acumulado por atraso ${Math.round(st.interest)}` : ''}.`,
     )
   }
@@ -168,7 +168,7 @@ export function buildUserContext(): string {
     const mesNow = months[nowId]
     const movs = mesNow ? monthMovements(mesNow) : []
     lines.push(
-      `EFECTIVO REAL ahora: ${Math.round(saldo)} (incluye sobrante arrastrado ${Math.round(carryOver(months, debts, settings, loans, accounts))}). ` +
+      `EFECTIVO REAL ahora: ${money2(saldo)} (incluye sobrante arrastrado ${Math.round(carryOver(months, debts, settings, loans, accounts))}). ` +
       `Movimientos de este mes: salió ${Math.round(movementsExpense(mesNow))}, entró ${Math.round(movementsIncome(mesNow))}` +
       (movs.length ? ` (últimos: ${movs.slice(0, 8).map((m) => `${m.name} ${m.kind === 'ingreso' ? '+' : '-'}${m.amount} [${m.categoryId}]`).join(', ')})` : '') + '.',
     )

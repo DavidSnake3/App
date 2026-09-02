@@ -6,7 +6,7 @@ import type { SavingsEnvelope } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { envelopeTotal, savingsTotal, suggestedEmergencyGoal } from '../../lib/fund'
 import { payrollBreakdown } from '../../lib/payroll'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, money2 } from '../../lib/format'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { Toggle } from '../ui/Toggle'
 import { Segmented } from '../ui/Segmented'
@@ -46,7 +46,7 @@ export function SavingsSection() {
           <div>
             <p className="text-[11.5px] text-muted">Ahorro total</p>
             <p className="num text-[24px] font-bold leading-tight" style={{ color: 'var(--c-income)' }}>
-              {formatMoney(Math.round(total))}
+              {formatMoney(money2(total))}
             </p>
             <p className="text-[11px] text-muted mt-0.5">
               {envelopes.length} sobre{envelopes.length === 1 ? '' : 's'}
@@ -212,7 +212,7 @@ function EnvelopeCard({ env }: { env: SavingsEnvelope }) {
         <button onClick={() => setOpen(!open)} className="pressable flex-1 min-w-0 text-left">
           <span className="block text-[14.5px] font-semibold text-ink truncate">{env.name}</span>
           <span className="num block text-[17px] font-bold" style={{ color: 'var(--c-income)' }}>
-            {formatMoney(Math.round(total))}
+            {formatMoney(money2(total))}
             {env.goal > 0 && <span className="text-[11.5px] text-muted font-normal"> / {formatMoney(env.goal)}</span>}
           </span>
         </button>

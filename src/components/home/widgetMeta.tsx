@@ -1,5 +1,5 @@
 import {
-  CalendarClock, CalendarDays, ChartColumnBig, ChartLine, ChartPie, ChartSpline,
+  ArrowLeftRight, CalendarClock, CalendarDays, ChartColumnBig, ChartLine, ChartPie, ChartSpline,
   CreditCard, FileText, Landmark, LayoutGrid, Lightbulb, ListChecks, PiggyBank,
   TrendingUp, Wallet,
 } from 'lucide-react'
@@ -30,5 +30,6 @@ export const WIDGET_META: Record<WidgetId, { name: string; desc: string; icon: R
   deudas: { name: 'Deudas', desc: 'Saldo pendiente y cuota del mes', icon: <CreditCard size={16} />, defaultSize: 'sm' },
   calendario: { name: 'Mini calendario', desc: 'Los pagos del mes de un vistazo', icon: <CalendarDays size={16} />, defaultSize: 'sm' },
   cuentas: { name: 'Mis cuentas', desc: 'Efectivo real por cuenta: efectivo, banco y ahorros', icon: <Wallet size={16} />, defaultSize: 'lg' },
+  movimientos: { name: 'Movimientos', desc: 'Lo que entró y salió este mes, con su categoría', icon: <ArrowLeftRight size={16} />, defaultSize: 'lg' },
   tarjetas: { name: 'Tarjetas de crédito', desc: 'Cuánto debes y cuándo hay que pagar', icon: <CreditCard size={16} />, defaultSize: 'lg' },
 }

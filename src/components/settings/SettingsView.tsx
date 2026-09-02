@@ -12,7 +12,7 @@ import type {
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { useChat } from '../../store/useChat'
 import { BG_PRESETS, PALETTES, compressImage } from '../../lib/themes'
-import { CURRENCIES, LOCALES, formatMoney, formatMoneyExact } from '../../lib/format'
+import { CURRENCIES, LOCALES, formatMoney, formatMoneyExact, money2 } from '../../lib/format'
 import { mergeCategories } from '../../lib/categories'
 import { useBackClose } from '../../hooks/useBackClose'
 import { requestPermission, sendTestNotification } from '../../lib/notifications'
@@ -706,7 +706,7 @@ function IngresosSection() {
             {next.map((pd, i) => (
               <p key={i} className="text-[12.5px] text-ink flex justify-between">
                 <span className="capitalize">{formatPayday(pd.date)}{pd.adjusted ? ' *' : ''}</span>
-                <span className="num font-semibold" style={{ color: 'var(--c-income)' }}>{formatMoney(Math.round(pd.amount))}</span>
+                <span className="num font-semibold" style={{ color: 'var(--c-income)' }}>{formatMoney(money2(pd.amount))}</span>
               </p>
             ))}
             <p className="text-[10.5px] text-muted mt-1">Vista del comprobante: {PERIOD_LABEL[settings.payroll.viewPeriod]} (cámbiala en el widget del inicio).</p>

@@ -7,7 +7,7 @@ import { useFinanceStore } from '../../store/useFinanceStore'
 import { carryOver, realBalance } from '../../lib/fund'
 import { movementsExpense } from '../../lib/accounts'
 import { currentMonthId } from '../../lib/dates'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, money2 } from '../../lib/format'
 
 export function SaldoWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }) {
   const months = useFinanceStore((s) => s.months)
@@ -49,7 +49,7 @@ export function SaldoWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx })
         <Landmark size={12} /> Efectivo real
       </p>
       <p className="display-money text-[25px] font-bold mt-1.5 anim-money" style={{ color: saldo >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}>
-        {formatMoney(Math.round(saldo))}
+        {formatMoney(money2(saldo))}
       </p>
       {size !== 'sm' && (
         <p className="text-[11px] text-muted mt-1.5">

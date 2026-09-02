@@ -7,7 +7,7 @@ import { useFinanceStore } from '../../store/useFinanceStore'
 import { PERIOD_LABEL, formatPayday, hasPayrollDeductions, inView, nextPaydays, payrollBreakdown } from '../../lib/payroll'
 import { currentMonthId } from '../../lib/dates'
 import { depositsInMonth, savingsTotal } from '../../lib/fund'
-import { formatMoney, formatMoneyExact } from '../../lib/format'
+import { formatMoney, formatMoneyExact, money2 } from '../../lib/format'
 import { ProgressRing } from '../ui/ProgressRing'
 
 export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: WidgetCtx }) {
@@ -109,7 +109,7 @@ export function ComprobanteWidget({ size, ctx }: { size: WidgetSize; ctx: Widget
           {next.slice(0, size === 'xl' ? 2 : 1).map((pd, i) => (
             <p key={i} className="text-[11.5px] text-muted flex items-center justify-between gap-2">
               <span className="capitalize truncate">{i === 0 ? 'Próximo pago · ' : 'Luego · '}{formatPayday(pd.date)}</span>
-              <span className="num font-semibold shrink-0" style={{ color: 'var(--c-income)' }}>{formatMoney(Math.round(pd.amount))}</span>
+              <span className="num font-semibold shrink-0" style={{ color: 'var(--c-income)' }}>{formatMoney(money2(pd.amount))}</span>
             </p>
           ))}
         </div>

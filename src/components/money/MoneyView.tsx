@@ -5,7 +5,7 @@ import { useMoney } from '../../hooks/useLedger'
 import { monthMovements } from '../../lib/accounts'
 import { savingsTotal } from '../../lib/fund'
 import { loanRemaining, loansOfKind } from '../../lib/loans'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, money2 } from '../../lib/format'
 import { HubHeader, HubMenu, HubTitle, type HubItem } from '../layout/HubMenu'
 import { AccountsSection } from './AccountsSection'
 import { MovementsSection } from './MovementsSection'
@@ -45,7 +45,7 @@ export function MoneyView() {
       title: 'Cuentas',
       desc: 'Efectivo, banco y ahorros',
       icon: <Wallet size={19} />,
-      stat: money.balances.length ? formatMoney(Math.round(money.cash)) : 'Crear la primera',
+      stat: money.balances.length ? formatMoney(money2(money.cash)) : 'Crear la primera',
       tone: 'income',
       badge: money.balances.length || undefined,
     },
@@ -136,7 +136,7 @@ function ResumenDinero() {
         className="display-money text-[32px] font-bold mt-1.5 anim-money"
         style={{ color: money.cash >= 0 ? 'var(--c-income)' : 'var(--c-danger)' }}
       >
-        {formatMoney(Math.round(money.cash))}
+        {formatMoney(money2(money.cash))}
       </p>
       {money.cardDebt > 0 && (
         <p className="text-[11.5px] text-muted mt-1.5">
@@ -145,7 +145,7 @@ function ResumenDinero() {
             {formatMoney(Math.round(money.cardDebt))}
           </span>
           {' · '}te queda neto{' '}
-          <span className="num font-semibold text-ink">{formatMoney(Math.round(money.net))}</span>
+          <span className="num font-semibold text-ink">{formatMoney(money2(money.net))}</span>
         </p>
       )}
     </div>

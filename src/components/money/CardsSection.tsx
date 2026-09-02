@@ -10,7 +10,7 @@ import {
   monthInstallments,
 } from '../../lib/accounts'
 import { currentMonthId, monthLabel } from '../../lib/dates'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, money2 } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
 import { CardInsights } from './CardInsights'
 import { AccountSheet } from './AccountSheet'
@@ -271,7 +271,7 @@ export function CardsSection() {
 
               <div className="grid grid-cols-2 gap-2.5 mt-3">
                 <button
-                  onClick={() => setPago({ open: true, accountId: account.id, amount: Math.round(st.pending) })}
+                  onClick={() => setPago({ open: true, accountId: account.id, amount: money2(st.pending) })}
                   className="pressable px-3 py-2.5 rounded-xl text-[12.5px] font-semibold text-white"
                   style={{ background: 'var(--app-gradient)' }}
                 >

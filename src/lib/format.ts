@@ -34,16 +34,33 @@ export function getCurrency(): string {
   return _currency
 }
 
-const ZERO_DECIMAL = new Set(['CRC', 'COP', 'CLP', 'PYG', 'JPY'])
+/**
+ * Redondeo a céntimos. TODO monto que se guarda pasa por aquí: la app trabaja
+ * con decimales (un recibo de 12 345,67 es 12 345,67, no 12 346), pero nunca
+ * arrastra basura de coma flotante como 0.1 + 0.2 = 0.30000000000000004.
+ */
+export function money2(v: number): number {
+  if (!Number.isFinite(v)) return 0
+  return Math.round((v + Number.EPSILON) * 100) / 100
+}
 
+/** ¿El monto tiene céntimos? */
+export function hasCents(amount: number): boolean {
+  return Math.round(amount * 100) % 100 !== 0
+}
+
+/**
+ * Moneda como en los recibos: con céntimos SOLO cuando existen.
+ * Así ₡25 000 se lee limpio y ₡12 345,67 se lee completo, en cualquier moneda.
+ */
 export function formatMoney(amount: number, currency = _currency): string {
-  const decimals = ZERO_DECIMAL.has(currency) ? 0 : 2
+  const dec = hasCents(amount) ? 2 : 0
   try {
     return new Intl.NumberFormat(_locale, {
       style: 'currency',
       currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: decimals,
+      minimumFractionDigits: dec,
+      maximumFractionDigits: dec,
     }).format(amount)
   } catch {
     return `${amount.toLocaleString(_locale)}`
@@ -137,17 +154,30 @@ export function formatPercent(v: number): string {
   return `${Math.round(v * 100)}%`
 }
 
-/** Como los comprobantes reales: muestra céntimos solo cuando existen */
-export function formatMoneyExact(amount: number, currency = _currency): string {
-  const hasCents = Math.round(amount * 100) % 100 !== 0
+/** Alias histórico: `formatMoney` ya muestra los céntimos cuando existen */
+export const formatMoneyExact = formatMoney
+
+/** El separador decimal de la región: coma en Costa Rica, punto en EE. UU. */
+export function decimalSeparator(): string {
   try {
-    return new Intl.NumberFormat(_locale, {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: hasCents ? 2 : 0,
-      maximumFractionDigits: hasCents ? 2 : 0,
-    }).format(amount)
+    return new Intl.NumberFormat(_locale).formatToParts(1.1)
+      .find((p) => p.type === 'decimal')?.value ?? '.'
   } catch {
-    return `${amount.toLocaleString(_locale)}`
+    return '.'
   }
+}
+
+/**
+ * Lee un monto escrito por una persona, en cualquier región: "1 234,56",
+ * "1,234.56", "₡12.345,67" o "1234.5". Devuelve el número o NaN.
+ */
+export function parseMoney(text: string): number {
+  const limpio = text.replace(/[^\d.,-]/g, '').trim()
+  if (!limpio) return NaN
+  const dec = decimalSeparator()
+  const miles = dec === ',' ? '.' : ','
+  // se quitan los separadores de miles y se normaliza el decimal a punto
+  const normal = limpio.split(miles).join('').replace(dec, '.')
+  const n = Number(normal)
+  return Number.isFinite(n) ? n : NaN
 }
