@@ -188,7 +188,7 @@ export function SettingsView({ auth }: { auth: AuthState }) {
 }
 
 function VersionFooter() {
-  return <p className="text-[11px] text-muted text-center">SNFinance v4.0.1</p>
+  return <p className="text-[11px] text-muted text-center">SNFinance v4.0.2</p>
 }
 
 // ─── Cuenta y perfil ─────────────────────────────────────────────────────────
@@ -1147,7 +1147,7 @@ function AyudaSection() {
   const openChat = useChat((s) => s.openChat)
 
   const mail = (subject: string, body: string) => {
-    const info = `\n\n—\nSNFinance v4.0.1 · ${navigator.userAgent.slice(0, 80)}`
+    const info = `\n\n—\nSNFinance v4.0.2 · ${navigator.userAgent.slice(0, 80)}`
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + info)}`
   }
 

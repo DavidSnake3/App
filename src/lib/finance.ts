@@ -78,7 +78,12 @@ export function remainingAmount(e: Expense): number {
 }
 
 export function buildPayables(month: MonthData, debts: Debt[]): PayableItem[] {
-  const items: PayableItem[] = month.expenses.map((e) => {
+  const items: PayableItem[] = month.expenses
+    // Una lista de compras VACÍA todavía no es un pago: es un papel en blanco
+    // para el súper del sábado. Si contara, un mes con todo pagado nunca se
+    // daría por completo. En cuanto le metés el primer producto, aparece.
+    .filter((e) => !(e.shopping && !e.shopping.done && e.shopping.items.length === 0))
+    .map((e) => {
     const advanced = advancedAmount(e)
     return {
       id: `e-${e.id}`,
