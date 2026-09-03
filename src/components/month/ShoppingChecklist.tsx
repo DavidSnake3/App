@@ -8,7 +8,7 @@
 //    ya está en el carrito, así que no lleva checks.
 import { useState } from 'react'
 import {
-  Check, Minus, Pencil, Plus, Receipt, ScanLine, ShoppingCart, Store, Trash2, Undo2,
+  Check, Minus, Pencil, Plus, Receipt, ScanLine, ShoppingCart, Trash2, Undo2,
 } from 'lucide-react'
 import type { Expense, ShoppingProduct } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
@@ -107,11 +107,7 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
           </div>
         )}
 
-        {lista.store && (
-          <p className="text-[11.5px] text-muted mt-2 flex items-center gap-1.5">
-            <Store size={12} /> {lista.store}
-          </p>
-        )}
+
       </div>
 
       {/* Escanear: solo mientras la compra sigue abierta */}
@@ -127,11 +123,11 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
 
       {/* Productos */}
       {lista.items.length === 0 ? (
-        <p className="text-[12.5px] text-muted text-center py-3 leading-snug">
-          {enVivo
-            ? 'Pasá el código de barras de cada producto mientras comprás.'
-            : 'Agregá lo que vas a comprar y su precio. Después solo marcás lo que vas echando.'}
-        </p>
+        enVivo ? null : (
+          <p className="text-[12.5px] text-muted text-center py-3 leading-snug">
+            Agregá lo que vas a comprar y su precio. Después marcás lo que vas echando.
+          </p>
+        )
       ) : (
         <div className="flex flex-col gap-2">
           {lista.items.map((p) => (

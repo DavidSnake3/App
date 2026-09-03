@@ -85,3 +85,61 @@ export function codigoValido(code: string): boolean {
   }
   return (10 - (suma % 10)) % 10 === control
 }
+
+/**
+ * Busca el nombre del producto por su código.
+ *
+ * Pregunta a las bases abiertas de Open Food Facts (comida), Open Products
+ * Facts (todo lo demás) y Open Beauty Facts (higiene). Solo se manda el código
+ * de barras: ningún dato tuyo sale de aquí.
+ *
+ * Ojo: la cobertura de Centroamérica es floja, así que muchos productos de
+ * pulpería o marca del súper no van a aparecer. No importa: lo escribís una
+ * vez y la app ya lo recuerda para siempre (el catálogo local manda sobre
+ * esto).
+ */
+const BASES = [
+  'https://world.openfoodfacts.org',
+  'https://world.openproductsfacts.org',
+  'https://world.openbeautyfacts.org',
+]
+
+interface ProductoAbierto {
+  product_name?: string
+  product_name_es?: string
+  brands?: string
+  quantity?: string
+}
+
+function armarNombre(p: ProductoAbierto): string {
+  const base = (p.product_name_es || p.product_name || '').trim()
+  if (!base) return ''
+  // "Leche Dos Pinos 1 L": marca delante y contenido detrás, si vienen
+  const marca = (p.brands || '').split(',')[0]?.trim()
+  const partes = [base]
+  if (marca && !base.toLowerCase().includes(marca.toLowerCase())) partes.unshift(marca)
+  if (p.quantity?.trim()) partes.push(p.quantity.trim())
+  return partes.join(' ').slice(0, 60)
+}
+
+export async function buscarNombre(barcode: string, señal?: AbortSignal): Promise<string> {
+  const code = barcode.trim()
+  if (!/^\d{8}$|^\d{12,14}$/.test(code)) return '' // los QR no son productos
+
+  for (const base of BASES) {
+    if (señal?.aborted) return ''
+    try {
+      const r = await fetch(
+        `${base}/api/v2/product/${code}.json?fields=product_name,product_name_es,brands,quantity`,
+        { signal: señal, headers: { Accept: 'application/json' } },
+      )
+      if (!r.ok) continue
+      const j = await r.json() as { status?: number; product?: ProductoAbierto }
+      const nombre = j.product ? armarNombre(j.product) : ''
+      if (nombre) return nombre
+    } catch {
+      // sin internet o consulta cancelada: se prueba la siguiente
+    }
+  }
+  return '' // no está en ninguna: se escribe a mano y queda guardado
+}

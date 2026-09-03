@@ -21,7 +21,11 @@ export function ShoppingListSheet({ open, monthId, expenseId, onClose, onEdit }:
       open={open && Boolean(expense)}
       onClose={onClose}
       title={expense?.name ?? 'Lista de compras'}
-      subtitle={expense?.shopping?.done ? 'Compra cerrada' : 'Marcá lo que vas echando al carrito'}
+      subtitle={expense?.shopping?.done
+        ? 'Compra cerrada'
+        : expense?.shopping?.mode === 'live'
+          ? expense.shopping.store || ''
+          : 'Marcá lo que vas echando al carrito'}
     >
       {open && expense && (
         <ShoppingChecklist

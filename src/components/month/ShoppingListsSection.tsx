@@ -58,8 +58,10 @@ export function ShoppingListsSection({ monthId }: { monthId: string }) {
             <span className="block text-[14px] font-semibold text-ink truncate">{e.name}</span>
             <span className="block text-[11px] text-muted">
               {l.done
-                ? `Comprado · ${marcados} producto${marcados === 1 ? '' : 's'}`
-                : `${marcados} de ${l.items.length} marcados`}
+                ? `Comprado · ${l.items.length} producto${l.items.length === 1 ? '' : 's'}`
+                : l.mode === 'live'
+                  ? `${l.items.length} producto${l.items.length === 1 ? '' : 's'}`
+                  : `${marcados} de ${l.items.length} marcados`}
               {l.store ? ` · ${l.store}` : ''}
             </span>
           </span>
