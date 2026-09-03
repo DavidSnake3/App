@@ -296,7 +296,8 @@ interface FinanceActions {
   setDefaultSalaryEverywhere(v: number): void
   setViewMode(mode: ViewMode): void
 
-  markCelebrated(monthId: string): void
+  /** Marca (o desmarca) la felicitacion del mes ya vista */
+  markCelebrated(monthId: string, value?: boolean): void
   /** Reemplaza todo el estado (sincronización con la nube) */
   hydrateFrom(data: PersistedShape): void
   resetAll(): void
@@ -398,6 +399,135 @@ function healMonths(
     if (!nuevos.length) { out[id] = mes; continue }
     cambio = true
     out[id] = { ...mes, hormigas: [], movements: [...(mes.movements ?? []), ...nuevos] }
+  }
+  return cambio ? out : months
+}
+
+/**
+ * Barre los movimientos que sobraron de un pago que ya no está.
+ *
+ * Un movimiento nacido de un pago lleva el rastro de ese pago (`sourceId`) y
+ * el pago guarda el id del movimiento. Si desmarcás el pago, el movimiento se
+ * va con él. Pero una versión anterior no limpiaba en todos los casos y
+ * quedaban movimientos huérfanos descontando plata de una cuenta por algo que
+ * el usuario nunca hizo, o el mismo pago anotado dos veces.
+ *
+ * Solo toca lo que generó la app: lo que anotás a mano no lleva rastro y no
+ * se borra nunca.
+ */
+function pruneOrphanMovements(
+  months: Record<string, MonthData>,
+  debts: Debt[],
+): Record<string, MonthData> {
+  // ids de movimiento que algún pago vivo sigue reclamando
+  const vivos = new Set<string>()
+  // rastros de pagos que hoy están pagados (para detectar copias repetidas)
+  const fuentesVivas = new Set<string>()
+  for (const m of Object.values(months)) {
+    for (const e of m.expenses ?? []) {
+      if (e.paid && e.movementId) { vivos.add(e.movementId); fuentesVivas.add(e.id) }
+      for (const ad of e.advances ?? []) {
+        if (ad.movementId) vivos.add(ad.movementId)
+        fuentesVivas.add(ad.id)
+      }
+    }
+  }
+  for (const d of debts) {
+    for (const [mid, p] of Object.entries(d.payments ?? {})) {
+      if (!p?.paid) continue
+      if (p.movementId) vivos.add(p.movementId)
+      fuentesVivas.add(`${d.id}:${mid}`)
+    }
+  }
+
+  let cambio = false
+  const vistos = new Set<string>() // un rastro no puede aparecer dos veces
+  const out: Record<string, MonthData> = {}
+  for (const [id, m] of Object.entries(months)) {
+    const movs = m.movements ?? []
+    const limpios = movs.filter((mv) => {
+      if (!mv.sourceId) return true              // anotado a mano: intocable
+      if (vivos.has(mv.id)) {                    // su pago lo reclama
+        vistos.add(mv.sourceId)
+        return true
+      }
+      if (!fuentesVivas.has(mv.sourceId)) return false  // el pago ya no existe
+      if (vistos.has(mv.sourceId)) return false         // copia repetida
+      vistos.add(mv.sourceId)
+      return true
+    })
+    if (limpios.length !== movs.length) { cambio = true; out[id] = { ...m, movements: limpios } }
+    else out[id] = m
+  }
+  return cambio ? out : months
+}
+
+/**
+ * Un mismo pago no puede quedar anotado dos veces.
+ *
+ * Se van las copias exactas (mismo nombre, monto, día, cuenta y tipo) SOLO
+ * cuando el movimiento nació de un pago del mes: o lleva el rastro de la app,
+ * o su nombre es el de un pago o una cuota de ese mes. Lo que anotás a mano
+ * no se toca: dos cafés de 750 el mismo día son dos cafés de verdad.
+ */
+function dedupePaymentMovements(
+  months: Record<string, MonthData>,
+  debts: Debt[],
+): Record<string, MonthData> {
+  let cambio = false
+  const out: Record<string, MonthData> = {}
+  for (const [id, m] of Object.entries(months)) {
+    const movs = m.movements ?? []
+    if (movs.length < 2) { out[id] = m; continue }
+
+    // nombres que la app genera al marcar un pago o una cuota de ESTE mes
+    const dePago = new Set<string>()
+    for (const e of m.expenses ?? []) {
+      dePago.add(e.name.trim().toLowerCase())
+      dePago.add(`adelanto - ${e.name.trim().toLowerCase()}`)
+    }
+    for (const d of debts) {
+      if (d.payments?.[id]) dePago.add(`cuota ${d.name.trim().toLowerCase()}`)
+    }
+
+    const vistos = new Set<string>()
+    const limpios = movs.filter((mv) => {
+      const nombre = mv.name.trim().toLowerCase()
+      if (!mv.sourceId && !dePago.has(nombre)) return true // anotado a mano
+      const clave = [nombre, mv.amount, mv.dateISO.slice(0, 10), mv.accountId, mv.kind].join('|')
+      if (vistos.has(clave)) return false
+      vistos.add(clave)
+      return true
+    })
+    if (limpios.length !== movs.length) { cambio = true; out[id] = { ...m, movements: limpios } }
+    else out[id] = m
+  }
+  return cambio ? out : months
+}
+
+/**
+ * El mismo pago fijo no puede estar dos veces en un mes.
+ *
+ * Pasaba al agregar un gasto recurrente con un nombre que ya tenía su pago
+ * fijo: nacía suelto al lado del sembrado. Se unen SOLO cuando son idénticos
+ * (mismo nombre y mismo monto) y la copia sobrante no tiene nada propio que
+ * perder: ni pagos, ni adelantos, ni nota, ni lista de compras.
+ */
+function dedupeSeededExpenses(months: Record<string, MonthData>): Record<string, MonthData> {
+  let cambio = false
+  const out: Record<string, MonthData> = {}
+  for (const [id, m] of Object.entries(months)) {
+    const vistos = new Map<string, Expense>()
+    const limpios: Expense[] = []
+    for (const e of m.expenses ?? []) {
+      const clave = `${e.name.trim().toLowerCase()}|${e.amount}`
+      const previo = vistos.get(clave)
+      const vacio = !e.paid && !(e.advances ?? []).length && !e.note && !e.shopping
+      if (previo && vacio) { cambio = true; continue }
+      vistos.set(clave, e)
+      limpios.push(e)
+    }
+    out[id] = cambio && limpios.length !== (m.expenses ?? []).length ? { ...m, expenses: limpios } : m
   }
   return cambio ? out : months
 }
@@ -604,13 +734,17 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         set((s) => {
           const mes = s.months[monthId]
           if (!mes) return {}
-          const yaExiste = s.recurring.some(
-            (t) => t.name.trim().toLowerCase() === gasto.name.trim().toLowerCase(),
-          )
-          const plantilla = gasto.recurrence !== 'once' && !gasto.templateId && !yaExiste
+          const clave = gasto.name.trim().toLowerCase()
+          const existente = s.recurring.find((t) => t.name.trim().toLowerCase() === clave)
+          const plantilla = gasto.recurrence !== 'once' && !gasto.templateId && !existente
             ? templateFromExpense(gasto, monthId)
             : null
           if (plantilla) gasto.templateId = plantilla.id
+          // ya habia un pago fijo con ese nombre: este gasto ES ese, no otro.
+          // Si no se engancha, el mes termina con el mismo pago dos veces.
+          else if (existente && gasto.recurrence !== 'once' && !gasto.templateId) {
+            gasto.templateId = existente.id
+          }
 
           const recurring = plantilla ? [...s.recurring, plantilla] : s.recurring
           const conGasto = {
@@ -744,6 +878,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
 
         const fecha = (data.dateISO || diaDeAdelanto(monthId)).slice(0, 10)
         const cuenta = data.accountId || gasto.accountId || cuentaPorDefecto(s0)
+        const adelantoId = uid()
         const movementId = cuenta
           ? get().addMovementReturningId({
               name: `Adelanto - ${gasto.name}`.slice(0, 40),
@@ -755,11 +890,12 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
               icon: gasto.icon,
               budgetId: gasto.budgetId,
               note: data.note,
+              sourceId: adelantoId,
             })
           : undefined
 
         const adelanto: ExpenseAdvance = {
-          id: uid(),
+          id: adelantoId,
           amount: monto,
           dateISO: fecha,
           accountId: cuenta || undefined,
@@ -972,6 +1108,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
               dateISO: todayLocalISO(),
               icon: gasto.icon,
               budgetId: gasto.budgetId,
+              sourceId: gasto.id,
             })
           : undefined
         set((s) => patchExpense(s, monthId, id, (e) => ({
@@ -1043,7 +1180,8 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         }
 
         const cuenta = prev.accountId || cuentaPorDefecto(s0)
-        const movementId = cuenta && prev.amount > 0
+        // por planilla no lleva movimiento: el neto del salario ya viene sin esa cuota
+        const movementId = !deuda.viaPlanilla && cuenta && prev.amount > 0
           ? get().addMovementReturningId({
               name: `Cuota ${deuda.name}`.slice(0, 40),
               amount: prev.amount,
@@ -1052,6 +1190,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
               accountId: cuenta,
               dateISO: todayLocalISO(),
               icon: deuda.icon,
+              sourceId: `${debtId}:${monthId}`,
             })
           : undefined
         set((s) => ({
@@ -1068,22 +1207,50 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         }))
       },
 
-      payDebtInstallment: (debtId, monthId, detail) =>
+      /**
+       * Pagar una cuota con su desglose (capital e intereses). Como cualquier
+       * otro pago, deja su MOVIMIENTO: antes la plata desaparecia de la cuenta
+       * sin que apareciera en ningun lado.
+       */
+      payDebtInstallment: (debtId, monthId, detail) => {
+        const s0 = get()
+        const deuda = s0.debts.find((d) => d.id === debtId)
+        if (!deuda) return
+        const prev: DebtPayment = deuda.payments[monthId] ?? { paid: false, amount: deuda.monthlyPayment }
+        // si ya estaba pagada, su movimiento anterior se reemplaza
+        if (prev.movementId) get().deleteMovement(prev.movementId)
+
+        const monto = detail.amount ?? prev.amount
+        const cuenta = detail.accountId || prev.accountId || cuentaPorDefecto(s0)
+        const movementId = !deuda.viaPlanilla && cuenta && monto > 0
+          ? get().addMovementReturningId({
+              name: `Cuota ${deuda.name}`.slice(0, 40),
+              amount: monto,
+              kind: 'gasto',
+              categoryId: deuda.categoryId || 'deudas',
+              accountId: cuenta,
+              dateISO: detail.paidAt?.slice(0, 10) || todayLocalISO(),
+              icon: deuda.icon,
+              sourceId: `${debtId}:${monthId}`,
+            })
+          : undefined
+
         set((s) => ({
           debts: s.debts.map((d) => {
             if (d.id !== debtId) return d
-            const prev: DebtPayment = d.payments[monthId] ?? { paid: false, amount: d.monthlyPayment }
             const next: DebtPayment = {
               ...prev,
               ...detail,
               paid: true,
               paidAt: detail.paidAt ?? todayISO(),
-              amount: detail.amount ?? prev.amount,
+              amount: monto,
+              movementId,
             }
             return { ...d, payments: { ...d.payments, [monthId]: next } }
           }),
           ...touch(),
-        })),
+        }))
+      },
 
       importRecurring: (targetMonthId, fromMonthId) =>
         set((s) => {
@@ -1451,6 +1618,19 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       // ── Movimientos del mes ──────────────────────────────────────────────
       addMovement: (mv) => { get().addMovementReturningId(mv) },
       addMovementReturningId: (mv) => {
+        // Un pago solo puede tener UN movimiento. Si ya lo dejó (por un doble
+        // toque, o porque se volvió a marcar sin limpiar), se reutiliza el que
+        // hay en vez de anotar la misma plata otra vez.
+        if (mv.sourceId) {
+          const s0 = get()
+          for (const m of Object.values(s0.months)) {
+            const previo = (m.movements ?? []).find((x) => x.sourceId === mv.sourceId)
+            if (previo) {
+              get().updateMovement(previo.id, { ...mv })
+              return previo.id
+            }
+          }
+        }
         const id = uid()
         set((s) => {
           const monthId = mv.dateISO.slice(0, 7)
@@ -1748,8 +1928,8 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       setViewMode: (mode) =>
         set((s) => ({ settings: { ...s.settings, viewMode: mode }, ...touch() })),
 
-      markCelebrated: (monthId) =>
-        set((s) => patchMonth(s, monthId, (m) => ({ ...m, celebrated: true }))),
+      markCelebrated: (monthId, value = true) =>
+        set((s) => patchMonth(s, monthId, (m) => ({ ...m, celebrated: value }))),
 
       hydrateFrom: (data) =>
         set((prev) => {
@@ -1809,7 +1989,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
     }),
     {
       name: 'finance-app-state',
-      version: 10,
+      version: 11,
       // Merge profundo de settings: cualquier estado guardado sin los campos
       // nuevos (clientes viejos, nube) recibe los defaults sin romper nada
       merge: (persisted, current) => {
@@ -1817,9 +1997,13 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         return {
           ...current,
           ...p,
-          // los meses ya guardados se ponen al día con los pagos fijos
+          // los meses ya guardados se ponen al día con los pagos fijos, y de
+          // paso se barren los movimientos repetidos de un mismo pago
           months: seedAllMonths(
-            healMonths(p.months ?? {}, p.accounts ?? []),
+            dedupePaymentMovements(
+              pruneOrphanMovements(healMonths(p.months ?? {}, p.accounts ?? []), p.debts ?? []),
+              p.debts ?? [],
+            ),
             p.recurring ?? [],
             currentMonthId(),
           ),
@@ -1950,6 +2134,18 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           }
         }
 
+        if (version < 11) {
+          // v10 → v11: se barren los movimientos que quedaron de pagos que ya
+          // no están, y el mismo pago fijo deja de poder estar dos veces en un
+          // mes (uno con plantilla y otro suelto con el mismo nombre).
+          st = {
+            ...st,
+            months: dedupeSeededExpenses(
+              dedupePaymentMovements(pruneOrphanMovements(st.months ?? {}, st.debts ?? []), st.debts ?? []),
+            ),
+          }
+        }
+
         return st as FinanceState & FinanceActions
       },
     },
@@ -1960,7 +2156,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
 export function exportState(): PersistedShape {
   const s = useFinanceStore.getState()
   return {
-    schema: 10,
+    schema: 11,
     months: s.months,
     accounts: s.accounts,
     installments: s.installments,

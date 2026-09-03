@@ -279,6 +279,12 @@ export interface Movement {
   budgetId?: string
   /** cuota de una compra a plazos */
   installmentId?: string
+  /**
+   * Pago que lo genero: el id del gasto, del adelanto o `deuda:mes` de una
+   * cuota. Sirve para no duplicarlo y para borrarlo si ese pago se desmarca.
+   * Los movimientos que anota el usuario a mano NO lo llevan.
+   */
+  sourceId?: string
   createdAt: string
 }
 

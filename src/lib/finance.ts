@@ -38,6 +38,8 @@ export function debtEndMonthId(d: Debt): string {
 }
 
 export function debtIsActiveInMonth(d: Debt, monthId: string): boolean {
+  // sin mes de arranque (deuda vieja o creada sin fecha) se cobra siempre
+  if (!d.startMonthId || !d.installments) return true
   const idx = monthDiff(d.startMonthId, monthId)
   return idx >= 0 && idx < d.installments
 }

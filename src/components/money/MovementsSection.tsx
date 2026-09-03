@@ -6,7 +6,7 @@ import type { Movement } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { accountById, monthMovements, movementsExpense, movementsIncome } from '../../lib/accounts'
 import { category, categoryColor, movementIcon } from '../../lib/categories'
-import { addMonthsToId, isCurrentMonth, monthLabel } from '../../lib/dates'
+import { addMonthsToId, dayLabel, isCurrentMonth, monthLabel } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
 import { ItemIcon } from '../../lib/icons'
 import { MovementSheet } from './MovementSheet'
@@ -148,7 +148,7 @@ export function MovementsSection() {
           {porDia.map(([dia, movs]) => (
             <section key={dia}>
               <div className="flex items-center justify-between mb-2 px-0.5">
-                <span className="chip-day">{diaLabel(dia)}</span>
+                <span className="chip-day">{dayLabel(dia)}</span>
                 <p className="num text-[11px] text-muted">
                   {formatMoney(movs.reduce((s, m) => s + (m.kind === 'ingreso' ? m.amount : -m.amount), 0))}
                 </p>
@@ -213,14 +213,3 @@ export function MovementsSection() {
 }
 
 /** "Hoy", "Ayer" o la fecha corta */
-function diaLabel(iso: string): string {
-  const hoy = new Date()
-  const h = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-  if (iso === h) return 'Hoy'
-  const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1)
-  const a = `${ayer.getFullYear()}-${String(ayer.getMonth() + 1).padStart(2, '0')}-${String(ayer.getDate()).padStart(2, '0')}`
-  if (iso === a) return 'Ayer'
-  const [, mes, dia] = iso.split('-')
-  const nombres = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-  return `${Number(dia)} de ${nombres[Number(mes) - 1] ?? ''}`
-}

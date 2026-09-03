@@ -176,8 +176,41 @@ export function parseMoney(text: string): number {
   if (!limpio) return NaN
   const dec = decimalSeparator()
   const miles = dec === ',' ? '.' : ','
-  // se quitan los separadores de miles y se normaliza el decimal a punto
-  const normal = limpio.split(miles).join('').replace(dec, '.')
+
+  /*
+   * El teclado del teléfono manda el punto aunque aquí el decimal sea la coma,
+   * y la gente copia montos de recibos escritos de las dos formas. Así que el
+   * separador se deduce de la forma del número, no solo del país:
+   *
+   *   1.234,56  →  1234.56   coma decimal, punto de miles
+   *   1234.56   →  1234.56   un punto con 2 cifras detrás: es decimal
+   *   1.234     →  1234      3 cifras detrás: son miles
+   *   1,234,567 →  1234567   varios separadores iguales: todos son miles
+   */
+  const ultimoDec = limpio.lastIndexOf(dec)
+  const ultimoMiles = limpio.lastIndexOf(miles)
+  // ¿es un separador de miles? lo delatan las 3 cifras que lleva detrás
+  const pareceMiles = (pos: number) => {
+    if (pos < 0) return false
+    return limpio.length - pos - 1 === 3
+  }
+  let real: string | null = dec
+  if (ultimoDec < 0 && ultimoMiles >= 0) {
+    const detras = limpio.length - ultimoMiles - 1
+    const veces = limpio.split(miles).length - 1
+    // un solo separador con 1 o 2 cifras detrás solo puede ser el decimal
+    real = veces === 1 && detras > 0 && detras <= 2 ? miles : null
+  } else if (ultimoMiles > ultimoDec) {
+    // el que va más a la derecha manda: '1,234.56' es punto decimal
+    real = miles
+  } else if (ultimoDec >= 0 && ultimoMiles < 0 && pareceMiles(ultimoDec)) {
+    // '1,234' con la coma decimal: el dinero no lleva 3 decimales, son miles
+    real = null
+  }
+
+  const normal = real === null
+    ? limpio.split(dec).join('').split(miles).join('')
+    : limpio.split(real === dec ? miles : dec).join('').replace(real, '.')
   const n = Number(normal)
   return Number.isFinite(n) ? n : NaN
 }

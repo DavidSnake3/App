@@ -121,6 +121,27 @@ export function hormigasTotal(m: MonthData): number {
  * que ese movimiento se atribuye a su tipo (servicio/gasto/personal/deuda) y se
  * excluye de la bolsa de "movimientos sueltos".
  */
+/**
+ * Movimientos que NO son plata aparte: nacieron de marcar un pago, de un
+ * adelanto o de una cuota. El pago ya cuenta por su lado, así que sumar
+ * también su movimiento restaría la misma plata dos veces.
+ */
+export function paymentMovementIds(m: MonthData | undefined, debts: Debt[]): Set<string> {
+  const ids = new Set<string>()
+  if (!m) return ids
+  for (const e of m.expenses ?? []) {
+    if (e.movementId) ids.add(e.movementId)
+    for (const ad of e.advances ?? []) if (ad.movementId) ids.add(ad.movementId)
+  }
+  for (const d of debts) {
+    const p = d.payments[m.id]
+    if (p?.movementId) ids.add(p.movementId)
+  }
+  // los que la app marcó con su origen, aunque el pago ya no los reclame
+  for (const mv of m.movements ?? []) if (mv.sourceId) ids.add(mv.id)
+  return ids
+}
+
 export function monthSpend(m: MonthData | undefined, debts: Debt[]): {
   servicio: number
   gasto: number
@@ -132,16 +153,7 @@ export function monthSpend(m: MonthData | undefined, debts: Debt[]): {
   const vacio = { servicio: 0, gasto: 0, personal: 0, deuda: 0, movimientos: 0, total: 0 }
   if (!m) return vacio
 
-  // movimientos que nacieron de un pago o de un adelanto: ya se cuentan por su tipo
-  const deUnPago = new Set<string>()
-  for (const e of m.expenses) {
-    if (e.movementId) deUnPago.add(e.movementId)
-    for (const ad of e.advances ?? []) if (ad.movementId) deUnPago.add(ad.movementId)
-  }
-  for (const d of debts) {
-    const p = d.payments[m.id]
-    if (p?.movementId) deUnPago.add(p.movementId)
-  }
+  const deUnPago = paymentMovementIds(m, debts)
 
   const porTipo = { servicio: 0, gasto: 0, personal: 0, deuda: 0 }
   for (const k of kindTotals(m, debts)) porTipo[k.kind] += k.paid

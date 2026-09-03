@@ -10,6 +10,7 @@ import { formatMoney } from '../../lib/format'
 import { accountColor } from '../../lib/itemColors'
 import { AccountFace } from '../ui/AccountFace'
 import { AccountSheet } from './AccountSheet'
+import { AccountHistorySheet } from './AccountHistorySheet'
 import { MovementSheet } from './MovementSheet'
 
 /** Cuentas: de aquí sale el efectivo real y la deuda de las tarjetas */
@@ -19,6 +20,8 @@ export function AccountsSection() {
   const [sheet, setSheet] = useState<{ open: boolean; editing: Account | null; balance: number }>({
     open: false, editing: null, balance: 0,
   })
+  // al tocar una cuenta se ve su historial; editarla es un boton dentro
+  const [historial, setHistorial] = useState<{ account: Account; balance: number } | null>(null)
   const [movOpen, setMovOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
   const [oculto, setOculto] = useState(false)
@@ -108,7 +111,7 @@ export function AccountsSection() {
             return (
             <button
               key={account.id}
-              onClick={() => setSheet({ open: true, editing: account, balance })}
+              onClick={() => setHistorial({ account, balance })}
               className="pressable tile p-3.5 flex items-center gap-3 text-left anim-rise"
               style={{
                 background: `linear-gradient(155deg, color-mix(in oklab, ${tono} 11%, var(--c-card)) 0%, var(--c-card) 60%)`,
@@ -219,6 +222,17 @@ export function AccountsSection() {
         </>
       )}
 
+      <AccountHistorySheet
+        account={historial?.account ?? null}
+        balance={historial?.balance ?? 0}
+        open={Boolean(historial)}
+        onClose={() => setHistorial(null)}
+        onEdit={() => {
+          if (!historial) return
+          setSheet({ open: true, editing: historial.account, balance: historial.balance })
+          setHistorial(null)
+        }}
+      />
       <AccountSheet
         open={sheet.open}
         onClose={() => setSheet({ open: false, editing: null, balance: 0 })}

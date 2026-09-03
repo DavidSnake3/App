@@ -93,12 +93,19 @@ export function MonthView() {
    * La celebración se dispara de una, sin temporizador: `markCelebrated` cambia
    * el mes, el efecto se vuelve a ejecutar y su limpieza cancelaba el confeti
    * antes de que saliera. La ref evita repetirlo aunque el efecto corra otra vez.
+   *
+   * Si después desmarcás un pago (o agregás uno nuevo), el mes deja de estar
+   * completo y la felicitación se vuelve a ganar al terminarlo otra vez.
    */
   const yaCelebrado = useRef<string | null>(null)
   useEffect(() => {
     if (!month || !summary) return
-    if (!summary.allPaid || month.celebrated) return
-    if (yaCelebrado.current === monthId) return
+    if (!summary.allPaid) {
+      if (yaCelebrado.current === monthId) yaCelebrado.current = null
+      if (month.celebrated) markCelebrated(monthId, false)
+      return
+    }
+    if (month.celebrated || yaCelebrado.current === monthId) return
     yaCelebrado.current = monthId
     setShowCongrats(true)
     markCelebrated(monthId)

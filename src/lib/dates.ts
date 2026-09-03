@@ -40,7 +40,12 @@ export function monthIdOf(year: number, month: number): string {
 }
 
 export function parseMonthId(monthId: string): { year: number; month: number } {
-  const [year, month] = monthId.split('-').map(Number)
+  const [year, month] = (monthId ?? '').split('-').map(Number)
+  // sin id valido devolvemos el mes de hoy: mejor un dato raro que una pantalla caida
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    const hoy = new Date()
+    return { year: hoy.getFullYear(), month: hoy.getMonth() + 1 }
+  }
   return { year, month }
 }
 
@@ -117,6 +122,19 @@ export function urgencyColor(u: Urgency): string {
   if (u.level === 'overdue') return 'var(--c-overdue)'
   const pct = Math.round(u.t * 100)
   return `color-mix(in oklab, var(--c-danger) ${pct}%, var(--c-safe))`
+}
+
+/** 'Hoy', 'Ayer' o '5 de sep' para una fecha 'yyyy-MM-dd' */
+export function dayLabel(iso: string): string {
+  const hoy = new Date()
+  const h = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  if (iso === h) return 'Hoy'
+  const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1)
+  const a = `${ayer.getFullYear()}-${String(ayer.getMonth() + 1).padStart(2, '0')}-${String(ayer.getDate()).padStart(2, '0')}`
+  if (iso === a) return 'Ayer'
+  const [, mes, dia] = iso.split('-')
+  const nombres = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+  return `${Number(dia)} de ${nombres[Number(mes) - 1] ?? ''}`
 }
 
 export function urgencyLabel(u: Urgency): string {

@@ -86,9 +86,14 @@ export function movementDelta(mv: Movement, accountId: string, accounts: Account
  * Movimientos que SÍ mueven efectivo en un mes (neto: ingresos − gastos).
  * Los gastos con tarjeta quedan fuera: esos suben la deuda, no bajan el banco.
  */
-export function cashMovementsNet(m: MonthData | undefined, accounts: Account[]): number {
+export function cashMovementsNet(
+  m: MonthData | undefined,
+  accounts: Account[],
+  excluir?: Set<string>,
+): number {
   let net = 0
   for (const mv of m?.movements ?? []) {
+    if (excluir?.has(mv.id)) continue
     const origen = accountById(accounts, mv.accountId)
     const destino = accountById(accounts, mv.toAccountId)
     const origenEsCredito = Boolean(origen && isCredit(origen))
@@ -107,13 +112,17 @@ export function cashMovementsNet(m: MonthData | undefined, accounts: Account[]):
 }
 
 /** Total de gastos del mes registrados como movimientos (con o sin tarjeta) */
-export function movementsExpense(m: MonthData | undefined): number {
-  return round2((m?.movements ?? []).filter((x) => x.kind === 'gasto').reduce((s, x) => s + x.amount, 0))
+export function movementsExpense(m: MonthData | undefined, excluir?: Set<string>): number {
+  return round2((m?.movements ?? [])
+    .filter((x) => x.kind === 'gasto' && !excluir?.has(x.id))
+    .reduce((s, x) => s + x.amount, 0))
 }
 
 /** Total de ingresos extra registrados como movimientos */
-export function movementsIncome(m: MonthData | undefined): number {
-  return round2((m?.movements ?? []).filter((x) => x.kind === 'ingreso').reduce((s, x) => s + x.amount, 0))
+export function movementsIncome(m: MonthData | undefined, excluir?: Set<string>): number {
+  return round2((m?.movements ?? [])
+    .filter((x) => x.kind === 'ingreso' && !excluir?.has(x.id))
+    .reduce((s, x) => s + x.amount, 0))
 }
 
 // ─── Saldo de cada cuenta ────────────────────────────────────────────────────

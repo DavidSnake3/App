@@ -9,7 +9,7 @@ import type { PayPeriod } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { getMonthSummary } from '../../lib/finance'
 import {
-  carryOver, depositsInMonth, envelopeTotal, kindTotals,
+  carryOver, depositsInMonth, envelopeTotal, kindTotals, paymentMovementIds,
   prevMonthLeftover, realBalance, receivedInMonth, savingsTotal,
 } from '../../lib/fund'
 import { cashMovementsNet, movementsExpense, movementsIncome } from '../../lib/accounts'
@@ -68,10 +68,16 @@ function useBalanceData(view: PayPeriod) {
     const kinds = kindTotals(month, debts)
     const deudas = kinds.find((k) => k.kind === 'deuda')?.total ?? 0
     const otros = kinds.filter((k) => k.kind !== 'deuda').reduce((t, k) => t + k.total, 0)
-    // movimientos del mes (antes "gastos hormiga"): lo que salió y lo que entró
-    const movSalidas = movementsExpense(month)
-    const movEntradas = movementsIncome(month)
-    const movNeto = -cashMovementsNet(month, accounts)
+    /*
+     * Movimientos del mes (antes "gastos hormiga"). Los que nacieron de marcar
+     * un pago quedan FUERA: ese pago ya está contado en `totalExpenses` y
+     * sumarlo otra vez restaba la misma plata dos veces, dejando el balance
+     * mucho más negativo de lo real.
+     */
+    const dePagos = paymentMovementIds(month, debts)
+    const movSalidas = movementsExpense(month, dePagos)
+    const movEntradas = movementsIncome(month, dePagos)
+    const movNeto = -cashMovementsNet(month, accounts, dePagos)
     const ahorroMes = depositsInMonth(settings, monthId)
     const prevLeft = prevMonthLeftover(months, debts, settings, monthId, loans, accounts)
     const saldo = isCurrentMonth(monthId)
