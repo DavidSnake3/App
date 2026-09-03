@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Check, Plus, ShoppingCart, Store } from 'lucide-react'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import { shoppingChecked, shoppingPlanned } from '../../lib/shopping'
+import { shoppingAmount, shoppingCart, shoppingChecked, shoppingPlanned } from '../../lib/shopping'
 import { formatMoney } from '../../lib/format'
 import { Fab } from '../ui/Fab'
 import { NewShoppingListSheet } from './NewShoppingListSheet'
@@ -22,9 +22,10 @@ export function ShoppingListsSection({ monthId }: { monthId: string }) {
   const tarjeta = (id: string) => {
     const e = listas.find((x) => x.id === id)!
     const l = e.shopping!
-    const llevo = shoppingChecked(l)
+    // cerrada: lo que de verdad se cobró (con su factura si la tiene)
+    const llevo = l.done ? shoppingAmount(l) : shoppingCart(l)
     const planeado = shoppingPlanned(l)
-    const pct = planeado > 0 ? Math.min(1, llevo / planeado) : 0
+    const pct = planeado > 0 ? Math.min(1, shoppingChecked(l) / planeado) : 0
     const marcados = l.items.filter((p) => p.checked).length
 
     return (

@@ -67,6 +67,10 @@ export interface ShoppingProduct {
   checked: boolean
   checkedAt?: string
   note?: string
+  /** código de barras o QR con el que se escaneó */
+  barcode?: string
+  /** tarifa de impuesto de este producto (13, 1, 0…) */
+  taxRate?: number
 }
 
 /**
@@ -81,6 +85,48 @@ export interface ShoppingList {
   doneAt?: string
   /** dónde se compra: Automercado, Palí… (informativo) */
   store?: string
+  /**
+   * Cómo se usa la lista:
+   *  - 'plan': la armás antes y vas marcando lo que echás al carrito.
+   *  - 'live': la armás EN el súper (con el lector); todo lo agregado ya está
+   *    en el carrito, así que no lleva checks.
+   */
+  mode?: 'plan' | 'live'
+  /** los números de la factura al cerrar la compra (todo opcional) */
+  totals?: PurchaseTotals
+}
+
+/**
+ * Producto que ya escaneaste alguna vez. La próxima vez que pasés el mismo
+ * código, la app ya sabe cómo se llama y cuánto costó la última vez.
+ */
+export interface CatalogProduct {
+  /** el código de barras o QR, tal cual lo leyó la cámara */
+  barcode: string
+  name: string
+  /** último precio que le pusiste */
+  price: number
+  taxRate?: number
+  /** cuántas veces lo has comprado */
+  times: number
+  updatedAt: string
+}
+
+/** Una línea de impuesto de la factura */
+export interface TaxLineData {
+  rate: number
+  amount: number
+}
+
+/** Los números de la factura al finalizar una compra. Todo es opcional. */
+export interface PurchaseTotals {
+  subtotal: number
+  discount?: number
+  exonerated?: number
+  exempt?: number
+  taxes?: TaxLineData[]
+  total?: number
+  reference?: string
 }
 
 export interface Expense {
@@ -464,17 +510,32 @@ export interface BudgetEntry {
   dateISO: string
 }
 
+/** Cada cuánto se reinicia un presupuesto */
+export type BudgetPeriod = 'weekly' | 'biweekly' | 'monthly' | 'days'
+
 /**
- * Presupuesto propio: un límite de gasto que el usuario define (ej. "Comida
- * de la U: 30 000 al mes") y va anotando lo que gasta ahí.
+ * Presupuesto propio: un límite de gasto que el usuario define (ej. "Gasolina:
+ * 30 000 cada quincena") y va gastando ahí. No es un pago: nunca se marca como
+ * pagado y no frena el mes completado. Lo que gastás sí sale de una cuenta.
  */
 export interface Budget {
   id: string
   name: string
   /** límite del período */
   amount: number
-  period: 'weekly' | 'monthly'
+  period: BudgetPeriod
+  /** cada cuántos días se reinicia, cuando period es 'days' */
+  everyDays?: number
+  /** desde cuándo se cuenta el primer período ('yyyy-MM-dd') */
+  startISO?: string
   icon?: string
+  color?: string
+  /** categoría con la que se anotan sus gastos */
+  categoryId?: string
+  /** cuenta de la que sale la plata por defecto */
+  accountId?: string
+  /** se muestra en Pagos del mes con su barra de avance */
+  inPayments?: boolean
   entries: BudgetEntry[]
   createdAt: string
 }

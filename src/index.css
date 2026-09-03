@@ -684,3 +684,19 @@ input, select, textarea, button { font-family: inherit; }
   .cel-kicker, .cel-titulo, .cel-sub, .cel-pill, .cel-boton { animation: fadeIn 0.2s ease both; }
   .cel-halo { animation: none; }
 }
+
+/* Línea que barre el marco del lector de códigos */
+.scan-beam {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--app-accent-soft), transparent);
+  box-shadow: 0 0 12px var(--app-accent-soft);
+  animation: scanBeam 2.1s ease-in-out infinite;
+}
+@keyframes scanBeam {
+  0%, 100% { top: 8%; opacity: .35; }
+  50% { top: 88%; opacity: 1; }
+}

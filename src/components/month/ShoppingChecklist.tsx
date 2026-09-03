@@ -1,15 +1,27 @@
-// El checklist de una lista de compras: vas marcando lo que echás al carrito y
-// mirás el subtotal en vivo. La plata solo se mueve al finalizar la compra.
+// El checklist de una lista de compras. El nombre del producto se lee entero
+// y el precio nunca se corta: en el súper hay que ver qué es y cuánto cuesta
+// de un vistazo.
+//
+// Dos formas de usarla:
+//  · Lista planeada: la armás antes y vas marcando lo que echás al carrito.
+//  · Compra en vivo: la armás EN el súper con el lector; todo lo que agregás
+//    ya está en el carrito, así que no lleva checks.
 import { useState } from 'react'
-import { Check, Minus, Pencil, Plus, ShoppingCart, Store, Trash2, Undo2 } from 'lucide-react'
-import type { Expense } from '../../types/finance'
+import {
+  Check, Minus, Pencil, Plus, Receipt, ScanLine, ShoppingCart, Store, Trash2, Undo2,
+} from 'lucide-react'
+import type { Expense, ShoppingProduct } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
-import { lineTotal, shoppingChecked, shoppingPlanned } from '../../lib/shopping'
-import { formatMoney } from '../../lib/format'
+import { lineTotal, shoppingCart, shoppingPlanned } from '../../lib/shopping'
+import { scannerDisponible } from '../../lib/scanner'
+import { taxTotal } from '../../lib/tax'
+import { formatMoney, money2 } from '../../lib/format'
 import { CurrencyInput } from '../ui/CurrencyInput'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { playPop, playTick } from '../../lib/sound'
 import { vibrate } from '../../lib/fx'
+import { ScanShopping } from './ScanShopping'
+import { PurchaseCloseSheet } from './PurchaseCloseSheet'
 
 export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
   monthId: string
@@ -20,12 +32,26 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
   onDeleted?: () => void
 }) {
   const addProduct = useFinanceStore((s) => s.addShoppingProduct)
-  const updateProduct = useFinanceStore((s) => s.updateShoppingProduct)
-  const deleteProduct = useFinanceStore((s) => s.deleteShoppingProduct)
   const toggleProduct = useFinanceStore((s) => s.toggleShoppingProduct)
   const toggleDone = useFinanceStore((s) => s.toggleShoppingDone)
   const deleteExpense = useFinanceStore((s) => s.deleteExpense)
   const anims = useFinanceStore((s) => s.settings.animations)
+
+  const [name, setName] = useState('')
+  const [price, setPrice] = useState(0)
+  const [escaneando, setEscaneando] = useState(false)
+  const [cerrando, setCerrando] = useState(false)
+  const [confirmBorrar, setConfirmBorrar] = useState(false)
+
+  const lista = expense.shopping
+  if (!lista) return null
+
+  const enVivo = lista.mode === 'live'
+  const llevo = shoppingCart(lista)
+  const planeado = shoppingPlanned(lista)
+  const marcados = lista.items.filter((p) => p.checked).length
+  const pct = planeado > 0 ? Math.min(1, llevo / planeado) : 0
+  const cerrada = lista.done
 
   // marcar suena a "pop" y vibra; desmarcar hace un tic seco
   const marcar = (productId: string, estabaMarcado: boolean) => {
@@ -34,23 +60,9 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
     if (!estabaMarcado) vibrate(10, anims)
   }
 
-  const [name, setName] = useState('')
-  const [price, setPrice] = useState(0)
-  const [confirmCerrar, setConfirmCerrar] = useState(false)
-  const [confirmBorrar, setConfirmBorrar] = useState(false)
-
-  const lista = expense.shopping
-  if (!lista) return null
-
-  const llevo = shoppingChecked(lista)
-  const planeado = shoppingPlanned(lista)
-  const marcados = lista.items.filter((p) => p.checked).length
-  const pct = planeado > 0 ? Math.min(1, llevo / planeado) : 0
-  const cerrada = lista.done
-
   const agregar = () => {
     if (!name.trim() || price <= 0) return
-    addProduct(monthId, expense.id, { name: name.trim(), price, qty: 1 })
+    addProduct(monthId, expense.id, { name: name.trim(), price: money2(price), qty: 1 })
     if (anims.sounds) playPop()
     setName('')
     setPrice(0)
@@ -58,34 +70,42 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Marcador: lo que llevo contra lo planeado */}
+      {/* Marcador: lo que llevo */}
       <div className="card-soft p-4 relative overflow-hidden">
         <span className="orb -right-8 -top-10 w-24 h-24" style={{ background: 'var(--app-gradient)' }} />
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted flex items-center gap-1.5">
-              <ShoppingCart size={12} /> {cerrada ? 'Compraste' : 'Llevo en el carrito'}
+              <ShoppingCart size={12} /> {cerrada ? 'Compraste' : enVivo ? 'Llevás' : 'Llevo en el carrito'}
             </p>
             <p
               className="display-money text-[28px] font-bold leading-tight mt-1 anim-money"
               style={{ color: cerrada ? 'var(--c-income)' : 'var(--c-text)' }}
             >
-              {formatMoney(llevo)}
+              {formatMoney(cerrada ? expense.amount : llevo)}
             </p>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-[11px] text-muted">de</p>
-            <p className="num text-[15px] font-semibold text-ink">{formatMoney(planeado)}</p>
-            <p className="text-[10.5px] text-muted">{marcados} de {lista.items.length}</p>
+            {!enVivo && !cerrada && (
+              <>
+                <p className="text-[11px] text-muted">de</p>
+                <p className="num text-[15px] font-semibold text-ink">{formatMoney(planeado)}</p>
+              </>
+            )}
+            <p className="text-[10.5px] text-muted">
+              {enVivo ? `${lista.items.length} productos` : `${marcados} de ${lista.items.length}`}
+            </p>
           </div>
         </div>
 
-        <div className="h-2 rounded-full bg-elevated overflow-hidden mt-3">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${Math.round(pct * 100)}%`, background: 'var(--app-gradient)' }}
-          />
-        </div>
+        {!enVivo && !cerrada && (
+          <div className="h-2 rounded-full bg-elevated overflow-hidden mt-3">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${Math.round(pct * 100)}%`, background: 'var(--app-gradient)' }}
+            />
+          </div>
+        )}
 
         {lista.store && (
           <p className="text-[11.5px] text-muted mt-2 flex items-center gap-1.5">
@@ -94,90 +114,51 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
         )}
       </div>
 
+      {/* Escanear: solo mientras la compra sigue abierta */}
+      {!cerrada && scannerDisponible() && (
+        <button
+          onClick={() => setEscaneando(true)}
+          className="pressable rounded-2xl py-3 flex items-center justify-center gap-2 font-semibold text-[13.5px] text-white"
+          style={{ background: 'var(--app-gradient)' }}
+        >
+          <ScanLine size={17} /> Escanear productos
+        </button>
+      )}
+
       {/* Productos */}
       {lista.items.length === 0 ? (
-        <p className="text-[12.5px] text-muted text-center py-2">
-          Agregá lo que vas a comprar y su precio. Después solo marcás lo que vas echando.
+        <p className="text-[12.5px] text-muted text-center py-3 leading-snug">
+          {enVivo
+            ? 'Pasá el código de barras de cada producto mientras comprás.'
+            : 'Agregá lo que vas a comprar y su precio. Después solo marcás lo que vas echando.'}
         </p>
       ) : (
-        <div className="card overflow-hidden divide-y divide-[var(--c-border)]">
+        <div className="flex flex-col gap-2">
           {lista.items.map((p) => (
-            <div key={p.id} className="flex items-center gap-2.5 px-3 py-2.5">
-              <button
-                onClick={() => !cerrada && marcar(p.id, p.checked)}
-                disabled={cerrada}
-                aria-label={p.checked ? `Desmarcar ${p.name}` : `Marcar ${p.name}`}
-                className="pressable w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 transition-all duration-200 disabled:opacity-60"
-                style={{
-                  borderColor: p.checked ? 'var(--c-income)' : 'var(--c-border)',
-                  background: p.checked ? 'var(--c-income)' : 'transparent',
-                  color: p.checked ? '#08281c' : 'var(--c-muted)',
-                }}
-              >
-                <Check size={15} strokeWidth={3} style={{ opacity: p.checked ? 1 : 0.3 }} />
-              </button>
-
-              <span className="flex-1 min-w-0">
-                <span
-                  className={`block text-[13.5px] font-medium truncate ${p.checked ? 'line-through' : ''}`}
-                  style={{ color: p.checked ? 'var(--c-muted)' : 'var(--c-text)' }}
-                >
-                  {p.name}
-                </span>
-                <span className="block text-[10.5px] text-muted num">
-                  {formatMoney(p.price)}{p.qty > 1 ? ` × ${p.qty}` : ''}
-                </span>
-              </span>
-
-              {!cerrada && (
-                <span className="flex items-center gap-0.5 shrink-0">
-                  <button
-                    onClick={() => updateProduct(monthId, expense.id, p.id, { qty: Math.max(1, p.qty - 1) })}
-                    aria-label={`Menos ${p.name}`}
-                    className="pressable w-7 h-7 rounded-lg bg-elevated border border-edge flex items-center justify-center text-muted"
-                  >
-                    <Minus size={12} />
-                  </button>
-                  <span className="num text-[12px] font-semibold text-ink w-5 text-center">{p.qty}</span>
-                  <button
-                    onClick={() => updateProduct(monthId, expense.id, p.id, { qty: p.qty + 1 })}
-                    aria-label={`Más ${p.name}`}
-                    className="pressable w-7 h-7 rounded-lg bg-elevated border border-edge flex items-center justify-center text-muted"
-                  >
-                    <Plus size={12} />
-                  </button>
-                </span>
-              )}
-
-              <span className="num text-[13px] font-semibold text-ink shrink-0 w-[74px] text-right">
-                {formatMoney(lineTotal(p))}
-              </span>
-
-              {!cerrada && (
-                <button
-                  onClick={() => deleteProduct(monthId, expense.id, p.id)}
-                  aria-label={`Eliminar ${p.name}`}
-                  className="pressable w-7 h-7 rounded-full flex items-center justify-center text-muted shrink-0"
-                >
-                  <Trash2 size={13} />
-                </button>
-              )}
-            </div>
+            <ProductRow
+              key={p.id}
+              monthId={monthId}
+              expenseId={expense.id}
+              product={p}
+              enVivo={enVivo}
+              cerrada={cerrada}
+              onToggle={() => marcar(p.id, p.checked)}
+            />
           ))}
         </div>
       )}
 
-      {/* Agregar producto */}
+      {/* Agregar a mano */}
       {!cerrada && (
         <div className="flex gap-2">
           <input
-            className="input-base flex-1"
+            className="input-base flex-1 min-w-0"
             placeholder="Ej. Arroz, leche, jabón…"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') agregar() }}
           />
-          <CurrencyInput value={price} onChange={setPrice} className="w-32" />
+          <CurrencyInput value={price} onChange={setPrice} className="w-28 shrink-0" />
           <button
             onClick={agregar}
             disabled={!name.trim() || price <= 0}
@@ -194,15 +175,16 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
       {cerrada ? (
         <>
           <div
-            className="rounded-xl px-3.5 py-2.5 flex items-center gap-2.5"
+            className="rounded-xl px-3.5 py-2.5 flex items-start gap-2.5"
             style={{ background: 'color-mix(in oklab, var(--c-income) 12%, transparent)' }}
           >
-            <Check size={15} className="shrink-0" style={{ color: 'var(--c-income)' }} />
+            <Check size={15} className="shrink-0 mt-0.5" style={{ color: 'var(--c-income)' }} />
             <p className="text-[11.5px] text-ink leading-snug">
-              Compra cerrada por <span className="num font-bold">{formatMoney(llevo)}</span>. Ya salió
+              Compra cerrada por <span className="num font-bold">{formatMoney(expense.amount)}</span>. Ya salió
               de tu cuenta y quedó en Movimientos.
             </p>
           </div>
+          {lista.totals && <FacturaGuardada totals={lista.totals} />}
           <button
             onClick={() => toggleDone(monthId, expense.id)}
             className="pressable btn-ghost w-full flex items-center justify-center gap-2 text-[13px]"
@@ -213,15 +195,14 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
       ) : (
         <>
           <button
-            onClick={() => setConfirmCerrar(true)}
+            onClick={() => setCerrando(true)}
             disabled={llevo <= 0}
             className="pressable btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <Check size={16} /> Finalizar compra · {formatMoney(llevo)}
           </button>
           <p className="text-[11px] text-muted text-center leading-snug">
-            Mientras no la finalices no se mueve un colón. Al cerrarla sale de tu cuenta
-            solo lo que marcaste.
+            Mientras no la finalices no se mueve un colón.
           </p>
         </>
       )}
@@ -245,6 +226,21 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
         </button>
       </div>
 
+      <ScanShopping
+        monthId={monthId}
+        expense={expense}
+        open={escaneando}
+        onClose={() => setEscaneando(false)}
+      />
+
+      <PurchaseCloseSheet
+        monthId={monthId}
+        expense={expense}
+        open={cerrando}
+        onClose={() => setCerrando(false)}
+        onDone={() => setCerrando(false)}
+      />
+
       <ConfirmDialog
         open={confirmBorrar}
         title="¿Eliminar esta lista?"
@@ -260,15 +256,135 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
           onDeleted?.()
         }}
       />
+    </div>
+  )
+}
 
-      <ConfirmDialog
-        open={confirmCerrar}
-        title="¿Finalizar la compra?"
-        message={`Van a salir ${formatMoney(llevo)} de tu cuenta y se anota el movimiento. Lo que no marcaste no se cobra.`}
-        confirmLabel="Sí, finalizar"
-        onCancel={() => setConfirmCerrar(false)}
-        onConfirm={() => { toggleDone(monthId, expense.id); setConfirmCerrar(false) }}
-      />
+/* ─── Una línea de producto ─────────────────────────────────────────────── */
+
+function ProductRow({ monthId, expenseId, product: p, enVivo, cerrada, onToggle }: {
+  monthId: string
+  expenseId: string
+  product: ShoppingProduct
+  enVivo: boolean
+  cerrada: boolean
+  onToggle: () => void
+}) {
+  const updateProduct = useFinanceStore((s) => s.updateShoppingProduct)
+  const deleteProduct = useFinanceStore((s) => s.deleteShoppingProduct)
+  const marcado = enVivo || p.checked
+
+  return (
+    <div
+      className="card-soft px-3 py-2.5"
+      style={marcado && !enVivo && !cerrada
+        ? { borderColor: 'color-mix(in oklab, var(--c-income) 32%, var(--c-border))' }
+        : undefined}
+    >
+      {/* Nombre: entero, en dos líneas si hace falta */}
+      <div className="flex items-start gap-2.5">
+        {!enVivo && (
+          <button
+            onClick={() => !cerrada && onToggle()}
+            disabled={cerrada}
+            aria-label={p.checked ? `Desmarcar ${p.name}` : `Marcar ${p.name}`}
+            className="pressable w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all duration-200 disabled:opacity-60"
+            style={{
+              borderColor: p.checked ? 'var(--c-income)' : 'var(--c-border)',
+              background: p.checked ? 'var(--c-income)' : 'transparent',
+              color: p.checked ? '#08281c' : 'var(--c-muted)',
+            }}
+          >
+            <Check size={14} strokeWidth={3} style={{ opacity: p.checked ? 1 : 0.3 }} />
+          </button>
+        )}
+
+        <p
+          className={`flex-1 min-w-0 text-[13.5px] font-semibold leading-snug break-words ${p.checked && !enVivo ? 'line-through' : ''}`}
+          style={{ color: p.checked && !enVivo ? 'var(--c-muted)' : 'var(--c-text)' }}
+        >
+          {p.name}
+        </p>
+
+        <span className="display-money text-[14.5px] font-bold text-ink shrink-0 tabular-nums">
+          {formatMoney(lineTotal(p))}
+        </span>
+      </div>
+
+      {/* Precio unitario y cantidad */}
+      <div className={`flex items-center gap-2 mt-1.5 ${enVivo ? '' : 'pl-[38px]'}`}>
+        <span className="num text-[11.5px] text-muted flex-1 min-w-0 truncate">
+          {formatMoney(money2(p.price))} c/u
+          {p.barcode && <span className="opacity-60"> · {p.barcode}</span>}
+        </span>
+
+        {!cerrada && (
+          <span className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => (p.qty > 1
+                ? updateProduct(monthId, expenseId, p.id, { qty: p.qty - 1 })
+                : deleteProduct(monthId, expenseId, p.id))}
+              aria-label={p.qty > 1 ? `Menos ${p.name}` : `Eliminar ${p.name}`}
+              className="pressable w-7 h-7 rounded-lg bg-elevated border border-edge flex items-center justify-center text-muted"
+            >
+              {p.qty > 1 ? <Minus size={12} /> : <Trash2 size={11} />}
+            </button>
+            <span className="num text-[13px] font-bold text-ink w-6 text-center">{p.qty}</span>
+            <button
+              onClick={() => updateProduct(monthId, expenseId, p.id, { qty: p.qty + 1 })}
+              aria-label={`Más ${p.name}`}
+              className="pressable w-7 h-7 rounded-lg bg-elevated border border-edge flex items-center justify-center text-muted"
+            >
+              <Plus size={12} />
+            </button>
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ─── La factura que se guardó al cerrar ────────────────────────────────── */
+
+function FacturaGuardada({ totals }: { totals: NonNullable<Expense['shopping']>['totals'] }) {
+  if (!totals) return null
+  const iva = taxTotal(totals)
+  return (
+    <div className="card p-3.5">
+      <p className="text-[12px] font-semibold text-ink flex items-center gap-1.5 mb-2">
+        <Receipt size={13} style={{ color: 'var(--app-accent-soft)' }} /> Tu factura
+        {totals.reference && <span className="text-[10.5px] text-muted font-normal">· {totals.reference}</span>}
+      </p>
+      <div className="flex flex-col gap-1">
+        <Linea label="Subtotal" value={totals.subtotal} />
+        {Boolean(totals.discount) && <Linea label="Descuento" value={-(totals.discount ?? 0)} />}
+        {Boolean(totals.exonerated) && <Linea label="Exonerado" value={-(totals.exonerated ?? 0)} />}
+        {Boolean(totals.exempt) && <Linea label="Exento" value={totals.exempt ?? 0} apagado />}
+        {(totals.taxes ?? []).map((t) => (
+          <Linea key={t.rate} label={`Impuesto ${t.rate}%`} value={t.amount} />
+        ))}
+        {iva > 0 && <Linea label="Total de impuesto" value={iva} apagado />}
+        <div className="flex items-center justify-between pt-1.5 mt-1 border-t" style={{ borderColor: 'var(--c-border)' }}>
+          <span className="text-[12.5px] font-bold text-ink">Total</span>
+          <span className="num text-[15px] font-bold text-ink">
+            {formatMoney(money2(totals.total ?? totals.subtotal))}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Linea({ label, value, apagado }: { label: string; value: number; apagado?: boolean }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[12px] text-muted">{label}</span>
+      <span
+        className="num text-[12.5px] font-semibold"
+        style={{ color: apagado ? 'var(--c-muted)' : value < 0 ? 'var(--c-danger)' : 'var(--c-text)' }}
+      >
+        {value < 0 ? '−' : ''}{formatMoney(Math.abs(money2(value)))}
+      </span>
     </div>
   )
 }

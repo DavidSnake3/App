@@ -16,6 +16,7 @@ import { ExpenseDetailSheet } from './ExpenseDetailSheet'
 import { BalanceCard } from './BalanceCard'
 import { PlanCard } from './PlanCard'
 import { BudgetsCard } from './BudgetsCard'
+import { BudgetsInPayments } from './BudgetsInPayments'
 import { HubHeader, HubMenu, HubTitle, type HubItem } from '../layout/HubMenu'
 import { Fab } from '../ui/Fab'
 import { DebtsView } from '../debts/DebtsView'
@@ -299,6 +300,9 @@ export function MonthView() {
         ) : (
           <GanttView items={items} monthId={monthId} onOpen={openDetail} />
         )}
+
+        {/* Presupuestos: barra de avance, sin check y sin frenar el mes */}
+        <BudgetsInPayments />
         </div>
         )}
       </div>

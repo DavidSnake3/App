@@ -1,17 +1,18 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
-  Account, AnimationPrefs, AppSettings, Budget, Category, Debt, DebtPayment, Expense,
+  Account, AnimationPrefs, AppSettings, Budget, CatalogProduct, Category, Debt, DebtPayment, Expense,
   FundConfig, Installment, Loan, LoanAdvance, MonthData, Movement, NotificationPrefs, PayrollConfig,
   PaySchedule, RecurringTemplate, SavingsConfig, SavingsEnvelope, TabId, ThemeSettings,
   UsageState, UserProfile, ViewMode, WidgetConf,
-  ExpenseAdvance, ShoppingProduct,
+  ExpenseAdvance, PurchaseTotals, ShoppingProduct,
 } from '../types/finance'
 import { currentMonthId, todayISO, todayLocalISO} from '../lib/dates'
 import { DEFAULT_CATEGORIES, guessCategory, mergeCategories } from '../lib/categories'
 import { cloneExpenseForMonth, makeMonth, recurringCandidates, remainingAmount, uid } from '../lib/finance'
 import { seedAllMonths, seedMonth, templateFromExpense } from '../lib/recurring'
-import { shoppingChecked, syncShoppingAmount } from '../lib/shopping'
+import { shoppingCart, syncShoppingAmount } from '../lib/shopping'
+import { purchaseTotal } from '../lib/tax'
 import {
   DEFAULT_CCSS_PCT, DEFAULT_STATUTORY_NAME, convertPeriod, countryPreset, payrollBreakdown,
 } from '../lib/payroll'
@@ -158,6 +159,8 @@ interface FinanceState {
   loans: Loan[]
   /** presupuestos propios por categoría */
   budgets: Budget[]
+  /** productos que ya escaneaste, por código de barras */
+  catalog: CatalogProduct[]
   profile: UserProfile
   settings: AppSettings
   activeMonthId: string
@@ -195,6 +198,8 @@ interface FinanceActions {
   createShoppingList(monthId: string, data: {
     name: string; dueDay?: number; accountId?: string
     categoryId?: string; icon?: string; color?: string; store?: string
+    /** 'live' = la armás en el súper con el lector, sin checks */
+    mode?: 'plan' | 'live'
   }): string
   addShoppingProduct(monthId: string, expenseId: string, p: Omit<ShoppingProduct, 'id' | 'checked' | 'checkedAt'>): void
   updateShoppingProduct(monthId: string, expenseId: string, productId: string, patch: Partial<ShoppingProduct>): void
@@ -203,6 +208,12 @@ interface FinanceActions {
   toggleShoppingProduct(monthId: string, expenseId: string, productId: string): void
   /** finaliza (o reabre) la compra: aquí y solo aquí se mueve la plata */
   toggleShoppingDone(monthId: string, expenseId: string): void
+  /**
+   * Cierra la compra guardando los datos de la factura. Si vienen, el
+   * movimiento sale por el TOTAL de la factura (impuestos y descuentos
+   * incluidos), no por lo que sumó el carrito.
+   */
+  closeShoppingWithTotals(monthId: string, expenseId: string, totals?: PurchaseTotals): void
   togglePaid(monthId: string, id: string): void
 
   addDebt(d: Omit<Debt, 'id' | 'createdAt' | 'payments'>): void
@@ -290,7 +301,18 @@ interface FinanceActions {
   addBudget(b: Omit<Budget, 'id' | 'createdAt' | 'entries'>): void
   updateBudget(id: string, patch: Partial<Omit<Budget, 'id' | 'entries'>>): void
   deleteBudget(id: string): void
+  /** guarda (o actualiza) un producto escaneado para reconocerlo la próxima vez */
+  rememberProduct(p: { barcode: string; name: string; price: number; taxRate?: number }): void
+  /** busca un producto por su código */
+  findProduct(barcode: string): CatalogProduct | undefined
   addBudgetEntry(budgetId: string, amount: number, note?: string): void
+  /**
+   * Gastar desde un presupuesto: deja un MOVIMIENTO real, así la plata sale de
+   * la cuenta y se ve en el historial. Devuelve el id del movimiento.
+   */
+  spendFromBudget(budgetId: string, data: {
+    amount: number; note?: string; accountId?: string; dateISO?: string; categoryId?: string
+  }): string | undefined
   deleteBudgetEntry(budgetId: string, entryId: string): void
   /** salario neto manual (sin planilla): actualiza default + mes actual y futuros */
   setDefaultSalaryEverywhere(v: number): void
@@ -679,6 +701,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
       debts: [],
       loans: [],
       budgets: [],
+      catalog: [],
       usage: EMPTY_USAGE,
       profile: DEFAULT_PROFILE,
       settings: DEFAULT_SETTINGS,
@@ -987,7 +1010,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             accountId: data.accountId,
             categoryId: data.categoryId || guessCategory(data.name, 'gasto'),
             anchorMonthId: monthId,
-            shopping: { items: [], done: false, store: data.store },
+            shopping: { items: [], done: false, store: data.store, mode: data.mode ?? 'plan' },
             createdAt: todayISO(),
           }
           return {
@@ -1066,7 +1089,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
         }
 
         // sin nada en el carrito no se cierra nada
-        if (shoppingChecked(gasto.shopping) <= 0) return
+        if (shoppingCart(gasto.shopping) <= 0) return
 
         // 1) el gasto colapsa al subtotal marcado…
         set((st) => patchExpense(st, monthId, expenseId, (e) => (e.shopping
@@ -1081,6 +1104,26 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
        * sale de la cuenta con la que se pagó (si es tarjeta, sube su deuda).
        * Al desmarcarlo, ese movimiento se borra.
        */
+      closeShoppingWithTotals: (monthId, expenseId, totals) => {
+        const gasto = get().months[monthId]?.expenses.find((e) => e.id === expenseId)
+        if (!gasto?.shopping || gasto.shopping.done || gasto.paid) return
+        if (shoppingCart(gasto.shopping) <= 0) return
+
+        // 1) la lista se cierra y guarda los números de la factura
+        set((st) => patchExpense(st, monthId, expenseId, (e) => {
+          if (!e.shopping) return e
+          const cerrada = syncShoppingAmount({
+            ...e,
+            shopping: { ...e.shopping, done: true, doneAt: todayISO(), totals },
+          })
+          // el total de la factura manda sobre lo que sumó el carrito
+          const cobro = purchaseTotal(totals, cerrada.amount)
+          return { ...cerrada, amount: cobro }
+        }))
+        // 2) …y el pago crea su movimiento con ese monto ya escrito
+        get().togglePaid(monthId, expenseId)
+      },
+
       togglePaid: (monthId, id) => {
         const s0 = get()
         const gasto = s0.months[monthId]?.expenses.find((e) => e.id === id)
@@ -1902,6 +1945,48 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             : b),
           ...touch(),
         })),
+      rememberProduct: ({ barcode, name, price, taxRate }) => {
+        const code = barcode.trim()
+        if (!code || !name.trim()) return
+        set((s) => {
+          const previo = s.catalog?.find((p) => p.barcode === code)
+          const nuevo: CatalogProduct = {
+            barcode: code,
+            name: name.trim(),
+            price,
+            taxRate,
+            times: (previo?.times ?? 0) + 1,
+            updatedAt: todayISO(),
+          }
+          const resto = (s.catalog ?? []).filter((p) => p.barcode !== code)
+          // el catálogo no crece sin límite: se quedan los 500 más recientes
+          return { catalog: [nuevo, ...resto].slice(0, 500), ...touch() }
+        })
+      },
+
+      findProduct: (barcode) => {
+        const code = barcode.trim()
+        return get().catalog?.find((p) => p.barcode === code)
+      },
+
+      spendFromBudget: (budgetId, data) => {
+        const s0 = get()
+        const b = s0.budgets.find((x) => x.id === budgetId)
+        if (!b || data.amount <= 0) return undefined
+        const cuenta = data.accountId || b.accountId || cuentaPorDefecto(s0)
+        if (!cuenta) return undefined
+        return get().addMovementReturningId({
+          name: (data.note?.trim() || b.name).slice(0, 40),
+          amount: Math.round(data.amount * 100) / 100,
+          kind: 'gasto',
+          categoryId: data.categoryId || b.categoryId || guessCategory(b.name, 'gasto'),
+          accountId: cuenta,
+          dateISO: (data.dateISO || todayLocalISO()).slice(0, 10),
+          icon: b.icon,
+          budgetId: b.id,
+        })
+      },
+
       deleteBudgetEntry: (budgetId, entryId) =>
         set((s) => ({
           budgets: s.budgets.map((b) => b.id === budgetId
@@ -1978,6 +2063,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
           debts: [],
           loans: [],
           budgets: [],
+      catalog: [],
           usage: EMPTY_USAGE,
           profile: DEFAULT_PROFILE,
           settings: DEFAULT_SETTINGS,
@@ -2043,6 +2129,7 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             debts: [],
             loans: [],
             budgets: [],
+            catalog: [],
             usage: EMPTY_USAGE,
             profile: DEFAULT_PROFILE,
             settings: DEFAULT_SETTINGS,

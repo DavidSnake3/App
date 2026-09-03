@@ -56,6 +56,7 @@ function Form({ monthId, editing, onCreated, onClose }: {
   const [dueDay, setDueDay] = useState<number | ''>(editing?.dueDay ?? '')
   const [accountId, setAccountId] = useState(editing?.accountId ?? '')
   const [color, setColor] = useState(editing?.color ?? '')
+  const [mode, setMode] = useState<'plan' | 'live'>(editing?.shopping?.mode ?? 'plan')
   const [error, setError] = useState('')
 
   const cuentaElegida = cuentas.find((a) => a.id === accountId)
@@ -73,7 +74,7 @@ function Form({ monthId, editing, onCreated, onClose }: {
         accountId: accountId || undefined,
         color: color || undefined,
         shopping: editing.shopping
-          ? { ...editing.shopping, store: store.trim() || undefined }
+          ? { ...editing.shopping, store: store.trim() || undefined, mode }
           : editing.shopping,
       })
       onClose()
@@ -87,12 +88,32 @@ function Form({ monthId, editing, onCreated, onClose }: {
       accountId: accountId || undefined,
       color: color || undefined,
       icon: 'super',
+      mode,
     })
     onCreated(id)
   }
 
   return (
     <div className="flex flex-col gap-4 pb-2">
+      {/* ¿Ya existe la lista o la vas armando en el súper? */}
+      <div>
+        <label className="text-[12px] font-semibold text-muted">¿Cómo la vas a usar?</label>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <ModoBoton
+            activo={mode === 'plan'}
+            onClick={() => setMode('plan')}
+            titulo="Ya la tengo"
+            desc="La armo antes y voy marcando lo que echo al carrito"
+          />
+          <ModoBoton
+            activo={mode === 'live'}
+            onClick={() => setMode('live')}
+            titulo="La armo comprando"
+            desc="Escaneo cada producto en el súper. Sin marcas"
+          />
+        </div>
+      </div>
+
       <div>
         <label className="text-[12px] font-semibold text-muted">¿Cómo se llama?</label>
         <input
@@ -188,5 +209,34 @@ function Form({ monthId, editing, onCreated, onClose }: {
         </p>
       )}
     </div>
+  )
+}
+
+/** Uno de los dos modos de lista, como tarjeta grande */
+function ModoBoton({ activo, onClick, titulo, desc }: {
+  activo: boolean
+  onClick: () => void
+  titulo: string
+  desc: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="pressable rounded-2xl p-3 text-left border transition-colors"
+      style={activo
+        ? {
+            background: 'color-mix(in oklab, var(--app-accent) 14%, transparent)',
+            borderColor: 'color-mix(in oklab, var(--app-accent) 55%, var(--c-border))',
+          }
+        : { background: 'var(--c-elevated)', borderColor: 'var(--c-border)' }}
+    >
+      <span
+        className="block text-[13px] font-semibold"
+        style={{ color: activo ? 'var(--app-accent-soft)' : 'var(--c-text)' }}
+      >
+        {titulo}
+      </span>
+      <span className="block text-[10.5px] text-muted leading-snug mt-0.5">{desc}</span>
+    </button>
   )
 }

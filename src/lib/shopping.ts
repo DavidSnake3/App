@@ -25,9 +25,28 @@ export function shoppingChecked(l: ShoppingList): number {
   return round2(l.items.filter((p) => p.checked).reduce((s, p) => s + lineTotal(p), 0))
 }
 
-/** El número que vale el gasto en el mes */
+/**
+ * Lo que va en el carrito AHORA, según cómo se usa la lista.
+ *
+ * En una lista planeada es lo marcado. En una compra en vivo todo lo que
+ * agregaste ya está en el carrito: por eso no lleva checks.
+ */
+export function shoppingCart(l: ShoppingList): number {
+  return l.mode === 'live' ? shoppingPlanned(l) : shoppingChecked(l)
+}
+
+/**
+ * El número que vale el gasto en el mes.
+ *
+ * Si la compra ya se cerró con la factura, manda el TOTAL de la factura: ese
+ * es el que de verdad se cobró (con impuestos y descuentos). Si no, vale lo
+ * marcado al cerrar, o todo lo planeado mientras siga abierta.
+ */
 export function shoppingAmount(l: ShoppingList): number {
-  return l.done ? shoppingChecked(l) : shoppingPlanned(l)
+  if (!l.done) return shoppingPlanned(l)
+  const total = l.totals?.total
+  if (typeof total === 'number' && total > 0) return round2(total)
+  return shoppingCart(l)
 }
 
 /** Deja el monto del gasto al día con su lista. Se llama en CADA cambio. */
@@ -42,17 +61,21 @@ export function shoppingSummary(l: ShoppingList) {
     count: l.items.length,
     checkedCount: l.items.filter((p) => p.checked).length,
     total: shoppingPlanned(l),
-    checkedTotal: shoppingChecked(l),
+    // ya cerrada, lo que cuenta es lo que se cobró de verdad
+    checkedTotal: l.done ? shoppingAmount(l) : shoppingCart(l),
     done: l.done,
+    /** la armás en el súper: todo lo agregado ya está en el carrito */
+    live: l.mode === 'live',
   }
 }
 
-/** Copia limpia para otro mes: nada marcado, nada cerrado */
+/** Copia limpia para otro mes: nada marcado, nada cerrado, sin factura */
 export function resetShoppingForCopy(l: ShoppingList, newId: () => string): ShoppingList {
   return {
     ...l,
     done: false,
     doneAt: undefined,
+    totals: undefined,
     items: l.items.map((p) => ({ ...p, id: newId(), checked: false, checkedAt: undefined })),
   }
 }

@@ -8,11 +8,8 @@ import { envelopeTotal, savingsTotal, suggestedEmergencyGoal } from '../../lib/f
 import { activeAccounts, isCredit } from '../../lib/accounts'
 import { accountColor } from '../../lib/itemColors'
 import { ItemIcon } from '../../lib/icons'
-import { payrollBreakdown } from '../../lib/payroll'
 import { formatMoney, money2 } from '../../lib/format'
 import { CurrencyInput } from '../ui/CurrencyInput'
-import { Toggle } from '../ui/Toggle'
-import { Segmented } from '../ui/Segmented'
 import { ProgressRing } from '../ui/ProgressRing'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 
@@ -20,16 +17,12 @@ export function SavingsSection() {
   const settings = useFinanceStore((s) => s.settings)
   const months = useFinanceStore((s) => s.months)
   const debts = useFinanceStore((s) => s.debts)
-  const setSavings = useFinanceStore((s) => s.setSavings)
   const addEnvelope = useFinanceStore((s) => s.addEnvelope)
 
   const sav = settings.savings
   const envelopes = sav.envelopes ?? []
   const total = savingsTotal(settings)
   const emergencyGoal = suggestedEmergencyGoal(months, debts)
-
-  const base = payrollBreakdown(settings.payroll).monthlyNet || settings.defaultSalary
-  const planMensual = sav.mode === 'percent' ? Math.round(Math.max(0, base) * sav.value / 100) : sav.value
 
   const [newName, setNewName] = useState('')
   const [newGoal, setNewGoal] = useState(0)
@@ -62,49 +55,6 @@ export function SavingsSection() {
             <PiggyBank size={22} />
           </span>
         </div>
-      </div>
-
-      {/* Plan mensual sugerido */}
-      <div className="card p-4 flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-[13.5px] font-semibold text-ink">Meta de ahorro mensual</p>
-            <p className="text-[11.5px] text-muted mt-0.5">Cuánto quieres apartar cada mes</p>
-          </div>
-          <Toggle checked={sav.enabled} onChange={(v) => setSavings({ enabled: v })} label="Ahorro" />
-        </div>
-        {sav.enabled && (
-          <div className="anim-fade flex flex-col gap-3">
-            <Segmented
-              value={sav.mode}
-              onChange={(m) => setSavings({ mode: m })}
-              options={[
-                { value: 'percent', label: '% del neto' },
-                { value: 'fixed', label: 'Monto fijo' },
-              ]}
-            />
-            {sav.mode === 'percent' ? (
-              <div>
-                <label className="text-[12.5px] text-muted block mb-1.5">Porcentaje: {sav.value}%</label>
-                <input
-                  type="range" min={1} max={50} value={sav.value}
-                  onChange={(e) => setSavings({ value: Number(e.target.value) })}
-                  className="w-full accent-[var(--app-accent)]"
-                />
-              </div>
-            ) : (
-              <div>
-                <label className="text-[12.5px] text-muted block mb-1.5">Monto por mes</label>
-                <CurrencyInput value={sav.value} onChange={(v) => setSavings({ value: v })} />
-              </div>
-            )}
-            {planMensual > 0 && (
-              <p className="text-[12px] text-muted">
-                Tu meta: <span className="num font-bold" style={{ color: 'var(--c-income)' }}>{formatMoney(planMensual)}</span> al mes
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Sobres */}
