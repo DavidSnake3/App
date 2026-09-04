@@ -584,6 +584,8 @@ export interface PayableItem {
     /** suma de lo marcado (lo que llevo) */
     checkedTotal: number
     done: boolean
+    /** se arma en el súper: todo lo agregado ya va en el carrito */
+    live?: boolean
   }
   /** progreso de la deuda: cuota n de m */
   debtProgress?: { current: number; total: number; remaining: number }

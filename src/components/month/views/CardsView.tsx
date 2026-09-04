@@ -65,7 +65,9 @@ export function CardsView({ items, monthId, onOpen }: Props) {
                       <ShoppingCart size={11} />
                       {it.shopping.done
                         ? 'Compra cerrada'
-                        : `${it.shopping.checkedCount}/${it.shopping.count} · llevo ${formatMoney(it.shopping.checkedTotal)}`}
+                        : it.shopping.live
+                          ? `${it.shopping.count} ${it.shopping.count === 1 ? 'producto' : 'productos'} · llevo ${formatMoney(it.shopping.checkedTotal)}`
+                          : `${it.shopping.checkedCount}/${it.shopping.count} · llevo ${formatMoney(it.shopping.checkedTotal)}`}
                     </span>
                   )}
                   {it.recurrence !== 'once' && it.kind !== 'deuda' && (

@@ -12,8 +12,16 @@ import { BudgetSheet } from './BudgetSheet'
 
 export function BudgetsInPayments() {
   const budgets = useFinanceStore((s) => s.budgets)
+  const monthId = useFinanceStore((s) => s.activeMonthId)
+  const month = useFinanceStore((s) => s.months[monthId])
   const [verId, setVerId] = useState<string | null>(null)
-  const visibles = budgets.filter((b) => b.inPayments !== false)
+
+  // Un presupuesto con su lista de compras en este mes NO se repite abajo: la
+  // lista ya sale arriba con su avance, y son la misma plata.
+  const conLista = new Set(
+    (month?.expenses ?? []).filter((e) => e.shopping && e.budgetId).map((e) => e.budgetId as string),
+  )
+  const visibles = budgets.filter((b) => b.inPayments !== false && !conLista.has(b.id))
   if (!visibles.length) return null
 
   return (

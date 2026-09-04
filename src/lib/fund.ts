@@ -9,6 +9,7 @@ import type {
 import { loanFlowInMonth } from './loans'
 import { currentMonthId, daysInMonth, parseMonthId } from './dates'
 import { buildPayables, getMonthSummary, remainingAmount } from './finance'
+import { budgetStatus } from './budgets'
 import { payrollBreakdown } from './payroll'
 import { accountById, cashMovementsNet, isCredit, totalCash } from './accounts'
 
@@ -143,37 +144,52 @@ export function paymentMovementIds(m: MonthData | undefined, debts: Debt[]): Set
 }
 
 /**
- * Lo que el usuario dejó FUERA del balance del mes.
+ * Cómo pesan los presupuestos en el balance del mes.
  *
- * Un presupuesto (o una lista de compras) se puede marcar como "no cuenta en
- * el balance": la plata sale de la cuenta igual, pero no se resta del número
- * grande del mes. Sirve para topes de referencia, plata de otro o gastos que
- * te reembolsan.
+ * Un presupuesto que cuenta en el balance RESERVA su límite completo: si tenés
+ * 40.000 de balance y armás un presupuesto de 20.000, el balance baja a 20.000
+ * aunque todavía no hayás gastado nada. Es plata que ya sabés que se va.
+ *
+ * Si te pasás del límite, se reserva lo gastado de verdad: nunca menos de lo
+ * que ya salió.
+ *
+ * Para no contar dos veces, lo que ya está dentro de esa reserva se excluye
+ * del resto del cálculo: sus movimientos y los pagos que le cuelgan (por
+ * ejemplo la lista de compras enlazada).
  */
-export function outOfBalance(
+export function budgetImpact(
   m: MonthData | undefined,
   budgets: Budget[],
-): { movimientos: Set<string>; pagos: number } {
+  months?: Record<string, MonthData>,
+  today = new Date(),
+): { movimientos: Set<string>; pagos: number; reservado: number } {
   const movimientos = new Set<string>()
   let pagos = 0
-  if (!m) return { movimientos, pagos }
+  let reservado = 0
+  if (!m) return { movimientos, pagos, reservado }
 
-  const fuera = new Set(budgets.filter((b) => b.countInBalance === false).map((b) => b.id))
-
-  for (const mv of m.movements ?? []) {
-    if (mv.budgetId && fuera.has(mv.budgetId)) movimientos.add(mv.id)
+  const relevantes = new Set<string>()
+  for (const b of budgets) {
+    relevantes.add(b.id)
+    if (b.countInBalance === false) continue
+    const st = budgetStatus(b, m, today, months)
+    // el límite manda, salvo que ya lo hayás pasado
+    reservado += Math.max(st.limit, st.spent)
   }
 
+  // todo lo que cuelga de un presupuesto sale del resto del cálculo
+  for (const mv of m.movements ?? []) {
+    if (mv.budgetId && relevantes.has(mv.budgetId)) movimientos.add(mv.id)
+  }
   for (const e of m.expenses ?? []) {
-    // el pago se excluye si él lo dice, o si su presupuesto lo dice
-    const excluido = e.countInBalance === false || (e.budgetId ? fuera.has(e.budgetId) : false)
-    if (!excluido) continue
+    const deUnPresupuesto = e.budgetId ? relevantes.has(e.budgetId) : false
+    if (!deUnPresupuesto && e.countInBalance !== false) continue
     pagos += e.amount
     if (e.movementId) movimientos.add(e.movementId)
     for (const ad of e.advances ?? []) if (ad.movementId) movimientos.add(ad.movementId)
   }
 
-  return { movimientos, pagos: round2(pagos) }
+  return { movimientos, pagos: round2(pagos), reservado: round2(reservado) }
 }
 
 export function monthSpend(m: MonthData | undefined, debts: Debt[]): {

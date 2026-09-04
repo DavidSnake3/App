@@ -9,7 +9,7 @@ import type { PayPeriod } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { getMonthSummary } from '../../lib/finance'
 import {
-  carryOver, depositsInMonth, envelopeTotal, kindTotals, outOfBalance, paymentMovementIds,
+  budgetImpact, carryOver, depositsInMonth, envelopeTotal, kindTotals, paymentMovementIds,
   prevMonthLeftover, realBalance, receivedInMonth, savingsTotal,
 } from '../../lib/fund'
 import { cashMovementsNet, movementsExpense, movementsIncome } from '../../lib/accounts'
@@ -76,9 +76,9 @@ function useBalanceData(view: PayPeriod) {
      * mucho más negativo de lo real.
      */
     const dePagos = paymentMovementIds(month, debts)
-    // lo que el usuario marcó como "no cuenta en el balance" se queda fuera
-    const fuera = outOfBalance(month, budgets)
-    const sinBalance = new Set([...dePagos, ...fuera.movimientos])
+    // los presupuestos reservan su límite y se llevan lo que les cuelga
+    const pres = budgetImpact(month, budgets, months)
+    const sinBalance = new Set([...dePagos, ...pres.movimientos])
     const movSalidas = movementsExpense(month, sinBalance)
     const movEntradas = movementsIncome(month, sinBalance)
     const movNeto = -cashMovementsNet(month, accounts, sinBalance)
@@ -88,11 +88,16 @@ function useBalanceData(view: PayPeriod) {
       ? realBalance(months, debts, settings, new Date(), loans, accounts, installments)
       : null
     const v = (n: number) => convertPeriod(n, 'monthly', view)
-    // los pagos excluidos no inflan ni el total ni el balance
+    /*
+     * Los pagos que cuelgan de un presupuesto salen del total y entran por la
+     * reserva: así el límite pesa una sola vez. El resto del mes va como
+     * siempre.
+     */
+    const gastos = money2(s0.totalExpenses - pres.pagos + pres.reservado)
     const s = {
       ...s0,
-      totalExpenses: money2(s0.totalExpenses - fuera.pagos),
-      savings: money2(s0.savings + fuera.pagos),
+      totalExpenses: gastos,
+      savings: money2(s0.totalIncome - gastos),
     }
     return {
       monthId, month, settings, debts, months, kinds, saldo, v,

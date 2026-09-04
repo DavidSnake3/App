@@ -2,6 +2,7 @@
 // y va anotando lo que gasta. Avisa cuando se acerca o se pasa del límite.
 import type { Budget, MonthData } from '../types/finance'
 import { remainingAmount } from './finance'
+import { shoppingCart } from './shopping'
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100
@@ -117,6 +118,13 @@ export function budgetStatus(
       if (e.budgetId !== b.id) continue
       for (const ad of e.advances ?? []) {
         if (!ad.movementId && dentro(ad.dateISO)) spent += ad.amount
+      }
+      // Una lista de compras ABIERTA todavia no movio plata, pero lo que
+      // llevas en el carrito ya esta comprometido: asi lo ves en el
+      // presupuesto mientras compras. Cerrada ya cuenta por su movimiento.
+      if (e.shopping && !e.shopping.done) {
+        spent += shoppingCart(e.shopping)
+        continue
       }
       if (e.paid && !e.movementId && dentro((e.paidAt ?? '').slice(0, 10))) spent += remainingAmount(e)
     }

@@ -115,9 +115,7 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
       </div>
 
       {/* Cuánto llevás del presupuesto al que está enlazada */}
-      {budget && (
-        <BudgetBar budget={budget} expense={expense} enCurso={cerrada ? 0 : llevo} />
-      )}
+      {budget && <BudgetBar budget={budget} abierta={!cerrada} />}
 
       {/* Escanear: solo mientras la compra sigue abierta */}
       {!cerrada && scannerDisponible() && (
@@ -404,16 +402,13 @@ function Linea({ label, value, apagado }: { label: string; value: number; apagad
  * Una vez cerrada, la compra ya está contada en el presupuesto y no se suma
  * dos veces.
  */
-function BudgetBar({ budget, expense, enCurso }: {
-  budget: Budget
-  expense: Expense
-  enCurso: number
-}) {
+function BudgetBar({ budget, abierta }: { budget: Budget; abierta: boolean }) {
   const monthId = useFinanceStore((s) => s.activeMonthId)
   const months = useFinanceStore((s) => s.months)
 
+  // el estado del presupuesto ya trae el carrito de las listas abiertas
   const st = budgetStatus(budget, months[monthId], new Date(), months)
-  const total = money2(st.spent + enCurso)
+  const total = money2(st.spent)
   const queda = money2(st.limit - total)
   const ratio = st.limit > 0 ? total / st.limit : 0
   const nivel = ratio >= 1 ? 'over' : ratio >= 0.8 ? 'warn' : 'ok'
@@ -452,7 +447,7 @@ function BudgetBar({ budget, expense, enCurso }: {
             <span className="num font-semibold">{formatMoney(queda)}</span> {periodLabel(budget)}.</>
         ) : (
           <>Te quedan <span className="num font-semibold text-ink">{formatMoney(queda)}</span> {periodLabel(budget)}
-            {enCurso > 0 && !expense.paid && ' contando lo del carrito'}.</>
+            {abierta && ' contando lo del carrito'}.</>
         )}
       </p>
     </div>
