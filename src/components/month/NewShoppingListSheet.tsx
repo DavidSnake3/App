@@ -1,7 +1,7 @@
 // Crear o editar una lista de compras: título, dónde se compra, con qué cuenta
 // se pagará y su color. Los productos se manejan dentro de la lista.
 import { useState } from 'react'
-import { Save, ShoppingCart } from 'lucide-react'
+import { Save, ShoppingCart, Target } from 'lucide-react'
 import type { Expense } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { activeAccounts, isCredit } from '../../lib/accounts'
@@ -9,6 +9,9 @@ import { accountColor } from '../../lib/itemColors'
 import { ItemIcon } from '../../lib/icons'
 import { BottomSheet } from '../ui/BottomSheet'
 import { ColorPicker } from '../ui/ColorPicker'
+import { Toggle } from '../ui/Toggle'
+import { periodLabel } from '../../lib/budgets'
+import { formatMoney } from '../../lib/format'
 
 interface Props {
   open: boolean
@@ -47,6 +50,7 @@ function Form({ monthId, editing, onCreated, onClose }: {
   onClose: () => void
 }) {
   const accounts = useFinanceStore((s) => s.accounts)
+  const budgets = useFinanceStore((s) => s.budgets)
   const createShoppingList = useFinanceStore((s) => s.createShoppingList)
   const updateExpense = useFinanceStore((s) => s.updateExpense)
   const cuentas = activeAccounts(accounts)
@@ -57,9 +61,15 @@ function Form({ monthId, editing, onCreated, onClose }: {
   const [accountId, setAccountId] = useState(editing?.accountId ?? '')
   const [color, setColor] = useState(editing?.color ?? '')
   const [mode, setMode] = useState<'plan' | 'live'>(editing?.shopping?.mode ?? 'plan')
+  const [budgetId, setBudgetId] = useState(editing?.budgetId ?? '')
+  const [countInBalance, setCountInBalance] = useState(editing?.countInBalance ?? true)
   const [error, setError] = useState('')
 
   const cuentaElegida = cuentas.find((a) => a.id === accountId)
+  const presupuesto = budgets.find((b) => b.id === budgetId)
+  // enlazada a un presupuesto, la lista hereda su decisión: no pueden decir
+  // cosas distintas sobre la misma plata
+  const cuentaEnBalance = presupuesto ? presupuesto.countInBalance !== false : countInBalance
   const cerrada = Boolean(editing?.shopping?.done)
 
   const guardar = () => {
@@ -73,6 +83,8 @@ function Form({ monthId, editing, onCreated, onClose }: {
         period: day && day <= 15 ? 'q1' : 'q2',
         accountId: accountId || undefined,
         color: color || undefined,
+        budgetId: budgetId || undefined,
+        countInBalance: cuentaEnBalance,
         shopping: editing.shopping
           ? { ...editing.shopping, store: store.trim() || undefined, mode }
           : editing.shopping,
@@ -89,6 +101,8 @@ function Form({ monthId, editing, onCreated, onClose }: {
       color: color || undefined,
       icon: 'super',
       mode,
+      budgetId: budgetId || undefined,
+      countInBalance: cuentaEnBalance,
     })
     onCreated(id)
   }
@@ -186,6 +200,57 @@ function Form({ monthId, editing, onCreated, onClose }: {
           ) : null}
         </div>
       )}
+
+      {/* Enlazarla a un presupuesto: así la compra descuenta de ese límite */}
+      {budgets.length > 0 && (
+        <div>
+          <label className="text-[12px] font-semibold text-muted">
+            ¿Sale de algún presupuesto? (opcional)
+          </label>
+          <div className="flex gap-2 mt-2 overflow-x-auto no-scrollbar">
+            <button
+              onClick={() => setBudgetId('')}
+              className={`pressable chip shrink-0 ${budgetId === '' ? 'chip-active' : ''}`}
+            >
+              Ninguno
+            </button>
+            {budgets.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => setBudgetId(b.id)}
+                className={`pressable chip shrink-0 ${budgetId === b.id ? 'chip-active' : ''}`}
+              >
+                <Target size={11} /> {b.name}
+              </button>
+            ))}
+          </div>
+          {presupuesto && (
+            <p className="text-[11px] text-muted mt-1.5 leading-snug">
+              Vas a ver cuánto llevás del límite de{' '}
+              <span className="num font-semibold text-ink">{formatMoney(presupuesto.amount)}</span>
+              {' '}{periodLabel(presupuesto)} mientras comprás.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ¿Se resta del balance del mes? */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-medium text-ink">Contar en el balance del mes</p>
+          <p className="text-[11px] text-muted leading-snug">
+            {presupuesto
+              ? `Lo decide "${presupuesto.name}": ${cuentaEnBalance ? 'sí cuenta' : 'no cuenta'}.`
+              : cuentaEnBalance
+                ? 'La compra se resta del balance mensual.'
+                : 'La plata sale de la cuenta igual, pero no baja el balance.'}
+          </p>
+        </div>
+        <Toggle
+          checked={cuentaEnBalance}
+          onChange={presupuesto ? () => { /* lo manda el presupuesto */ } : setCountInBalance}
+        />
+      </div>
 
       <ColorPicker
         value={color}

@@ -90,7 +90,7 @@ function Formulario({ monthId, expense, onClose, onDone }: {
         </p>
         <p className="text-[11.5px] text-muted mt-1">
           {expense.shopping?.mode === 'live'
-            ? `${expense.shopping.items.length} productos`
+            ? `${expense.shopping.items.length} ${expense.shopping.items.length === 1 ? 'producto' : 'productos'}`
             : `${expense.shopping?.items.filter((p) => p.checked).length ?? 0} de ${expense.shopping?.items.length ?? 0} productos`}
         </p>
       </div>

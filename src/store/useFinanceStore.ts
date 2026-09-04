@@ -200,6 +200,10 @@ interface FinanceActions {
     categoryId?: string; icon?: string; color?: string; store?: string
     /** 'live' = la armás en el súper con el lector, sin checks */
     mode?: 'plan' | 'live'
+    /** presupuesto al que se carga la compra */
+    budgetId?: string
+    /** si la compra se resta del balance del mes */
+    countInBalance?: boolean
   }): string
   addShoppingProduct(monthId: string, expenseId: string, p: Omit<ShoppingProduct, 'id' | 'checked' | 'checkedAt'>): void
   updateShoppingProduct(monthId: string, expenseId: string, productId: string, patch: Partial<ShoppingProduct>): void
@@ -1009,6 +1013,8 @@ export const useFinanceStore = create<FinanceState & FinanceActions>()(
             color: data.color,
             accountId: data.accountId,
             categoryId: data.categoryId || guessCategory(data.name, 'gasto'),
+            budgetId: data.budgetId,
+            countInBalance: data.countInBalance,
             anchorMonthId: monthId,
             shopping: { items: [], done: false, store: data.store, mode: data.mode ?? 'plan' },
             createdAt: todayISO(),

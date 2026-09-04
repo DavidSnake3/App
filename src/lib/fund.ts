@@ -3,7 +3,7 @@
 // por quincenas − lo pagado − gastos hormiga − aportes al ahorro. El sobrante
 // de cada mes se arrastra solo al siguiente (no es ahorro: es lo que sobró).
 import type {
-  Account, AppSettings, Debt, FundConfig, Installment, Loan, MonthData,
+  Account, AppSettings, Budget, Debt, FundConfig, Installment, Loan, MonthData,
   SavingsDeposit, SavingsEnvelope,
 } from '../types/finance'
 import { loanFlowInMonth } from './loans'
@@ -140,6 +140,40 @@ export function paymentMovementIds(m: MonthData | undefined, debts: Debt[]): Set
   // los que la app marcó con su origen, aunque el pago ya no los reclame
   for (const mv of m.movements ?? []) if (mv.sourceId) ids.add(mv.id)
   return ids
+}
+
+/**
+ * Lo que el usuario dejó FUERA del balance del mes.
+ *
+ * Un presupuesto (o una lista de compras) se puede marcar como "no cuenta en
+ * el balance": la plata sale de la cuenta igual, pero no se resta del número
+ * grande del mes. Sirve para topes de referencia, plata de otro o gastos que
+ * te reembolsan.
+ */
+export function outOfBalance(
+  m: MonthData | undefined,
+  budgets: Budget[],
+): { movimientos: Set<string>; pagos: number } {
+  const movimientos = new Set<string>()
+  let pagos = 0
+  if (!m) return { movimientos, pagos }
+
+  const fuera = new Set(budgets.filter((b) => b.countInBalance === false).map((b) => b.id))
+
+  for (const mv of m.movements ?? []) {
+    if (mv.budgetId && fuera.has(mv.budgetId)) movimientos.add(mv.id)
+  }
+
+  for (const e of m.expenses ?? []) {
+    // el pago se excluye si él lo dice, o si su presupuesto lo dice
+    const excluido = e.countInBalance === false || (e.budgetId ? fuera.has(e.budgetId) : false)
+    if (!excluido) continue
+    pagos += e.amount
+    if (e.movementId) movimientos.add(e.movementId)
+    for (const ad of e.advances ?? []) if (ad.movementId) movimientos.add(ad.movementId)
+  }
+
+  return { movimientos, pagos: round2(pagos) }
 }
 
 export function monthSpend(m: MonthData | undefined, debts: Debt[]): {

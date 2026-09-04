@@ -149,6 +149,8 @@ export interface Expense {
   color?: string
   /** presupuesto al que se carga este pago (opcional) */
   budgetId?: string
+  /** si este pago se resta del balance del mes (por defecto sí) */
+  countInBalance?: boolean
   /** cuenta con la que se paga (si es tarjeta de crédito, se vuelve deuda) */
   accountId?: string
   /** categoría del movimiento (para los reportes por tipo) */
@@ -536,6 +538,15 @@ export interface Budget {
   accountId?: string
   /** se muestra en Pagos del mes con su barra de avance */
   inPayments?: boolean
+  /**
+   * Si los gastos de este presupuesto se restan del balance del mes.
+   *
+   * Normalmente sí (es plata tuya que sale). Se apaga cuando el presupuesto es
+   * solo de referencia: plata de otra persona, gastos que te reembolsan o un
+   * tope que ya está contado como pago fijo. La cuenta baja igual: lo único
+   * que cambia es el número grande del mes.
+   */
+  countInBalance?: boolean
   entries: BudgetEntry[]
   createdAt: string
 }

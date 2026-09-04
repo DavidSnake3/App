@@ -9,7 +9,7 @@ import type { PayPeriod } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import { getMonthSummary } from '../../lib/finance'
 import {
-  carryOver, depositsInMonth, envelopeTotal, kindTotals, paymentMovementIds,
+  carryOver, depositsInMonth, envelopeTotal, kindTotals, outOfBalance, paymentMovementIds,
   prevMonthLeftover, realBalance, receivedInMonth, savingsTotal,
 } from '../../lib/fund'
 import { cashMovementsNet, movementsExpense, movementsIncome } from '../../lib/accounts'
@@ -61,10 +61,11 @@ function useBalanceData(view: PayPeriod) {
   const accounts = useFinanceStore((s) => s.accounts)
   const installments = useFinanceStore((s) => s.installments)
   const loans = useFinanceStore((s) => s.loans)
+  const budgets = useFinanceStore((s) => s.budgets)
 
   return useMemo(() => {
     if (!month) return null
-    const s = getMonthSummary(month, debts)
+    const s0 = getMonthSummary(month, debts)
     const kinds = kindTotals(month, debts)
     const deudas = kinds.find((k) => k.kind === 'deuda')?.total ?? 0
     const otros = kinds.filter((k) => k.kind !== 'deuda').reduce((t, k) => t + k.total, 0)
@@ -75,15 +76,24 @@ function useBalanceData(view: PayPeriod) {
      * mucho más negativo de lo real.
      */
     const dePagos = paymentMovementIds(month, debts)
-    const movSalidas = movementsExpense(month, dePagos)
-    const movEntradas = movementsIncome(month, dePagos)
-    const movNeto = -cashMovementsNet(month, accounts, dePagos)
+    // lo que el usuario marcó como "no cuenta en el balance" se queda fuera
+    const fuera = outOfBalance(month, budgets)
+    const sinBalance = new Set([...dePagos, ...fuera.movimientos])
+    const movSalidas = movementsExpense(month, sinBalance)
+    const movEntradas = movementsIncome(month, sinBalance)
+    const movNeto = -cashMovementsNet(month, accounts, sinBalance)
     const ahorroMes = depositsInMonth(settings, monthId)
     const prevLeft = prevMonthLeftover(months, debts, settings, monthId, loans, accounts)
     const saldo = isCurrentMonth(monthId)
       ? realBalance(months, debts, settings, new Date(), loans, accounts, installments)
       : null
     const v = (n: number) => convertPeriod(n, 'monthly', view)
+    // los pagos excluidos no inflan ni el total ni el balance
+    const s = {
+      ...s0,
+      totalExpenses: money2(s0.totalExpenses - fuera.pagos),
+      savings: money2(s0.savings + fuera.pagos),
+    }
     return {
       monthId, month, settings, debts, months, kinds, saldo, v,
       raw: { ...s, deudas, otros, movSalidas, movEntradas, movNeto, ahorroMes, prevLeft },
@@ -99,7 +109,7 @@ function useBalanceData(view: PayPeriod) {
         prevLeft: v(prevLeft),
       },
     }
-  }, [month, months, debts, settings, monthId, view, accounts, installments, loans])
+  }, [month, months, debts, settings, monthId, view, accounts, installments, loans, budgets])
 }
 
 export function BalanceCard({ compact = false }: { compact?: boolean }) {

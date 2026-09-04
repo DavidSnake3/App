@@ -36,6 +36,7 @@ export function BudgetForm({ budget, onDone, onCancel }: {
   const [categoryId, setCategoryId] = useState(budget?.categoryId ?? '')
   const [accountId, setAccountId] = useState(budget?.accountId ?? '')
   const [inPayments, setInPayments] = useState(budget?.inPayments ?? true)
+  const [countInBalance, setCountInBalance] = useState(budget?.countInBalance ?? true)
 
   const guardar = () => {
     if (!name.trim() || amount <= 0) return
@@ -48,6 +49,7 @@ export function BudgetForm({ budget, onDone, onCancel }: {
       categoryId: categoryId || undefined,
       accountId: accountId || undefined,
       inPayments,
+      countInBalance,
     }
     if (budget) updateBudget(budget.id, datos)
     else addBudget(datos)
@@ -152,6 +154,18 @@ export function BudgetForm({ budget, onDone, onCancel }: {
           </p>
         </div>
         <Toggle checked={inPayments} onChange={setInPayments} />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 py-1">
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-medium text-ink">Contar en el balance del mes</p>
+          <p className="text-[11px] text-muted leading-snug">
+            {countInBalance
+              ? 'Lo que gastés acá se resta del balance mensual.'
+              : 'Solo de referencia: la plata igual sale de la cuenta, pero no baja el balance.'}
+          </p>
+        </div>
+        <Toggle checked={countInBalance} onChange={setCountInBalance} />
       </div>
 
       <div className="flex gap-2 mt-1">

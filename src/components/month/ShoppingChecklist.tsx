@@ -8,10 +8,11 @@
 //    ya está en el carrito, así que no lleva checks.
 import { useState } from 'react'
 import {
-  Check, Minus, Pencil, Plus, Receipt, ScanLine, ShoppingCart, Trash2, Undo2,
+  AlertTriangle, Check, Minus, Pencil, Plus, Receipt, ScanLine, ShoppingCart, Target, Trash2, Undo2,
 } from 'lucide-react'
-import type { Expense, ShoppingProduct } from '../../types/finance'
+import type { Budget, Expense, ShoppingProduct } from '../../types/finance'
 import { useFinanceStore } from '../../store/useFinanceStore'
+import { budgetStatus, periodLabel } from '../../lib/budgets'
 import { lineTotal, shoppingCart, shoppingPlanned } from '../../lib/shopping'
 import { scannerDisponible } from '../../lib/scanner'
 import { taxTotal } from '../../lib/tax'
@@ -36,6 +37,7 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
   const toggleDone = useFinanceStore((s) => s.toggleShoppingDone)
   const deleteExpense = useFinanceStore((s) => s.deleteExpense)
   const anims = useFinanceStore((s) => s.settings.animations)
+  const budget = useFinanceStore((s) => s.budgets.find((b) => b.id === expense.budgetId))
 
   const [name, setName] = useState('')
   const [price, setPrice] = useState(0)
@@ -93,7 +95,9 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
               </>
             )}
             <p className="text-[10.5px] text-muted">
-              {enVivo ? `${lista.items.length} productos` : `${marcados} de ${lista.items.length}`}
+              {enVivo
+                ? `${lista.items.length} ${lista.items.length === 1 ? 'producto' : 'productos'}`
+                : `${marcados} de ${lista.items.length}`}
             </p>
           </div>
         </div>
@@ -109,6 +113,11 @@ export function ShoppingChecklist({ monthId, expense, onEdit, onDeleted }: {
 
 
       </div>
+
+      {/* Cuánto llevás del presupuesto al que está enlazada */}
+      {budget && (
+        <BudgetBar budget={budget} expense={expense} enCurso={cerrada ? 0 : llevo} />
+      )}
 
       {/* Escanear: solo mientras la compra sigue abierta */}
       {!cerrada && scannerDisponible() && (
@@ -381,6 +390,71 @@ function Linea({ label, value, apagado }: { label: string; value: number; apagad
       >
         {value < 0 ? '−' : ''}{formatMoney(Math.abs(money2(value)))}
       </span>
+    </div>
+  )
+}
+
+/* ─── Cuánto llevás del presupuesto enlazado ────────────────────────────── */
+
+/**
+ * La barra del presupuesto dentro de la lista.
+ *
+ * Mientras la compra está abierta suma lo que llevás en el carrito a lo que ya
+ * gastaste del período: así ves si te vas a pasar ANTES de llegar a la caja.
+ * Una vez cerrada, la compra ya está contada en el presupuesto y no se suma
+ * dos veces.
+ */
+function BudgetBar({ budget, expense, enCurso }: {
+  budget: Budget
+  expense: Expense
+  enCurso: number
+}) {
+  const monthId = useFinanceStore((s) => s.activeMonthId)
+  const months = useFinanceStore((s) => s.months)
+
+  const st = budgetStatus(budget, months[monthId], new Date(), months)
+  const total = money2(st.spent + enCurso)
+  const queda = money2(st.limit - total)
+  const ratio = st.limit > 0 ? total / st.limit : 0
+  const nivel = ratio >= 1 ? 'over' : ratio >= 0.8 ? 'warn' : 'ok'
+  const tono = nivel === 'over' ? 'var(--c-danger)' : nivel === 'warn' ? 'var(--c-warning)' : 'var(--c-income)'
+  const pct = Math.min(100, Math.round(ratio * 100))
+
+  return (
+    <div
+      className="rounded-2xl p-3.5"
+      style={{ background: `color-mix(in oklab, ${tono} 10%, transparent)` }}
+    >
+      <div className="flex items-center gap-2">
+        <Target size={13} style={{ color: tono }} className="shrink-0" />
+        <span className="text-[12.5px] font-semibold text-ink flex-1 min-w-0 truncate">
+          {budget.name}
+        </span>
+        <span className="num text-[12.5px] font-bold shrink-0" style={{ color: tono }}>
+          {formatMoney(total)}
+          <span className="text-[10.5px] text-muted font-normal"> de {formatMoney(st.limit)}</span>
+        </span>
+      </div>
+
+      <div className="h-2 rounded-full bg-elevated overflow-hidden mt-2">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, background: tono }}
+        />
+      </div>
+
+      <p className="text-[11px] mt-1.5 leading-snug" style={{ color: nivel === 'ok' ? 'var(--c-muted)' : tono }}>
+        {nivel === 'over' ? (
+          <><AlertTriangle size={10} className="inline mb-0.5" /> Te pasaste del presupuesto por{' '}
+            <span className="num font-semibold">{formatMoney(Math.abs(queda))}</span>.</>
+        ) : nivel === 'warn' ? (
+          <><AlertTriangle size={10} className="inline mb-0.5" /> Vas al {pct}%: te quedan{' '}
+            <span className="num font-semibold">{formatMoney(queda)}</span> {periodLabel(budget)}.</>
+        ) : (
+          <>Te quedan <span className="num font-semibold text-ink">{formatMoney(queda)}</span> {periodLabel(budget)}
+            {enCurso > 0 && !expense.paid && ' contando lo del carrito'}.</>
+        )}
+      </p>
     </div>
   )
 }
